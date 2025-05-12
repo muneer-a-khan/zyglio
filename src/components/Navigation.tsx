@@ -40,6 +40,9 @@ const Navigation = () => {
             <Button variant="ghost" asChild className="text-sm font-medium hidden sm:flex">
               <Link to="/library">Media Library</Link>
             </Button>
+            <Button variant="ghost" asChild className="text-sm font-medium hidden sm:flex">
+              <Link to="/procedures">Procedural Library</Link>
+            </Button>
           </div>
           <div className="hidden md:flex items-center space-x-2">
             <Button variant="outline" size="sm">

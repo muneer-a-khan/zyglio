@@ -22,12 +22,15 @@ const Index = () => {
                   Capture, refine, and simulate procedural tasks using voice commands. 
                   Our AI-powered platform makes documentation simple and effective.
                 </p>
-                <div className="flex flex-col gap-2 min-[400px]:flex-row">
+                <div className="flex flex-col gap-2 min-[400px]:flex-row flex-wrap">
                   <Button asChild className="bg-medical-600 hover:bg-medical-700">
                     <Link to="/create">Create New Procedure</Link>
                   </Button>
                   <Button variant="outline">
                     <Link to="/library">Browse Media Library</Link>
+                  </Button>
+                  <Button variant="secondary">
+                    <Link to="/procedures">Browse Procedural Library</Link>
                   </Button>
                 </div>
               </div>

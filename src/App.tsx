@@ -8,6 +8,7 @@ import Index from "./pages/Index";
 import CreateProcedure from "./pages/CreateProcedure";
 import MediaLibrary from "./pages/MediaLibrary";
 import NotFound from "./pages/NotFound";
+import ProceduralLibrary from "./pages/ProceduralLibrary";
 
 const queryClient = new QueryClient();
 
@@ -21,6 +22,7 @@ const App = () => (
           <Route path="/" element={<Index />} />
           <Route path="/create" element={<CreateProcedure />} />
           <Route path="/library" element={<MediaLibrary />} />
+          <Route path="/procedures" element={<ProceduralLibrary />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
