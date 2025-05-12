@@ -1,0 +1,147 @@
+
+import { useState, useRef, useEffect } from "react";
+import { Button } from "@/components/ui/button";
+import { Mic, Pause, Play, Stop } from "lucide-react";
+import { cn } from "@/lib/utils";
+
+interface VoiceRecorderProps {
+  onTranscriptUpdate: (transcript: string) => void;
+  className?: string;
+}
+
+const VoiceRecorder = ({ onTranscriptUpdate, className }: VoiceRecorderProps) => {
+  const [isRecording, setIsRecording] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
+  const [transcript, setTranscript] = useState("");
+  
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recognitionRef = useRef<any>(null);
+  
+  // Set up SpeechRecognition
+  useEffect(() => {
+    // Check if browser supports SpeechRecognition
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    
+    if (!SpeechRecognition) {
+      console.error("Speech recognition not supported in this browser");
+      return;
+    }
+    
+    const recognition = new SpeechRecognition();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    
+    recognition.onresult = (event: any) => {
+      let currentTranscript = '';
+      
+      for (let i = 0; i < event.results.length; i++) {
+        currentTranscript += event.results[i][0].transcript;
+      }
+      
+      setTranscript(currentTranscript);
+      onTranscriptUpdate(currentTranscript);
+    };
+    
+    recognition.onerror = (event: any) => {
+      console.error('Speech recognition error', event.error);
+    };
+    
+    recognitionRef.current = recognition;
+    
+    return () => {
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+      }
+    };
+  }, [onTranscriptUpdate]);
+  
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaRecorderRef.current = new MediaRecorder(stream);
+      
+      // Start recognition
+      if (recognitionRef.current) {
+        recognitionRef.current.start();
+      }
+      
+      setIsRecording(true);
+      setIsPaused(false);
+    } catch (err) {
+      console.error('Error accessing microphone:', err);
+    }
+  };
+  
+  const pauseRecording = () => {
+    if (isPaused) {
+      // Resume recording
+      if (recognitionRef.current) {
+        recognitionRef.current.start();
+      }
+      setIsPaused(false);
+    } else {
+      // Pause recording
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+      }
+      setIsPaused(true);
+    }
+  };
+  
+  const stopRecording = () => {
+    if (mediaRecorderRef.current) {
+      mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
+    }
+    
+    if (recognitionRef.current) {
+      recognitionRef.current.stop();
+    }
+    
+    setIsRecording(false);
+    setIsPaused(false);
+  };
+  
+  return (
+    <div className={cn("flex flex-col items-center", className)}>
+      <div className="flex items-center space-x-2 mb-4">
+        {!isRecording ? (
+          <Button
+            onClick={startRecording}
+            className="bg-medical-600 hover:bg-medical-700 text-white"
+            size="lg"
+          >
+            <Mic className="mr-2 h-5 w-5" />
+            Start Recording
+          </Button>
+        ) : (
+          <>
+            <Button
+              onClick={pauseRecording}
+              variant="outline"
+              size="icon"
+              className="h-10 w-10"
+            >
+              {isPaused ? <Play className="h-5 w-5" /> : <Pause className="h-5 w-5" />}
+            </Button>
+            <Button
+              onClick={stopRecording}
+              variant="destructive"
+              size="icon"
+              className="h-10 w-10"
+            >
+              <Stop className="h-5 w-5" />
+            </Button>
+            <div className={cn(
+              "px-3 py-1 rounded-full text-sm text-white bg-medical-600",
+              isRecording && !isPaused && "animate-pulse-recording"
+            )}>
+              {isPaused ? "Paused" : "Recording"}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default VoiceRecorder;
