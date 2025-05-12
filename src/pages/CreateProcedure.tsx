@@ -20,11 +20,17 @@ interface TaskDefinition {
   kpis: string[];
 }
 
+interface Step {
+  id: string;
+  content: string;
+  comments: string[];
+}
+
 const CreateProcedure = () => {
   const [activeTab, setActiveTab] = useState("task");
   const [transcript, setTranscript] = useState("");
   const [taskDefinition, setTaskDefinition] = useState<TaskDefinition | null>(null);
-  const [procedureSteps, setProcedureSteps] = useState<string[]>([]);
+  const [steps, setSteps] = useState<Step[]>([]);
 
   const handleTaskSubmit = (taskData: TaskDefinition) => {
     setTaskDefinition(taskData);
@@ -51,6 +57,9 @@ const CreateProcedure = () => {
     else if (activeTab === "record") setActiveTab("media");
     else if (activeTab === "visualize") setActiveTab("record");
   };
+
+  // Extract procedure step contents for FlowchartViewer
+  const procedureStepsForFlowchart = steps.map(step => step.content);
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -149,7 +158,7 @@ const CreateProcedure = () => {
           <TabsContent value="visualize">
             <Card>
               <CardContent className="pt-6">
-                <FlowchartViewer steps={procedureSteps} />
+                <FlowchartViewer steps={procedureStepsForFlowchart} />
               </CardContent>
             </Card>
             
