@@ -27,7 +27,7 @@ const Index = () => {
                     <Link to="/create">Create New Procedure</Link>
                   </Button>
                   <Button variant="outline">
-                    <Link to="/library">Browse Library</Link>
+                    <Link to="/library">Browse Media Library</Link>
                   </Button>
                 </div>
               </div>
