@@ -1,0 +1,172 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL") // Supabase connection string
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  name      String?
+  createdAt DateTime @default(now())
+  learningTasks LearningTask[]
+}
+
+model LearningTask {
+  id         String    @id @default(uuid())
+  title      String
+  kpiTech    String?   // combine technical KPIs as one string
+  kpiConcept String?
+  presenter  String
+  affiliation String?
+  date       DateTime
+
+  userId     String
+  user       User      @relation(fields: [userId], references: [id])
+
+  mediaItems     MediaItem[]
+  urls           ExternalResource[]
+  dictations     Dictation[]
+  procedures     Procedure[]
+  yamlOutputs    YamlOutput[]
+  flowcharts     Flowchart[]
+  simulations    Simulation[]
+}
+
+model MediaItem {
+  id          String   @id @default(uuid())
+  type        MediaType
+  caption     String?
+  url         String
+  relevance   String?
+  createdAt   DateTime @default(now())
+
+  taskId      String
+  task        LearningTask @relation(fields: [taskId], references: [id])
+
+  stepId      String?       
+  step        ProcedureStep? @relation(fields: [stepId], references: [id])
+}
+
+enum MediaType {
+  IMAGE
+  VIDEO
+  AUDIO
+  PDF
+}
+
+model ExternalResource {
+  id          String   @id @default(uuid())
+  url         String
+  description String
+  taskId      String
+  task        LearningTask @relation(fields: [taskId], references: [id])
+}
+
+model Dictation {
+  id            String   @id @default(uuid())
+  audioUrl      String
+  transcript    String
+  createdAt     DateTime @default(now())
+  taskId        String
+  task          LearningTask @relation(fields: [taskId], references: [id])
+  aiSuggestions AISuggestion[]
+  questions     Question[]
+}
+
+model AISuggestion {
+  id            String   @id @default(uuid())
+  text          String
+  kind          SuggestionType
+  dictationId   String
+  dictation     Dictation @relation(fields: [dictationId], references: [id])
+}
+
+enum SuggestionType {
+  INSERTION
+  CLARIFYING_QUESTION
+  MCQ
+  OPEN_ENDED
+}
+
+model Question {
+  id          String   @id @default(uuid())
+  type        QuestionType
+  content     String
+  options     String?   // Store as JSON string
+  correct     String?
+  dictationId String?  
+  stepId      String?
+
+  dictation   Dictation?     @relation(fields: [dictationId], references: [id])
+  step        ProcedureStep? @relation(fields: [stepId], references: [id])
+}
+
+enum QuestionType {
+  MCQ
+  OPEN_ENDED
+}
+
+model Procedure {
+  id        String   @id @default(uuid())
+  title     String
+  taskId    String
+  task      LearningTask @relation(fields: [taskId], references: [id])
+  steps     ProcedureStep[]
+}
+
+model ProcedureStep {
+  id          String   @id @default(uuid())
+  index       Int
+  content     String
+  notes       String?
+  conditions  String?
+
+  procedureId String
+  procedure   Procedure @relation(fields: [procedureId], references: [id])
+
+  media       MediaItem[]
+  questions   Question[]
+}
+
+model YamlOutput {
+  id        String   @id @default(uuid())
+  content   String
+  taskId    String
+  task      LearningTask @relation(fields: [taskId], references: [id])
+}
+
+model Flowchart {
+  id        String   @id @default(uuid())
+  mermaid   String
+  taskId    String
+  task      LearningTask @relation(fields: [taskId], references: [id])
+}
+
+model Simulation {
+  id        String   @id @default(uuid())
+  taskId    String
+  task      LearningTask @relation(fields: [taskId], references: [id])
+  steps     SimulationStep[]
+}
+
+model SimulationStep {
+  id              String   @id @default(uuid())
+  prompt          String
+  expectedAnswer  String?
+  mediaUrl        String?
+  latencyThreshold Int?
+  feedback        String?
+
+  simulationId    String
+  simulation      Simulation @relation(fields: [simulationId], references: [id])
+}
