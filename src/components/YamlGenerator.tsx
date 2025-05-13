@@ -21,19 +21,33 @@ interface Step {
 interface YamlGeneratorProps {
   steps: Step[];
   procedureName: string;
+  initialYaml?: string;
+  onChange?: (yaml: string) => void;
 }
 
 const YamlGenerator = ({
   steps,
   procedureName = "Sample Procedure",
+  initialYaml = "",
+  onChange
 }: YamlGeneratorProps) => {
-  const [yamlOutput, setYamlOutput] = useState<string>("");
+  const [yamlOutput, setYamlOutput] = useState<string>(initialYaml);
   const [isGenerating, setIsGenerating] = useState(false);
   const [activeTab, setActiveTab] = useState("preview");
   const [copySuccess, setCopySuccess] = useState(false);
 
+  // Load initial YAML if provided
   useEffect(() => {
-    if (steps.length > 0) {
+    if (initialYaml) {
+      setYamlOutput(initialYaml);
+    } else if (steps.length > 0) {
+      generateYaml();
+    }
+  }, [initialYaml]);
+
+  // Generate YAML when steps or procedureName change
+  useEffect(() => {
+    if (steps.length > 0 && !initialYaml) {
       generateYaml();
     }
   }, [steps, procedureName]);
@@ -45,6 +59,9 @@ const YamlGenerator = ({
       try {
         const yaml = generateYamlFromSteps(steps, procedureName);
         setYamlOutput(yaml);
+        if (onChange) {
+          onChange(yaml);
+        }
         setIsGenerating(false);
       } catch (error) {
         console.error("Error generating YAML:", error);
@@ -52,6 +69,14 @@ const YamlGenerator = ({
         setIsGenerating(false);
       }
     }, 1000);
+  };
+
+  const handleYamlChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const newValue = e.target.value;
+    setYamlOutput(newValue);
+    if (onChange) {
+      onChange(newValue);
+    }
   };
 
   const generateYamlFromSteps = (steps: Step[], name: string): string => {
@@ -223,7 +248,7 @@ const YamlGenerator = ({
               <TabsContent value="edit">
                 <Textarea
                   value={yamlOutput}
-                  onChange={(e) => setYamlOutput(e.target.value)}
+                  onChange={handleYamlChange}
                   className="font-mono text-xs min-h-[400px]"
                   placeholder="YAML schema will appear here. You can edit it manually."
                 />
