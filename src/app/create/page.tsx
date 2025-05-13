@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useSession, signOut } from "next-auth/react";
 import { toast } from "sonner";
 import TaskDefinitionForm from "@/components/TaskDefinitionForm";
 import MediaUploader from "@/components/MediaUploader";
@@ -18,6 +20,8 @@ import { procedureService, TaskDefinition, Step, MediaItem, SimulationSettings }
 import { v4 as uuidv4 } from 'uuid';
 
 export default function CreateProcedure() {
+  const { data: session, status } = useSession();
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState("task");
   const [taskDefinition, setTaskDefinition] = useState<TaskDefinition | null>(
     null
@@ -30,9 +34,18 @@ export default function CreateProcedure() {
   const [simulationSettings, setSimulationSettings] = useState<SimulationSettings | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Redirect to sign-in if not authenticated
+  useEffect(() => {
+    if (status === "unauthenticated") {
+      router.push("/auth/signin");
+    }
+  }, [status, router]);
+
   // Load any existing procedure data when the component mounts
   useEffect(() => {
     const loadProcedure = async () => {
+      if (status !== "authenticated") return;
+      
       try {
         const procedure = await procedureService.getProcedure();
         
@@ -80,7 +93,13 @@ export default function CreateProcedure() {
     };
     
     loadProcedure();
-  }, []);
+  }, [status]);
+
+  // Handle sign out
+  const handleSignOut = async () => {
+    await signOut({ redirect: false });
+    router.push("/auth/signin");
+  };
 
   const handleTaskSubmit = async (taskData: TaskDefinition) => {
     try {
@@ -222,7 +241,7 @@ export default function CreateProcedure() {
     }
   };
 
-  if (loading) {
+  if (status === "loading" || loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
@@ -230,6 +249,10 @@ export default function CreateProcedure() {
         </div>
       </div>
     );
+  }
+
+  if (status === "unauthenticated") {
+    return null; // Will redirect to sign-in page via useEffect
   }
 
   return (
@@ -276,8 +299,11 @@ export default function CreateProcedure() {
               Create
             </Link>
           </nav>
-          <div>
-            <Button variant="default">Sign In</Button>
+          <div className="flex items-center gap-4">
+            {session?.user?.name && (
+              <span className="text-sm text-gray-600">Hi, {session.user.name}</span>
+            )}
+            <Button variant="default" onClick={handleSignOut}>Sign Out</Button>
           </div>
         </div>
       </header>
