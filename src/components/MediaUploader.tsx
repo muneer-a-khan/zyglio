@@ -21,7 +21,7 @@ const MediaUploader = () => {
   const handleFileDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     setIsDragging(false);
-    
+
     if (e.dataTransfer.files) {
       handleFiles(e.dataTransfer.files);
     }
@@ -34,59 +34,71 @@ const MediaUploader = () => {
   };
 
   const formatFileSize = (bytes: number): string => {
-    if (bytes === 0) return '0 Bytes';
+    if (bytes === 0) return "0 Bytes";
     const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const sizes = ["Bytes", "KB", "MB", "GB"];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
   };
 
   const handleFiles = (files: FileList) => {
     const newMediaFiles: MediaFile[] = [];
-    
-    Array.from(files).forEach(file => {
-      const id = `file-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+
+    Array.from(files).forEach((file) => {
+      const id = `file-${Date.now()}-${Math.random()
+        .toString(36)
+        .substring(2, 9)}`;
       newMediaFiles.push({
         id,
         name: file.name,
         type: file.type,
         url: URL.createObjectURL(file),
-        size: formatFileSize(file.size)
+        size: formatFileSize(file.size),
       });
     });
-    
-    setMediaFiles(prev => [...prev, ...newMediaFiles]);
+
+    setMediaFiles((prev) => [...prev, ...newMediaFiles]);
   };
 
   const removeFile = (id: string) => {
-    setMediaFiles(prev => {
-      const fileToRemove = prev.find(file => file.id === id);
+    setMediaFiles((prev) => {
+      const fileToRemove = prev.find((file) => file.id === id);
       if (fileToRemove) {
         URL.revokeObjectURL(fileToRemove.url);
       }
-      return prev.filter(file => file.id !== id);
+      return prev.filter((file) => file.id !== id);
     });
   };
 
   const getFileIcon = (type: string) => {
-    if (type.startsWith('image/')) return <Image className="h-6 w-6 text-blue-500" />;
-    if (type.startsWith('video/')) return <Video className="h-6 w-6 text-red-500" />;
-    if (type.startsWith('audio/')) return <Music className="h-6 w-6 text-green-500" />;
-    if (type.includes('pdf')) return <FileText className="h-6 w-6 text-orange-500" />;
+    if (type.startsWith("image/"))
+      return <Image className="h-6 w-6 text-blue-500" />;
+    if (type.startsWith("video/"))
+      return <Video className="h-6 w-6 text-red-500" />;
+    if (type.startsWith("audio/"))
+      return <Music className="h-6 w-6 text-green-500" />;
+    if (type.includes("pdf"))
+      return <FileText className="h-6 w-6 text-orange-500" />;
     return <File className="h-6 w-6 text-gray-500" />;
   };
 
   return (
     <div className="space-y-6">
-      <div 
+      <div
         className={cn(
           "border-2 border-dashed rounded-lg p-6 text-center cursor-pointer hover:bg-gray-50 transition-colors",
           isDragging ? "border-blue-400 bg-blue-50" : "border-gray-300"
         )}
-        onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
-        onDragLeave={(e) => { e.preventDefault(); setIsDragging(false); }}
+        onDragOver={(e) => {
+          e.preventDefault();
+          setIsDragging(true);
+        }}
+        onDragLeave={(e) => {
+          e.preventDefault();
+          setIsDragging(false);
+        }}
         onDrop={handleFileDrop}
-        onClick={() => document.getElementById('file-upload')?.click()}
+        onClick={() => document.getElementById("file-upload")?.click()}
       >
         <div className="flex flex-col items-center space-y-2">
           <div className="p-3 bg-blue-100 rounded-full">
@@ -111,9 +123,11 @@ const MediaUploader = () => {
 
       {mediaFiles.length > 0 && (
         <div>
-          <h3 className="text-lg font-medium mb-3">Uploaded Media ({mediaFiles.length})</h3>
+          <h3 className="text-lg font-medium mb-3">
+            Uploaded Media ({mediaFiles.length})
+          </h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {mediaFiles.map(file => (
+            {mediaFiles.map((file) => (
               <Card key={file.id} className="overflow-hidden">
                 <CardContent className="p-3 relative">
                   <Button
@@ -127,12 +141,12 @@ const MediaUploader = () => {
                   >
                     <X className="h-3 w-3" />
                   </Button>
-                  
-                  {file.type.startsWith('image/') ? (
+
+                  {file.type.startsWith("image/") ? (
                     <div className="aspect-video w-full overflow-hidden mb-2">
-                      <img 
-                        src={file.url} 
-                        alt={file.name} 
+                      <img
+                        src={file.url}
+                        alt={file.name}
                         className="w-full h-full object-cover"
                       />
                     </div>
@@ -142,8 +156,12 @@ const MediaUploader = () => {
                         {getFileIcon(file.type)}
                       </div>
                       <div className="truncate flex-1">
-                        <p className="text-sm font-medium truncate">{file.name}</p>
-                        <p className="text-xs text-muted-foreground">{file.size} • {file.type.split('/')[1].toUpperCase()}</p>
+                        <p className="text-sm font-medium truncate">
+                          {file.name}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {file.size} • {file.type.split("/")[1].toUpperCase()}
+                        </p>
                       </div>
                     </div>
                   )}

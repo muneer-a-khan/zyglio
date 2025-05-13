@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -6,20 +6,20 @@ import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { 
-  PlayCircle, 
-  Plus, 
-  Mic, 
-  Trash, 
-  Laptop, 
-  Radio, 
+import {
+  PlayCircle,
+  Plus,
+  Mic,
+  Trash,
+  Laptop,
+  Radio,
   Save,
   MessageSquare,
   Settings,
   Smartphone,
-  BadgeCheck
+  BadgeCheck,
 } from "lucide-react";
-import { toast } from 'sonner';
+import { toast } from "sonner";
 import {
   Select,
   SelectContent,
@@ -27,9 +27,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Badge } from '@/components/ui/badge';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Separator } from '@/components/ui/separator';
+import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Separator } from "@/components/ui/separator";
 
 interface Step {
   id: string;
@@ -42,7 +42,10 @@ interface SimulationBuilderProps {
   procedureName: string;
 }
 
-const SimulationBuilder = ({ steps, procedureName = "Sample Procedure" }: SimulationBuilderProps) => {
+const SimulationBuilder = ({
+  steps,
+  procedureName = "Sample Procedure",
+}: SimulationBuilderProps) => {
   const [activeTab, setActiveTab] = useState("settings");
   const [enableVoiceInput, setEnableVoiceInput] = useState(true);
   const [enableTextInput, setEnableTextInput] = useState(true);
@@ -50,37 +53,43 @@ const SimulationBuilder = ({ steps, procedureName = "Sample Procedure" }: Simula
   const [feedbackLevel, setFeedbackLevel] = useState("detailed");
   const [enableScoring, setEnableScoring] = useState(true);
   const [timeLimit, setTimeLimit] = useState("0");
-  const [simulationSteps, setSimulationSteps] = useState<{
-    id: string;
-    content: string;
-    isCheckpoint: boolean;
-    expectedResponses: string[];
-  }[]>(steps.map(step => ({
-    id: step.id,
-    content: step.content,
-    isCheckpoint: false,
-    expectedResponses: []
-  })));
-  
+  const [simulationSteps, setSimulationSteps] = useState<
+    {
+      id: string;
+      content: string;
+      isCheckpoint: boolean;
+      expectedResponses: string[];
+    }[]
+  >(
+    steps.map((step) => ({
+      id: step.id,
+      content: step.content,
+      isCheckpoint: false,
+      expectedResponses: [],
+    }))
+  );
+
   const handleStepChange = (id: string, content: string) => {
-    setSimulationSteps(prev => 
-      prev.map(step => step.id === id ? { ...step, content } : step)
+    setSimulationSteps((prev) =>
+      prev.map((step) => (step.id === id ? { ...step, content } : step))
     );
   };
 
   const toggleCheckpoint = (id: string) => {
-    setSimulationSteps(prev => 
-      prev.map(step => step.id === id ? { ...step, isCheckpoint: !step.isCheckpoint } : step)
+    setSimulationSteps((prev) =>
+      prev.map((step) =>
+        step.id === id ? { ...step, isCheckpoint: !step.isCheckpoint } : step
+      )
     );
   };
 
   const addExpectedResponse = (stepId: string, response: string = "") => {
-    setSimulationSteps(prev => 
-      prev.map(step => {
+    setSimulationSteps((prev) =>
+      prev.map((step) => {
         if (step.id === stepId) {
           return {
             ...step,
-            expectedResponses: [...step.expectedResponses, response]
+            expectedResponses: [...step.expectedResponses, response],
           };
         }
         return step;
@@ -88,15 +97,19 @@ const SimulationBuilder = ({ steps, procedureName = "Sample Procedure" }: Simula
     );
   };
 
-  const updateExpectedResponse = (stepId: string, index: number, value: string) => {
-    setSimulationSteps(prev => 
-      prev.map(step => {
+  const updateExpectedResponse = (
+    stepId: string,
+    index: number,
+    value: string
+  ) => {
+    setSimulationSteps((prev) =>
+      prev.map((step) => {
         if (step.id === stepId) {
           const newResponses = [...step.expectedResponses];
           newResponses[index] = value;
           return {
             ...step,
-            expectedResponses: newResponses
+            expectedResponses: newResponses,
           };
         }
         return step;
@@ -105,12 +118,14 @@ const SimulationBuilder = ({ steps, procedureName = "Sample Procedure" }: Simula
   };
 
   const removeExpectedResponse = (stepId: string, index: number) => {
-    setSimulationSteps(prev => 
-      prev.map(step => {
+    setSimulationSteps((prev) =>
+      prev.map((step) => {
         if (step.id === stepId) {
           return {
             ...step,
-            expectedResponses: step.expectedResponses.filter((_, i) => i !== index)
+            expectedResponses: step.expectedResponses.filter(
+              (_, i) => i !== index
+            ),
           };
         }
         return step;
@@ -158,21 +173,21 @@ const SimulationBuilder = ({ steps, procedureName = "Sample Procedure" }: Simula
               Preview
             </TabsTrigger>
           </TabsList>
-          
+
           <TabsContent value="settings" className="space-y-6">
             <div className="grid gap-6">
               <div className="space-y-2">
                 <h3 className="text-lg font-medium">Simulation Name</h3>
-                <Input 
-                  placeholder="Enter simulation name" 
+                <Input
+                  placeholder="Enter simulation name"
                   defaultValue={`${procedureName} Simulation`}
                 />
               </div>
-              
+
               <div className="space-y-3">
                 <h3 className="text-lg font-medium">Mode</h3>
-                <Select 
-                  defaultValue={simulationMode} 
+                <Select
+                  defaultValue={simulationMode}
                   onValueChange={setSimulationMode}
                 >
                   <SelectTrigger>
@@ -186,9 +201,9 @@ const SimulationBuilder = ({ steps, procedureName = "Sample Procedure" }: Simula
                 </Select>
                 <p className="text-sm text-gray-500">{getModeDescription()}</p>
               </div>
-              
+
               <Separator />
-              
+
               <div className="space-y-4">
                 <h3 className="text-lg font-medium">Input Methods</h3>
                 <div className="flex items-center justify-between">
@@ -196,35 +211,35 @@ const SimulationBuilder = ({ steps, procedureName = "Sample Procedure" }: Simula
                     <Mic className="w-4 h-4 text-blue-500" />
                     <Label htmlFor="voice-input">Voice Input</Label>
                   </div>
-                  <Switch 
-                    id="voice-input" 
-                    checked={enableVoiceInput} 
-                    onCheckedChange={setEnableVoiceInput} 
+                  <Switch
+                    id="voice-input"
+                    checked={enableVoiceInput}
+                    onCheckedChange={setEnableVoiceInput}
                   />
                 </div>
-                
+
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-2">
                     <Laptop className="w-4 h-4 text-blue-500" />
                     <Label htmlFor="text-input">Text Input</Label>
                   </div>
-                  <Switch 
-                    id="text-input" 
-                    checked={enableTextInput} 
-                    onCheckedChange={setEnableTextInput} 
+                  <Switch
+                    id="text-input"
+                    checked={enableTextInput}
+                    onCheckedChange={setEnableTextInput}
                   />
                 </div>
               </div>
-              
+
               <Separator />
-              
+
               <div className="space-y-4">
                 <h3 className="text-lg font-medium">Evaluation Settings</h3>
-                
+
                 <div className="space-y-3">
                   <Label htmlFor="feedback-level">Feedback Level</Label>
-                  <Select 
-                    defaultValue={feedbackLevel} 
+                  <Select
+                    defaultValue={feedbackLevel}
                     onValueChange={setFeedbackLevel}
                   >
                     <SelectTrigger>
@@ -237,22 +252,24 @@ const SimulationBuilder = ({ steps, procedureName = "Sample Procedure" }: Simula
                     </SelectContent>
                   </Select>
                 </div>
-                
+
                 <div className="flex items-center space-x-2">
-                  <Checkbox 
-                    id="enable-scoring" 
+                  <Checkbox
+                    id="enable-scoring"
                     checked={enableScoring}
-                    onCheckedChange={(checked) => setEnableScoring(!!checked)} 
+                    onCheckedChange={(checked) => setEnableScoring(!!checked)}
                   />
                   <Label htmlFor="enable-scoring">Enable Scoring</Label>
                 </div>
-                
+
                 <div className="space-y-2">
-                  <Label htmlFor="time-limit">Time Limit (minutes, 0 for no limit)</Label>
-                  <Input 
+                  <Label htmlFor="time-limit">
+                    Time Limit (minutes, 0 for no limit)
+                  </Label>
+                  <Input
                     id="time-limit"
-                    type="number" 
-                    min="0" 
+                    type="number"
+                    min="0"
                     value={timeLimit}
                     onChange={(e) => setTimeLimit(e.target.value)}
                   />
@@ -260,11 +277,13 @@ const SimulationBuilder = ({ steps, procedureName = "Sample Procedure" }: Simula
               </div>
             </div>
           </TabsContent>
-          
+
           <TabsContent value="steps" className="space-y-6">
             {simulationSteps.length === 0 ? (
               <div className="text-center py-12 bg-gray-50 rounded-lg border border-dashed">
-                <p className="text-muted-foreground">No procedure steps available. Create steps first.</p>
+                <p className="text-muted-foreground">
+                  No procedure steps available. Create steps first.
+                </p>
               </div>
             ) : (
               <div className="space-y-4">
@@ -277,62 +296,86 @@ const SimulationBuilder = ({ steps, procedureName = "Sample Procedure" }: Simula
                     )}
                     <CardHeader className="pb-2">
                       <div className="flex justify-between items-center">
-                        <CardTitle className="text-base">Step {index + 1}</CardTitle>
+                        <CardTitle className="text-base">
+                          Step {index + 1}
+                        </CardTitle>
                         <div className="flex items-center space-x-2">
                           <div className="flex items-center space-x-2">
-                            <Checkbox 
+                            <Checkbox
                               id={`checkpoint-${step.id}`}
                               checked={step.isCheckpoint}
                               onCheckedChange={() => toggleCheckpoint(step.id)}
                             />
-                            <Label htmlFor={`checkpoint-${step.id}`}>Checkpoint</Label>
+                            <Label htmlFor={`checkpoint-${step.id}`}>
+                              Checkpoint
+                            </Label>
                           </div>
                         </div>
                       </div>
                     </CardHeader>
                     <CardContent className="space-y-4">
-                      <Textarea 
+                      <Textarea
                         value={step.content}
-                        onChange={(e) => handleStepChange(step.id, e.target.value)}
+                        onChange={(e) =>
+                          handleStepChange(step.id, e.target.value)
+                        }
                         className="min-h-[80px]"
                       />
-                      
+
                       <div className="space-y-2">
                         <div className="flex justify-between items-center">
-                          <Label className="text-sm font-medium">Expected Responses</Label>
-                          <Button 
-                            variant="outline" 
+                          <Label className="text-sm font-medium">
+                            Expected Responses
+                          </Label>
+                          <Button
+                            variant="outline"
                             size="sm"
                             onClick={() => addExpectedResponse(step.id)}
                           >
                             <Plus className="mr-1 h-3 w-3" /> Add Response
                           </Button>
                         </div>
-                        
+
                         {step.expectedResponses.length === 0 ? (
                           <p className="text-sm text-gray-500 italic p-2">
                             No expected responses defined yet.
                           </p>
                         ) : (
                           <div className="space-y-2">
-                            {step.expectedResponses.map((response, responseIndex) => (
-                              <div key={responseIndex} className="flex items-center space-x-2">
-                                <Input
-                                  value={response}
-                                  onChange={(e) => updateExpectedResponse(step.id, responseIndex, e.target.value)}
-                                  placeholder="Enter an expected response"
-                                  className="text-sm"
-                                />
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  onClick={() => removeExpectedResponse(step.id, responseIndex)}
-                                  className="h-9 w-9 text-red-500"
+                            {step.expectedResponses.map(
+                              (response, responseIndex) => (
+                                <div
+                                  key={responseIndex}
+                                  className="flex items-center space-x-2"
                                 >
-                                  <Trash className="h-4 w-4" />
-                                </Button>
-                              </div>
-                            ))}
+                                  <Input
+                                    value={response}
+                                    onChange={(e) =>
+                                      updateExpectedResponse(
+                                        step.id,
+                                        responseIndex,
+                                        e.target.value
+                                      )
+                                    }
+                                    placeholder="Enter an expected response"
+                                    className="text-sm"
+                                  />
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() =>
+                                      removeExpectedResponse(
+                                        step.id,
+                                        responseIndex
+                                      )
+                                    }
+                                    className="h-9 w-9 text-red-500"
+                                  >
+                                    <Trash className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                              )
+                            )}
                           </div>
                         )}
                       </div>
@@ -342,7 +385,7 @@ const SimulationBuilder = ({ steps, procedureName = "Sample Procedure" }: Simula
               </div>
             )}
           </TabsContent>
-          
+
           <TabsContent value="preview" className="space-y-6">
             <div className="bg-gray-50 border rounded-lg p-6">
               <div className="text-center max-w-md mx-auto space-y-6">
@@ -353,13 +396,18 @@ const SimulationBuilder = ({ steps, procedureName = "Sample Procedure" }: Simula
                     </div>
                     <div className="p-4 flex flex-col h-full">
                       <div className="text-center mb-4">
-                        <h3 className="font-bold text-blue-600">{procedureName}</h3>
-                        <p className="text-xs text-gray-500">Voice-Guided Simulation</p>
+                        <h3 className="font-bold text-blue-600">
+                          {procedureName}
+                        </h3>
+                        <p className="text-xs text-gray-500">
+                          Voice-Guided Simulation
+                        </p>
                       </div>
                       <div className="flex-1 flex flex-col items-center justify-center space-y-4">
                         <Mic className="h-12 w-12 text-blue-500" />
                         <p className="text-sm text-center">
-                          "Please describe the first step of {procedureName.toLowerCase()}"
+                          "Please describe the first step of{" "}
+                          {procedureName.toLowerCase()}"
                         </p>
                       </div>
                       <div className="border-t pt-3 flex justify-between">
@@ -370,7 +418,8 @@ const SimulationBuilder = ({ steps, procedureName = "Sample Procedure" }: Simula
                           <Radio className="h-3 w-3 mr-1" /> Voice
                         </Badge>
                         <Badge variant="outline" className="text-xs">
-                          <BadgeCheck className="h-3 w-3 mr-1" /> {simulationMode}
+                          <BadgeCheck className="h-3 w-3 mr-1" />{" "}
+                          {simulationMode}
                         </Badge>
                       </div>
                     </div>
@@ -379,13 +428,16 @@ const SimulationBuilder = ({ steps, procedureName = "Sample Procedure" }: Simula
                     Device preview (simplified)
                   </p>
                 </div>
-                
+
                 <div className="pt-4">
                   <p className="text-sm text-gray-600 mb-4">
-                    This is a simplified preview. The actual simulation will be interactive and respond to user input.
+                    This is a simplified preview. The actual simulation will be
+                    interactive and respond to user input.
                   </p>
-                  <Button 
-                    onClick={() => toast.success("Simulation preview would launch here!")}
+                  <Button
+                    onClick={() =>
+                      toast.success("Simulation preview would launch here!")
+                    }
                     className="bg-blue-600 hover:bg-blue-700"
                   >
                     <PlayCircle className="mr-2 h-4 w-4" /> Test Simulation
@@ -395,9 +447,12 @@ const SimulationBuilder = ({ steps, procedureName = "Sample Procedure" }: Simula
             </div>
           </TabsContent>
         </Tabs>
-        
+
         <div className="flex justify-end mt-6">
-          <Button onClick={saveSimulation} className="bg-green-600 hover:bg-green-700">
+          <Button
+            onClick={saveSimulation}
+            className="bg-green-600 hover:bg-green-700"
+          >
             <Save className="mr-2 h-4 w-4" /> Save Simulation
           </Button>
         </div>
@@ -406,4 +461,4 @@ const SimulationBuilder = ({ steps, procedureName = "Sample Procedure" }: Simula
   );
 };
 
-export default SimulationBuilder; 
+export default SimulationBuilder;

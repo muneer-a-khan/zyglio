@@ -33,7 +33,9 @@ interface Step {
 
 export default function CreateProcedure() {
   const [activeTab, setActiveTab] = useState("task");
-  const [taskDefinition, setTaskDefinition] = useState<TaskDefinition | null>(null);
+  const [taskDefinition, setTaskDefinition] = useState<TaskDefinition | null>(
+    null
+  );
   const [transcript, setTranscript] = useState("");
   const [steps, setSteps] = useState<Step[]>([]);
 
@@ -93,13 +95,19 @@ export default function CreateProcedure() {
             </Link>
           </div>
           <nav className="hidden md:flex items-center gap-6">
-            <Link href="/procedures" className="text-sm font-medium hover:underline">
+            <Link
+              href="/procedures"
+              className="text-sm font-medium hover:underline"
+            >
               Procedures
             </Link>
             <Link href="/media" className="text-sm font-medium hover:underline">
               Media Library
             </Link>
-            <Link href="/create" className="text-sm font-medium hover:underline">
+            <Link
+              href="/create"
+              className="text-sm font-medium hover:underline"
+            >
               Create
             </Link>
           </nav>
@@ -108,7 +116,7 @@ export default function CreateProcedure() {
           </div>
         </div>
       </header>
-      
+
       <main className="flex-1 container py-8">
         <div className="mb-8">
           <h1 className="text-3xl font-bold mb-2">Create New Procedure</h1>
@@ -121,10 +129,10 @@ export default function CreateProcedure() {
             </p>
           )}
         </div>
-        
-        <Tabs 
-          defaultValue="task" 
-          value={activeTab} 
+
+        <Tabs
+          defaultValue="task"
+          value={activeTab}
           onValueChange={setActiveTab}
         >
           <div className="mb-8">
@@ -138,7 +146,7 @@ export default function CreateProcedure() {
               <TabsTrigger value="simulation">7. Simulation</TabsTrigger>
             </TabsList>
           </div>
-          
+
           <TabsContent value="task">
             <Card>
               <CardContent className="pt-6">
@@ -146,22 +154,19 @@ export default function CreateProcedure() {
               </CardContent>
             </Card>
           </TabsContent>
-          
+
           <TabsContent value="media">
             <Card>
               <CardContent className="pt-6">
                 <MediaUploader />
               </CardContent>
             </Card>
-            
+
             <div className="flex justify-between mt-6">
-              <Button 
-                variant="outline" 
-                onClick={handlePreviousTab}
-              >
+              <Button variant="outline" onClick={handlePreviousTab}>
                 <ChevronLeft className="mr-2 h-4 w-4" /> Previous Step
               </Button>
-              <Button 
+              <Button
                 onClick={handleNextTab}
                 className="bg-blue-600 hover:bg-blue-700"
               >
@@ -169,35 +174,36 @@ export default function CreateProcedure() {
               </Button>
             </div>
           </TabsContent>
-          
+
           <TabsContent value="dictation">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <Card>
                 <CardContent className="pt-6">
-                  <h2 className="text-xl font-semibold mb-4">Voice Recording</h2>
+                  <h2 className="text-xl font-semibold mb-4">
+                    Voice Recording
+                  </h2>
                   <VoiceRecorder onTranscriptUpdate={handleTranscriptChange} />
                 </CardContent>
               </Card>
-              
+
               <Card>
                 <CardContent className="pt-6">
-                  <h2 className="text-xl font-semibold mb-4">Transcript Editor</h2>
-                  <TranscriptEditor 
-                    transcript={transcript} 
+                  <h2 className="text-xl font-semibold mb-4">
+                    Transcript Editor
+                  </h2>
+                  <TranscriptEditor
+                    transcript={transcript}
                     onChange={handleTranscriptChange}
                   />
                 </CardContent>
               </Card>
             </div>
-            
+
             <div className="flex justify-between mt-6">
-              <Button 
-                variant="outline" 
-                onClick={handlePreviousTab}
-              >
+              <Button variant="outline" onClick={handlePreviousTab}>
                 <ChevronLeft className="mr-2 h-4 w-4" /> Previous Step
               </Button>
-              <Button 
+              <Button
                 onClick={handleNextTab}
                 className="bg-blue-600 hover:bg-blue-700"
               >
@@ -205,25 +211,22 @@ export default function CreateProcedure() {
               </Button>
             </div>
           </TabsContent>
-          
+
           <TabsContent value="procedure">
             <Card>
               <CardContent className="pt-6">
-                <TranscriptEditor 
-                  transcript={transcript} 
+                <TranscriptEditor
+                  transcript={transcript}
                   onChange={handleTranscriptChange}
                 />
               </CardContent>
             </Card>
-            
+
             <div className="flex justify-between mt-6">
-              <Button 
-                variant="outline" 
-                onClick={handlePreviousTab}
-              >
+              <Button variant="outline" onClick={handlePreviousTab}>
                 <ChevronLeft className="mr-2 h-4 w-4" /> Previous Step
               </Button>
-              <Button 
+              <Button
                 onClick={handleNextTab}
                 className="bg-blue-600 hover:bg-blue-700"
               >
@@ -231,76 +234,65 @@ export default function CreateProcedure() {
               </Button>
             </div>
           </TabsContent>
-          
+
           <TabsContent value="yaml">
             <Card>
               <CardContent className="pt-6">
-                <YamlGenerator 
-                  steps={steps} 
-                  procedureName={taskDefinition?.name || "Procedure"}
-                />
-              </CardContent>
-            </Card>
-            
-            <div className="flex justify-between mt-6">
-              <Button 
-                variant="outline" 
-                onClick={handlePreviousTab}
-              >
-                <ChevronLeft className="mr-2 h-4 w-4" /> Previous Step
-              </Button>
-              <Button 
-                onClick={handleNextTab}
-                className="bg-blue-600 hover:bg-blue-700"
-              >
-                Next Step <ChevronRight className="ml-2 h-4 w-4" />
-              </Button>
-            </div>
-          </TabsContent>
-          
-          <TabsContent value="flowchart">
-            <Card>
-              <CardContent className="pt-6">
-                <FlowchartViewer 
-                  steps={steps.map(step => step.content)}
-                />
-              </CardContent>
-            </Card>
-            
-            <div className="flex justify-between mt-6">
-              <Button 
-                variant="outline" 
-                onClick={handlePreviousTab}
-              >
-                <ChevronLeft className="mr-2 h-4 w-4" /> Previous Step
-              </Button>
-              <Button 
-                onClick={handleNextTab}
-                className="bg-blue-600 hover:bg-blue-700"
-              >
-                Next Step <ChevronRight className="ml-2 h-4 w-4" />
-              </Button>
-            </div>
-          </TabsContent>
-          
-          <TabsContent value="simulation">
-            <Card>
-              <CardContent className="pt-6">
-                <SimulationBuilder 
+                <YamlGenerator
                   steps={steps}
                   procedureName={taskDefinition?.name || "Procedure"}
                 />
               </CardContent>
             </Card>
-            
+
             <div className="flex justify-between mt-6">
-              <Button 
-                variant="outline" 
-                onClick={handlePreviousTab}
-              >
+              <Button variant="outline" onClick={handlePreviousTab}>
                 <ChevronLeft className="mr-2 h-4 w-4" /> Previous Step
               </Button>
-              <Button 
+              <Button
+                onClick={handleNextTab}
+                className="bg-blue-600 hover:bg-blue-700"
+              >
+                Next Step <ChevronRight className="ml-2 h-4 w-4" />
+              </Button>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="flowchart">
+            <Card>
+              <CardContent className="pt-6">
+                <FlowchartViewer steps={steps.map((step) => step.content)} />
+              </CardContent>
+            </Card>
+
+            <div className="flex justify-between mt-6">
+              <Button variant="outline" onClick={handlePreviousTab}>
+                <ChevronLeft className="mr-2 h-4 w-4" /> Previous Step
+              </Button>
+              <Button
+                onClick={handleNextTab}
+                className="bg-blue-600 hover:bg-blue-700"
+              >
+                Next Step <ChevronRight className="ml-2 h-4 w-4" />
+              </Button>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="simulation">
+            <Card>
+              <CardContent className="pt-6">
+                <SimulationBuilder
+                  steps={steps}
+                  procedureName={taskDefinition?.name || "Procedure"}
+                />
+              </CardContent>
+            </Card>
+
+            <div className="flex justify-between mt-6">
+              <Button variant="outline" onClick={handlePreviousTab}>
+                <ChevronLeft className="mr-2 h-4 w-4" /> Previous Step
+              </Button>
+              <Button
                 className="bg-green-600 hover:bg-green-700"
                 onClick={() => toast.success("Procedure saved successfully!")}
               >
@@ -310,7 +302,7 @@ export default function CreateProcedure() {
           </TabsContent>
         </Tabs>
       </main>
-      
+
       <footer className="bg-gray-100 py-6">
         <div className="container px-4 md:px-6">
           <div className="flex flex-col items-center justify-between gap-4 md:flex-row">
@@ -343,4 +335,4 @@ export default function CreateProcedure() {
       </footer>
     </div>
   );
-} 
+}

@@ -28,40 +28,48 @@ const TaskDefinitionForm = ({ onSubmit }: TaskDefinitionFormProps) => {
     affiliation: "",
     kpiTech: [""],
     kpiConcept: [""],
-    date: new Date().toISOString().split('T')[0]
+    date: new Date().toISOString().split("T")[0],
   });
-  
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+
+  const handleChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
+  ) => {
     const { name, value } = e.target;
-    setTaskData(prev => ({ ...prev, [name]: value }));
+    setTaskData((prev) => ({ ...prev, [name]: value }));
   };
-  
-  const handleKpiChange = (type: 'kpiTech' | 'kpiConcept', index: number, value: string) => {
+
+  const handleKpiChange = (
+    type: "kpiTech" | "kpiConcept",
+    index: number,
+    value: string
+  ) => {
     const newKpis = [...taskData[type]];
     newKpis[index] = value;
-    setTaskData(prev => ({ ...prev, [type]: newKpis }));
+    setTaskData((prev) => ({ ...prev, [type]: newKpis }));
   };
-  
-  const addKpi = (type: 'kpiTech' | 'kpiConcept') => {
-    setTaskData(prev => ({ ...prev, [type]: [...prev[type], ""] }));
+
+  const addKpi = (type: "kpiTech" | "kpiConcept") => {
+    setTaskData((prev) => ({ ...prev, [type]: [...prev[type], ""] }));
   };
-  
-  const removeKpi = (type: 'kpiTech' | 'kpiConcept', index: number) => {
+
+  const removeKpi = (type: "kpiTech" | "kpiConcept", index: number) => {
     if (taskData[type].length > 1) {
       const newKpis = taskData[type].filter((_, i) => i !== index);
-      setTaskData(prev => ({ ...prev, [type]: newKpis }));
+      setTaskData((prev) => ({ ...prev, [type]: newKpis }));
     }
   };
-  
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     // Filter out empty KPIs
-    const filteredKpiTech = taskData.kpiTech.filter(kpi => kpi.trim() !== "");
-    const filteredKpiConcept = taskData.kpiConcept.filter(kpi => kpi.trim() !== "");
-    const updatedTaskData = { 
-      ...taskData, 
+    const filteredKpiTech = taskData.kpiTech.filter((kpi) => kpi.trim() !== "");
+    const filteredKpiConcept = taskData.kpiConcept.filter(
+      (kpi) => kpi.trim() !== ""
+    );
+    const updatedTaskData = {
+      ...taskData,
       kpiTech: filteredKpiTech,
-      kpiConcept: filteredKpiConcept 
+      kpiConcept: filteredKpiConcept,
     };
     onSubmit(updatedTaskData);
   };
@@ -84,7 +92,7 @@ const TaskDefinitionForm = ({ onSubmit }: TaskDefinitionFormProps) => {
               required
             />
           </div>
-          
+
           <div className="space-y-2">
             <Label htmlFor="description">Description</Label>
             <Textarea
@@ -96,7 +104,7 @@ const TaskDefinitionForm = ({ onSubmit }: TaskDefinitionFormProps) => {
               className="min-h-[100px]"
             />
           </div>
-          
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="presenter">Presenter Name</Label>
@@ -108,7 +116,7 @@ const TaskDefinitionForm = ({ onSubmit }: TaskDefinitionFormProps) => {
                 onChange={handleChange}
               />
             </div>
-            
+
             <div className="space-y-2">
               <Label htmlFor="affiliation">Affiliation</Label>
               <Input
@@ -120,7 +128,7 @@ const TaskDefinitionForm = ({ onSubmit }: TaskDefinitionFormProps) => {
               />
             </div>
           </div>
-          
+
           <div className="space-y-2">
             <Label htmlFor="date">Recording Date</Label>
             <Input
@@ -131,76 +139,83 @@ const TaskDefinitionForm = ({ onSubmit }: TaskDefinitionFormProps) => {
               onChange={handleChange}
             />
           </div>
-          
+
           <div className="space-y-2">
             <Label>Technical Skills (KPIs)</Label>
-            
+
             {taskData.kpiTech.map((kpi, index) => (
               <div key={`tech-${index}`} className="flex space-x-2">
                 <Input
                   placeholder={`Technical Skill ${index + 1}`}
                   value={kpi}
-                  onChange={(e) => handleKpiChange('kpiTech', index, e.target.value)}
+                  onChange={(e) =>
+                    handleKpiChange("kpiTech", index, e.target.value)
+                  }
                 />
-                
+
                 <Button
                   type="button"
                   variant="outline"
                   size="icon"
-                  onClick={() => removeKpi('kpiTech', index)}
+                  onClick={() => removeKpi("kpiTech", index)}
                   disabled={taskData.kpiTech.length === 1}
                 >
                   <X className="h-4 w-4" />
                 </Button>
               </div>
             ))}
-            
+
             <Button
               type="button"
               variant="outline"
               className="w-full"
-              onClick={() => addKpi('kpiTech')}
+              onClick={() => addKpi("kpiTech")}
             >
               <Plus className="mr-1 h-4 w-4" />
               Add Technical Skill
             </Button>
           </div>
-          
+
           <div className="space-y-2">
             <Label>Conceptual Skills (KPIs)</Label>
-            
+
             {taskData.kpiConcept.map((kpi, index) => (
               <div key={`concept-${index}`} className="flex space-x-2">
                 <Input
                   placeholder={`Conceptual Skill ${index + 1}`}
                   value={kpi}
-                  onChange={(e) => handleKpiChange('kpiConcept', index, e.target.value)}
+                  onChange={(e) =>
+                    handleKpiChange("kpiConcept", index, e.target.value)
+                  }
                 />
-                
+
                 <Button
                   type="button"
                   variant="outline"
                   size="icon"
-                  onClick={() => removeKpi('kpiConcept', index)}
+                  onClick={() => removeKpi("kpiConcept", index)}
                   disabled={taskData.kpiConcept.length === 1}
                 >
                   <X className="h-4 w-4" />
                 </Button>
               </div>
             ))}
-            
+
             <Button
               type="button"
               variant="outline"
               className="w-full"
-              onClick={() => addKpi('kpiConcept')}
+              onClick={() => addKpi("kpiConcept")}
             >
               <Plus className="mr-1 h-4 w-4" />
               Add Conceptual Skill
             </Button>
           </div>
-          
-          <Button type="submit" className="w-full bg-blue-600 hover:bg-blue-700">
+
+          <Button
+            type="submit"
+            className="w-full bg-blue-600 hover:bg-blue-700"
+          >
             Save & Continue
           </Button>
         </form>
