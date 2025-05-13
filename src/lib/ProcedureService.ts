@@ -24,6 +24,22 @@ export interface MediaItem {
   url: string;
 }
 
+export interface SimulationSettings {
+  name: string;
+  mode: string;
+  enableVoiceInput: boolean;
+  enableTextInput: boolean;
+  feedbackLevel: string;
+  enableScoring: boolean;
+  timeLimit: string;
+  steps: {
+    id: string;
+    content: string;
+    isCheckpoint: boolean;
+    expectedResponses: string[];
+  }[];
+}
+
 export interface Procedure {
   id?: string;
   title: string;
@@ -38,6 +54,7 @@ export interface Procedure {
   transcript?: string;
   yamlContent?: string;
   flowchartCode?: string;
+  simulationSettings?: SimulationSettings;
 }
 
 // Define database record types that match Supabase schema
@@ -55,6 +72,7 @@ interface ProcedureRecord {
   transcript?: string;
   yaml_content?: string;
   flowchart_code?: string;
+  simulation_settings?: SimulationSettings;
   published?: boolean;
   published_at?: string;
 }
@@ -134,6 +152,7 @@ class ProcedureService {
       if (procedureData.transcript) dbData.transcript = procedureData.transcript;
       if (procedureData.yamlContent) dbData.yaml_content = procedureData.yamlContent;
       if (procedureData.flowchartCode) dbData.flowchart_code = procedureData.flowchartCode;
+      if (procedureData.simulationSettings) dbData.simulation_settings = procedureData.simulationSettings;
 
       const { error } = await supabase
         .from('procedures')
@@ -267,6 +286,18 @@ class ProcedureService {
   }
 
   /**
+   * Saves simulation settings for the procedure
+   */
+  async saveSimulationSettings(simulationSettings: SimulationSettings): Promise<void> {
+    try {
+      await this.updateProcedure({ simulationSettings });
+    } catch (error) {
+      console.error('Error saving simulation settings:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Loads a procedure by ID
    */
   async getProcedure(id?: string): Promise<Procedure | null> {
@@ -333,7 +364,8 @@ class ProcedureService {
         mediaItems,
         transcript: record.transcript,
         yamlContent: record.yaml_content,
-        flowchartCode: record.flowchart_code
+        flowchartCode: record.flowchart_code,
+        simulationSettings: record.simulation_settings
       };
     } catch (error) {
       console.error('Error loading procedure:', error);

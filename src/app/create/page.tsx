@@ -14,7 +14,7 @@ import TranscriptEditor from "@/components/TranscriptEditor";
 import FlowchartViewer from "@/components/FlowchartViewer";
 import YamlGenerator from "@/components/YamlGenerator";
 import SimulationBuilder from "@/components/SimulationBuilder";
-import { procedureService, TaskDefinition, Step, MediaItem } from "@/lib/ProcedureService";
+import { procedureService, TaskDefinition, Step, MediaItem, SimulationSettings } from "@/lib/ProcedureService";
 import { v4 as uuidv4 } from 'uuid';
 
 export default function CreateProcedure() {
@@ -27,6 +27,7 @@ export default function CreateProcedure() {
   const [mediaItems, setMediaItems] = useState<MediaItem[]>([]);
   const [yamlContent, setYamlContent] = useState("");
   const [flowchartContent, setFlowchartContent] = useState("");
+  const [simulationSettings, setSimulationSettings] = useState<SimulationSettings | null>(null);
   const [loading, setLoading] = useState(true);
 
   // Load any existing procedure data when the component mounts
@@ -65,6 +66,10 @@ export default function CreateProcedure() {
           
           if (procedure.flowchartCode) {
             setFlowchartContent(procedure.flowchartCode);
+          }
+          
+          if (procedure.simulationSettings) {
+            setSimulationSettings(procedure.simulationSettings);
           }
         }
       } catch (error) {
@@ -144,6 +149,17 @@ export default function CreateProcedure() {
       await procedureService.saveFlowchart(content);
     } catch (error) {
       console.error("Error saving flowchart:", error);
+    }
+  };
+
+  const handleSimulationSettingsChange = async (settings: SimulationSettings) => {
+    setSimulationSettings(settings);
+    
+    try {
+      // Save simulation settings to database
+      await procedureService.saveSimulationSettings(settings);
+    } catch (error) {
+      console.error("Error saving simulation settings:", error);
     }
   };
 
@@ -441,6 +457,8 @@ export default function CreateProcedure() {
                 <SimulationBuilder
                   steps={steps}
                   procedureName={taskDefinition?.name || "Procedure"}
+                  initialSettings={simulationSettings || undefined}
+                  onChange={handleSimulationSettingsChange}
                 />
               </CardContent>
             </Card>
