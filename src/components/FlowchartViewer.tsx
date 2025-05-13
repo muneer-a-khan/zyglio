@@ -42,9 +42,18 @@ const FlowchartViewer = ({ steps, initialMermaid = "", onChange }: FlowchartView
   useEffect(() => {
     if (flowchartRef.current && mermaidCode) {
       try {
-        mermaid.render('flowchart', mermaidCode, (svgCode) => {
+        const element = flowchartRef.current;
+        // Clear previous content
+        element.innerHTML = '';
+        // Create an element for mermaid to render into
+        const renderDiv = document.createElement('div');
+        renderDiv.id = 'flowchart';
+        element.appendChild(renderDiv);
+        
+        // Use mermaid to render the flowchart
+        mermaid.render('flowchart', mermaidCode).then(({ svg }) => {
           if (flowchartRef.current) {
-            flowchartRef.current.innerHTML = svgCode;
+            renderDiv.innerHTML = svg;
           }
         });
       } catch (error) {
