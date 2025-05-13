@@ -1,63 +1,60 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { 
-  Card, 
-  CardContent, 
-  CardDescription, 
-  CardFooter, 
-  CardHeader, 
-  CardTitle 
-} from "@/components/ui/card";
-import { useState } from "react";
+import { Search, FileText, Plus, Calendar, Tag } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { procedureService, Procedure } from "@/lib/ProcedureService";
+import { format } from "date-fns";
 
-// Mock data for demonstration
-const mockProcedures = [
-  {
-    id: "1",
-    title: "Central Line Insertion",
-    description: "Standard procedure for central venous catheter placement",
-    author: "Dr. Jane Smith",
-    createdAt: "2025-04-15",
-    steps: 12
-  },
-  {
-    id: "2",
-    title: "Endotracheal Intubation",
-    description: "Airway management procedure for ventilation",
-    author: "Dr. John Doe",
-    createdAt: "2025-04-10",
-    steps: 8
-  },
-  {
-    id: "3",
-    title: "IV Cannulation",
-    description: "Peripheral intravenous access placement",
-    author: "Nurse Robert Johnson",
-    createdAt: "2025-04-05",
-    steps: 6
-  }
-];
-
-export default function ProcedureLibrary() {
+export default function ProceduresPage() {
+  const [procedures, setProcedures] = useState<Procedure[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
-  const [procedures, setProcedures] = useState(mockProcedures);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const loadProcedures = async () => {
+      try {
+        const data = await procedureService.getAllProcedures();
+        setProcedures(data);
+      } catch (error) {
+        console.error("Error loading procedures:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadProcedures();
+  }, []);
+
+  const filteredProcedures = procedures.filter((procedure) => {
+    const searchLower = searchTerm.toLowerCase();
+    return (
+      procedure.title.toLowerCase().includes(searchLower) ||
+      procedure.description.toLowerCase().includes(searchLower) ||
+      procedure.presenter.toLowerCase().includes(searchLower) ||
+      procedure.kpiTech.some((tag) => tag.toLowerCase().includes(searchLower)) ||
+      procedure.kpiConcept.some((tag) => tag.toLowerCase().includes(searchLower))
+    );
+  });
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    
-    if (searchTerm) {
-      const filteredProcedures = mockProcedures.filter(procedure => 
-        procedure.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        procedure.description.toLowerCase().includes(searchTerm.toLowerCase())
-      );
-      setProcedures(filteredProcedures);
-    } else {
-      setProcedures(mockProcedures);
-    }
+    // Search is already handled by the filter above
   };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-lg">Loading procedures...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -87,13 +84,19 @@ export default function ProcedureLibrary() {
             </Link>
           </div>
           <nav className="hidden md:flex items-center gap-6">
-            <Link href="/procedures" className="text-sm font-medium hover:underline">
+            <Link
+              href="/procedures"
+              className="text-sm font-medium hover:underline"
+            >
               Procedures
             </Link>
             <Link href="/media" className="text-sm font-medium hover:underline">
               Media Library
             </Link>
-            <Link href="/create" className="text-sm font-medium hover:underline">
+            <Link
+              href="/create"
+              className="text-sm font-medium hover:underline"
+            >
               Create
             </Link>
           </nav>
@@ -102,79 +105,106 @@ export default function ProcedureLibrary() {
           </div>
         </div>
       </header>
-      
-      <main className="flex-1 py-6">
-        <div className="container px-4 md:px-6">
-          <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8">
-            <div>
-              <h1 className="text-3xl font-bold tracking-tight">Procedural Library</h1>
-              <p className="text-gray-500 mt-1">Browse and learn from standardized procedures</p>
-            </div>
-            <div className="mt-4 md:mt-0 flex gap-4">
-              <form onSubmit={handleSearch} className="flex w-full md:w-auto items-center space-x-2">
-                <Input
-                  type="search"
-                  placeholder="Search procedures..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="md:w-[300px]"
-                />
-                <Button type="submit">Search</Button>
-              </form>
-              <Button asChild className="bg-blue-600 hover:bg-blue-700">
-                <Link href="/create">New Procedure</Link>
-              </Button>
-            </div>
-          </div>
 
+      <main className="flex-1 container py-8">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
+          <div>
+            <h1 className="text-3xl font-bold mb-2">Procedures</h1>
+            <p className="text-gray-500">
+              Browse our collection of voice-based procedural learning resources
+            </p>
+          </div>
+          
+          <Link href="/create">
+            <Button className="bg-blue-600 hover:bg-blue-700">
+              <Plus className="mr-2 h-4 w-4" /> Create New Procedure
+            </Button>
+          </Link>
+        </div>
+        
+        <div className="mb-6">
+          <form onSubmit={handleSearch} className="flex w-full max-w-sm items-center space-x-2">
+            <Input
+              type="search"
+              placeholder="Search procedures..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+            <Button type="submit">
+              <Search className="h-4 w-4" />
+            </Button>
+          </form>
+        </div>
+
+        {filteredProcedures.length === 0 ? (
+          <div className="text-center py-12 border rounded-lg">
+            <FileText className="h-12 w-12 mx-auto text-gray-400 mb-4" />
+            <h2 className="text-xl font-semibold mb-2">No procedures found</h2>
+            {searchTerm ? (
+              <p className="text-gray-500">
+                No procedures match your search criteria. Try different keywords.
+              </p>
+            ) : (
+              <p className="text-gray-500">
+                There are no procedures available yet. Create your first procedure.
+              </p>
+            )}
+            <Link href="/create" className="mt-4 inline-block">
+              <Button className="mt-4">Create New Procedure</Button>
+            </Link>
+          </div>
+        ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {procedures.map((procedure) => (
-              <Card key={procedure.id} className="overflow-hidden">
-                <CardHeader className="bg-gray-50 border-b">
+            {filteredProcedures.map((procedure) => (
+              <Card key={procedure.id} className="overflow-hidden flex flex-col">
+                <CardHeader className="pb-3">
                   <CardTitle className="text-xl">{procedure.title}</CardTitle>
-                  <CardDescription>{procedure.description}</CardDescription>
                 </CardHeader>
-                <CardContent className="pt-4">
-                  <div className="space-y-2">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-500">Author:</span>
-                      <span className="font-medium">{procedure.author}</span>
+                <CardContent className="flex-1">
+                  <p className="text-gray-600 mb-4 line-clamp-3">{procedure.description}</p>
+                  
+                  <div className="flex items-center text-sm text-gray-500 mb-2">
+                    <Calendar className="h-4 w-4 mr-1" />
+                    <span>{procedure.date ? new Date(procedure.date).toLocaleDateString() : "No date"}</span>
+                  </div>
+                  
+                  {procedure.presenter && (
+                    <div className="text-sm text-gray-500 mb-3">
+                      <strong>Presenter:</strong> {procedure.presenter}
+                      {procedure.affiliation && (
+                        <span> ({procedure.affiliation})</span>
+                      )}
                     </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-500">Created:</span>
-                      <span>{procedure.createdAt}</span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-500">Steps:</span>
-                      <span>{procedure.steps}</span>
-                    </div>
+                  )}
+                  
+                  <div className="flex flex-wrap gap-2 mt-3">
+                    {procedure.kpiTech && procedure.kpiTech.map((tag, index) => (
+                      <Badge key={`tech-${index}`} variant="secondary">
+                        <Tag className="h-3 w-3 mr-1" />
+                        {tag}
+                      </Badge>
+                    ))}
+                    {procedure.kpiConcept && procedure.kpiConcept.map((tag, index) => (
+                      <Badge key={`concept-${index}`} variant="outline">
+                        <Tag className="h-3 w-3 mr-1" />
+                        {tag}
+                      </Badge>
+                    ))}
                   </div>
                 </CardContent>
-                <CardFooter className="flex justify-between border-t pt-4">
-                  <Button variant="outline" size="sm">Preview</Button>
-                  <Button size="sm" className="bg-blue-600 hover:bg-blue-700">
-                    View Details
-                  </Button>
+                <CardFooter className="pt-3 border-t">
+                  <Link href={`/procedures/${procedure.id}`} className="w-full">
+                    <Button variant="default" className="w-full">
+                      View Procedure
+                    </Button>
+                  </Link>
                 </CardFooter>
               </Card>
             ))}
           </div>
-          
-          {procedures.length === 0 && (
-            <div className="text-center py-16 bg-gray-50 rounded-lg border border-dashed">
-              <p className="text-muted-foreground">No procedures found matching your search</p>
-              <Button 
-                variant="link" 
-                onClick={() => setProcedures(mockProcedures)}
-                className="mt-2"
-              >
-                Reset search
-              </Button>
-            </div>
-          )}
-        </div>
+        )}
       </main>
-      
+
       <footer className="bg-gray-100 py-6">
         <div className="container px-4 md:px-6">
           <div className="flex flex-col items-center justify-between gap-4 md:flex-row">

@@ -1,44 +1,259 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useSession, signOut } from "next-auth/react";
 import { toast } from "sonner";
-
-interface TaskDefinition {
-  name: string;
-  description: string;
-  kpiTech: string[];
-  kpiConcept: string[];
-  presenter: string;
-  affiliation: string;
-  date: string;
-}
+import TaskDefinitionForm from "@/components/TaskDefinitionForm";
+import MediaUploader from "@/components/MediaUploader";
+import VoiceRecorder from "@/components/VoiceRecorder";
+import TranscriptEditor from "@/components/TranscriptEditor";
+import FlowchartViewer from "@/components/FlowchartViewer";
+import YamlGenerator from "@/components/YamlGenerator";
+import SimulationBuilder from "@/components/SimulationBuilder";
+import { procedureService, TaskDefinition, Step, MediaItem, SimulationSettings } from "@/lib/ProcedureService";
+import { v4 as uuidv4 } from 'uuid';
 
 export default function CreateProcedure() {
+  const { data: session, status } = useSession();
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState("task");
-  const [taskDefinition, setTaskDefinition] = useState<TaskDefinition | null>(null);
+  const [taskDefinition, setTaskDefinition] = useState<TaskDefinition | null>(
+    null
+  );
+  const [transcript, setTranscript] = useState("");
+  const [steps, setSteps] = useState<Step[]>([]);
+  const [mediaItems, setMediaItems] = useState<MediaItem[]>([]);
+  const [yamlContent, setYamlContent] = useState("");
+  const [flowchartContent, setFlowchartContent] = useState("");
+  const [simulationSettings, setSimulationSettings] = useState<SimulationSettings | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  // Redirect to sign-in if not authenticated
+  useEffect(() => {
+    if (status === "unauthenticated") {
+      router.push("/auth/signin");
+    }
+  }, [status, router]);
+
+  // Load any existing procedure data when the component mounts
+  useEffect(() => {
+    const loadProcedure = async () => {
+      if (status !== "authenticated") return;
+      
+      try {
+        const procedure = await procedureService.getProcedure();
+        
+        if (procedure) {
+          // Set all the state variables from the loaded procedure
+          setTaskDefinition({
+            name: procedure.title,
+            description: procedure.description,
+            presenter: procedure.presenter,
+            affiliation: procedure.affiliation,
+            kpiTech: procedure.kpiTech,
+            kpiConcept: procedure.kpiConcept,
+            date: procedure.date
+          });
+          
+          if (procedure.steps.length > 0) {
+            setSteps(procedure.steps);
+          }
+          
+          if (procedure.mediaItems.length > 0) {
+            setMediaItems(procedure.mediaItems);
+          }
+          
+          if (procedure.transcript) {
+            setTranscript(procedure.transcript);
+          }
+          
+          if (procedure.yamlContent) {
+            setYamlContent(procedure.yamlContent);
+          }
+          
+          if (procedure.flowchartCode) {
+            setFlowchartContent(procedure.flowchartCode);
+          }
+          
+          if (procedure.simulationSettings) {
+            setSimulationSettings(procedure.simulationSettings);
+          }
+        }
+      } catch (error) {
+        console.error("Error loading procedure:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    loadProcedure();
+  }, [status]);
+
+  // Handle sign out
+  const handleSignOut = async () => {
+    await signOut({ redirect: false });
+    router.push("/auth/signin");
+  };
+
+  const handleTaskSubmit = async (taskData: TaskDefinition) => {
+    try {
+      setTaskDefinition(taskData);
+      
+      // Save task definition to database
+      await procedureService.createProcedure(taskData);
+      
+      toast.success("Task definition saved successfully!");
+      handleNextTab();
+    } catch (error) {
+      console.error("Error saving task definition:", error, JSON.stringify(error));
+      
+      // Check if this is a Row Level Security error
+      if (error instanceof Error && error.message.includes('new row violates row-level security policy')) {
+        toast.error('Cannot create procedure due to permission restrictions. Please sign in to continue.');
+      } else {
+        toast.error(`Failed to save task definition: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
+    }
+  };
+
+  const handleTranscriptChange = async (text: string) => {
+    setTranscript(text);
+    
+    try {
+      // Save transcript to database
+      await procedureService.saveTranscript(text);
+    } catch (error) {
+      console.error("Error saving transcript:", error);
+    }
+  };
+  
+  const handleStepsChange = async (newSteps: Step[]) => {
+    setSteps(newSteps);
+    
+    try {
+      // Save steps to database
+      await procedureService.saveSteps(newSteps);
+    } catch (error) {
+      console.error("Error saving steps:", error);
+    }
+  };
+  
+  const handleMediaItemsChange = async (newMediaItems: MediaItem[]) => {
+    setMediaItems(newMediaItems);
+    
+    try {
+      // Save media items to database
+      await procedureService.saveMediaItems(newMediaItems);
+    } catch (error) {
+      console.error("Error saving media items:", error);
+    }
+  };
+  
+  const handleYamlChange = async (content: string) => {
+    setYamlContent(content);
+    
+    try {
+      // Save YAML content to database
+      await procedureService.saveYaml(content);
+    } catch (error) {
+      console.error("Error saving YAML:", error);
+    }
+  };
+  
+  const handleFlowchartChange = async (content: string) => {
+    setFlowchartContent(content);
+    
+    try {
+      // Save flowchart content to database
+      await procedureService.saveFlowchart(content);
+    } catch (error) {
+      console.error("Error saving flowchart:", error);
+    }
+  };
+
+  const handleSimulationSettingsChange = async (settings: SimulationSettings) => {
+    setSimulationSettings(settings);
+    
+    try {
+      // Save simulation settings to database
+      await procedureService.saveSimulationSettings(settings);
+    } catch (error) {
+      console.error("Error saving simulation settings:", error);
+    }
+  };
+
+  const handleTabChange = async (value: string) => {
+    // Save current tab's data before changing
+    try {
+      if (activeTab === "dictation" && transcript) {
+        await procedureService.saveTranscript(transcript);
+      } else if (activeTab === "procedure" && steps.length > 0) {
+        await procedureService.saveSteps(steps);
+      } else if (activeTab === "yaml" && yamlContent) {
+        await procedureService.saveYaml(yamlContent);
+      } else if (activeTab === "flowchart" && flowchartContent) {
+        await procedureService.saveFlowchart(flowchartContent);
+      }
+    } catch (error) {
+      console.error("Error saving data before tab change:", error);
+    }
+    
+    setActiveTab(value);
+  };
 
   const handleNextTab = () => {
-    if (activeTab === "task") setActiveTab("media");
-    else if (activeTab === "media") setActiveTab("dictation");
-    else if (activeTab === "dictation") setActiveTab("procedure");
-    else if (activeTab === "procedure") setActiveTab("yaml");
-    else if (activeTab === "yaml") setActiveTab("flowchart");
-    else if (activeTab === "flowchart") setActiveTab("simulation");
+    if (activeTab === "task") handleTabChange("media");
+    else if (activeTab === "media") handleTabChange("dictation");
+    else if (activeTab === "dictation") handleTabChange("procedure");
+    else if (activeTab === "procedure") handleTabChange("yaml");
+    else if (activeTab === "yaml") handleTabChange("flowchart");
+    else if (activeTab === "flowchart") handleTabChange("simulation");
   };
 
   const handlePreviousTab = () => {
-    if (activeTab === "media") setActiveTab("task");
-    else if (activeTab === "dictation") setActiveTab("media");
-    else if (activeTab === "procedure") setActiveTab("dictation");
-    else if (activeTab === "yaml") setActiveTab("procedure");
-    else if (activeTab === "flowchart") setActiveTab("yaml");
-    else if (activeTab === "simulation") setActiveTab("flowchart");
+    if (activeTab === "media") handleTabChange("task");
+    else if (activeTab === "dictation") handleTabChange("media");
+    else if (activeTab === "procedure") handleTabChange("dictation");
+    else if (activeTab === "yaml") handleTabChange("procedure");
+    else if (activeTab === "flowchart") handleTabChange("yaml");
+    else if (activeTab === "simulation") handleTabChange("flowchart");
   };
+  
+  const handlePublish = async () => {
+    try {
+      const success = await procedureService.publishProcedure();
+      
+      if (success) {
+        toast.success("Procedure published successfully!");
+        // Could redirect to the procedures list page here
+      } else {
+        toast.error("Failed to publish procedure");
+      }
+    } catch (error) {
+      console.error("Error publishing procedure:", error);
+      toast.error("Failed to publish procedure");
+    }
+  };
+
+  if (status === "loading" || loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-lg">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (status === "unauthenticated") {
+    return null; // Will redirect to sign-in page via useEffect
+  }
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -68,22 +283,31 @@ export default function CreateProcedure() {
             </Link>
           </div>
           <nav className="hidden md:flex items-center gap-6">
-            <Link href="/procedures" className="text-sm font-medium hover:underline">
+            <Link
+              href="/procedures"
+              className="text-sm font-medium hover:underline"
+            >
               Procedures
             </Link>
             <Link href="/media" className="text-sm font-medium hover:underline">
               Media Library
             </Link>
-            <Link href="/create" className="text-sm font-medium hover:underline">
+            <Link
+              href="/create"
+              className="text-sm font-medium hover:underline"
+            >
               Create
             </Link>
           </nav>
-          <div>
-            <Button variant="default">Sign In</Button>
+          <div className="flex items-center gap-4">
+            {session?.user?.name && (
+              <span className="text-sm text-gray-600">Hi, {session.user.name}</span>
+            )}
+            <Button variant="default" onClick={handleSignOut}>Sign Out</Button>
           </div>
         </div>
       </header>
-      
+
       <main className="flex-1 container py-8">
         <div className="mb-8">
           <h1 className="text-3xl font-bold mb-2">Create New Procedure</h1>
@@ -96,11 +320,11 @@ export default function CreateProcedure() {
             </p>
           )}
         </div>
-        
-        <Tabs 
-          defaultValue="task" 
-          value={activeTab} 
-          onValueChange={setActiveTab}
+
+        <Tabs
+          defaultValue="task"
+          value={activeTab}
+          onValueChange={handleTabChange}
         >
           <div className="mb-8">
             <TabsList className="grid w-full grid-cols-7">
@@ -113,239 +337,179 @@ export default function CreateProcedure() {
               <TabsTrigger value="simulation">7. Simulation</TabsTrigger>
             </TabsList>
           </div>
-          
+
           <TabsContent value="task">
             <Card>
               <CardContent className="pt-6">
-                <div className="space-y-6">
-                  <div>
-                    <h2 className="text-xl font-semibold mb-4">Task Definition</h2>
-                    <p className="text-sm text-gray-500 mb-6">
-                      Define the learning task with key performance indicators and presenter information.
-                    </p>
-                    <p className="text-sm bg-yellow-50 border border-yellow-200 p-4 rounded-md">
-                      Task definition form will be implemented here, based on the schema from your Prisma model.
-                    </p>
-                  </div>
-                  <div className="flex justify-end">
-                    <Button 
-                      onClick={() => {
-                        setTaskDefinition({
-                          name: "Sample Procedure",
-                          description: "This is a sample procedure",
-                          kpiTech: ["Technical Skill 1", "Technical Skill 2"],
-                          kpiConcept: ["Concept 1", "Concept 2"],
-                          presenter: "Dr. Jane Smith",
-                          affiliation: "Medical Center",
-                          date: new Date().toISOString(),
-                        });
-                        toast.success("Task definition saved successfully!");
-                        handleNextTab();
-                      }}
-                      className="bg-blue-600 hover:bg-blue-700"
-                    >
-                      Save & Continue <ChevronRight className="ml-2 h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
+                <TaskDefinitionForm 
+                  onSubmit={handleTaskSubmit} 
+                  initialData={taskDefinition}
+                />
               </CardContent>
             </Card>
           </TabsContent>
-          
+
           <TabsContent value="media">
             <Card>
               <CardContent className="pt-6">
-                <div className="space-y-6">
-                  <div>
-                    <h2 className="text-xl font-semibold mb-4">Media Library</h2>
-                    <p className="text-sm text-gray-500 mb-6">
-                      Upload supporting materials such as PDFs, images, audio files, and videos.
-                    </p>
-                    <p className="text-sm bg-yellow-50 border border-yellow-200 p-4 rounded-md">
-                      Media uploader component will be implemented here.
-                    </p>
-                  </div>
-                  <div className="flex justify-between">
-                    <Button 
-                      variant="outline" 
-                      onClick={handlePreviousTab}
-                    >
-                      <ChevronLeft className="mr-2 h-4 w-4" /> Previous Step
-                    </Button>
-                    <Button 
-                      onClick={handleNextTab}
-                      className="bg-blue-600 hover:bg-blue-700"
-                    >
-                      Next Step <ChevronRight className="ml-2 h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
+                <MediaUploader 
+                  mediaItems={mediaItems}
+                  onChange={handleMediaItemsChange}
+                />
               </CardContent>
             </Card>
+
+            <div className="flex justify-between mt-6">
+              <Button variant="outline" onClick={handlePreviousTab}>
+                <ChevronLeft className="mr-2 h-4 w-4" /> Previous Step
+              </Button>
+              <Button
+                onClick={handleNextTab}
+                className="bg-blue-600 hover:bg-blue-700"
+              >
+                Next Step <ChevronRight className="ml-2 h-4 w-4" />
+              </Button>
+            </div>
           </TabsContent>
-          
+
           <TabsContent value="dictation">
-            <Card>
-              <CardContent className="pt-6">
-                <div className="space-y-6">
-                  <div>
-                    <h2 className="text-xl font-semibold mb-4">Voice Dictation</h2>
-                    <p className="text-sm text-gray-500 mb-6">
-                      Record your voice to create the procedure with AI assistance.
-                    </p>
-                    <p className="text-sm bg-yellow-50 border border-yellow-200 p-4 rounded-md">
-                      Voice recorder and transcript editor components will be implemented here.
-                    </p>
-                  </div>
-                  <div className="flex justify-between">
-                    <Button 
-                      variant="outline" 
-                      onClick={handlePreviousTab}
-                    >
-                      <ChevronLeft className="mr-2 h-4 w-4" /> Previous Step
-                    </Button>
-                    <Button 
-                      onClick={handleNextTab}
-                      className="bg-blue-600 hover:bg-blue-700"
-                    >
-                      Next Step <ChevronRight className="ml-2 h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <Card>
+                <CardContent className="pt-6">
+                  <h2 className="text-xl font-semibold mb-4">
+                    Voice Recording
+                  </h2>
+                  <VoiceRecorder onTranscriptUpdate={handleTranscriptChange} />
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardContent className="pt-6">
+                  <h2 className="text-xl font-semibold mb-4">
+                    Transcript Editor
+                  </h2>
+                  <TranscriptEditor
+                    transcript={transcript}
+                    onChange={handleTranscriptChange}
+                  />
+                </CardContent>
+              </Card>
+            </div>
+
+            <div className="flex justify-between mt-6">
+              <Button variant="outline" onClick={handlePreviousTab}>
+                <ChevronLeft className="mr-2 h-4 w-4" /> Previous Step
+              </Button>
+              <Button
+                onClick={handleNextTab}
+                className="bg-blue-600 hover:bg-blue-700"
+              >
+                Next Step <ChevronRight className="ml-2 h-4 w-4" />
+              </Button>
+            </div>
           </TabsContent>
-          
+
           <TabsContent value="procedure">
             <Card>
               <CardContent className="pt-6">
-                <div className="space-y-6">
-                  <div>
-                    <h2 className="text-xl font-semibold mb-4">Procedure Steps</h2>
-                    <p className="text-sm text-gray-500 mb-6">
-                      Define and organize your procedure steps with associated media and questions.
-                    </p>
-                    <p className="text-sm bg-yellow-50 border border-yellow-200 p-4 rounded-md">
-                      Procedure step editor component will be implemented here.
-                    </p>
-                  </div>
-                  <div className="flex justify-between">
-                    <Button 
-                      variant="outline" 
-                      onClick={handlePreviousTab}
-                    >
-                      <ChevronLeft className="mr-2 h-4 w-4" /> Previous Step
-                    </Button>
-                    <Button 
-                      onClick={handleNextTab}
-                      className="bg-blue-600 hover:bg-blue-700"
-                    >
-                      Next Step <ChevronRight className="ml-2 h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
+                <TranscriptEditor
+                  transcript={transcript}
+                  onChange={handleTranscriptChange}
+                  onStepsChange={handleStepsChange}
+                  steps={steps}
+                />
               </CardContent>
             </Card>
+
+            <div className="flex justify-between mt-6">
+              <Button variant="outline" onClick={handlePreviousTab}>
+                <ChevronLeft className="mr-2 h-4 w-4" /> Previous Step
+              </Button>
+              <Button
+                onClick={handleNextTab}
+                className="bg-blue-600 hover:bg-blue-700"
+              >
+                Next Step <ChevronRight className="ml-2 h-4 w-4" />
+              </Button>
+            </div>
           </TabsContent>
-          
+
           <TabsContent value="yaml">
             <Card>
               <CardContent className="pt-6">
-                <div className="space-y-6">
-                  <div>
-                    <h2 className="text-xl font-semibold mb-4">YAML Generation</h2>
-                    <p className="text-sm text-gray-500 mb-6">
-                      Auto-generate YAML schema of the procedure with decision points and conditionals.
-                    </p>
-                    <p className="text-sm bg-yellow-50 border border-yellow-200 p-4 rounded-md">
-                      YAML generation and editing component will be implemented here.
-                    </p>
-                  </div>
-                  <div className="flex justify-between">
-                    <Button 
-                      variant="outline" 
-                      onClick={handlePreviousTab}
-                    >
-                      <ChevronLeft className="mr-2 h-4 w-4" /> Previous Step
-                    </Button>
-                    <Button 
-                      onClick={handleNextTab}
-                      className="bg-blue-600 hover:bg-blue-700"
-                    >
-                      Next Step <ChevronRight className="ml-2 h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
+                <YamlGenerator
+                  steps={steps}
+                  procedureName={taskDefinition?.name || "Procedure"}
+                  initialYaml={yamlContent}
+                  onChange={handleYamlChange}
+                />
               </CardContent>
             </Card>
+
+            <div className="flex justify-between mt-6">
+              <Button variant="outline" onClick={handlePreviousTab}>
+                <ChevronLeft className="mr-2 h-4 w-4" /> Previous Step
+              </Button>
+              <Button
+                onClick={handleNextTab}
+                className="bg-blue-600 hover:bg-blue-700"
+              >
+                Next Step <ChevronRight className="ml-2 h-4 w-4" />
+              </Button>
+            </div>
           </TabsContent>
-          
+
           <TabsContent value="flowchart">
             <Card>
               <CardContent className="pt-6">
-                <div className="space-y-6">
-                  <div>
-                    <h2 className="text-xl font-semibold mb-4">Flowchart Visualization</h2>
-                    <p className="text-sm text-gray-500 mb-6">
-                      Visualize your procedure as an editable flowchart.
-                    </p>
-                    <p className="text-sm bg-yellow-50 border border-yellow-200 p-4 rounded-md">
-                      Flowchart editor component using Mermaid.js will be implemented here.
-                    </p>
-                  </div>
-                  <div className="flex justify-between">
-                    <Button 
-                      variant="outline" 
-                      onClick={handlePreviousTab}
-                    >
-                      <ChevronLeft className="mr-2 h-4 w-4" /> Previous Step
-                    </Button>
-                    <Button 
-                      onClick={handleNextTab}
-                      className="bg-blue-600 hover:bg-blue-700"
-                    >
-                      Next Step <ChevronRight className="ml-2 h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
+                <FlowchartViewer 
+                  steps={steps.map((step) => step.content)} 
+                  initialMermaid={flowchartContent}
+                  onChange={handleFlowchartChange}
+                />
               </CardContent>
             </Card>
+
+            <div className="flex justify-between mt-6">
+              <Button variant="outline" onClick={handlePreviousTab}>
+                <ChevronLeft className="mr-2 h-4 w-4" /> Previous Step
+              </Button>
+              <Button
+                onClick={handleNextTab}
+                className="bg-blue-600 hover:bg-blue-700"
+              >
+                Next Step <ChevronRight className="ml-2 h-4 w-4" />
+              </Button>
+            </div>
           </TabsContent>
-          
+
           <TabsContent value="simulation">
             <Card>
               <CardContent className="pt-6">
-                <div className="space-y-6">
-                  <div>
-                    <h2 className="text-xl font-semibold mb-4">Simulation Builder</h2>
-                    <p className="text-sm text-gray-500 mb-6">
-                      Create a voice-first simulation experience from your procedure.
-                    </p>
-                    <p className="text-sm bg-yellow-50 border border-yellow-200 p-4 rounded-md">
-                      Simulation builder component will be implemented here.
-                    </p>
-                  </div>
-                  <div className="flex justify-between">
-                    <Button 
-                      variant="outline" 
-                      onClick={handlePreviousTab}
-                    >
-                      <ChevronLeft className="mr-2 h-4 w-4" /> Previous Step
-                    </Button>
-                    <Button 
-                      className="bg-green-600 hover:bg-green-700"
-                      onClick={() => toast.success("Procedure saved successfully!")}
-                    >
-                      Save & Publish
-                    </Button>
-                  </div>
-                </div>
+                <SimulationBuilder
+                  steps={steps}
+                  procedureName={taskDefinition?.name || "Procedure"}
+                  initialSettings={simulationSettings || undefined}
+                  onChange={handleSimulationSettingsChange}
+                />
               </CardContent>
             </Card>
+
+            <div className="flex justify-between mt-6">
+              <Button variant="outline" onClick={handlePreviousTab}>
+                <ChevronLeft className="mr-2 h-4 w-4" /> Previous Step
+              </Button>
+              <Button
+                className="bg-green-600 hover:bg-green-700"
+                onClick={handlePublish}
+              >
+                Save & Publish
+              </Button>
+            </div>
           </TabsContent>
         </Tabs>
       </main>
-      
+
       <footer className="bg-gray-100 py-6">
         <div className="container px-4 md:px-6">
           <div className="flex flex-col items-center justify-between gap-4 md:flex-row">
@@ -378,4 +542,4 @@ export default function CreateProcedure() {
       </footer>
     </div>
   );
-} 
+}

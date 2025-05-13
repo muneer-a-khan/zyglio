@@ -1,9 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -15,47 +9,166 @@ datasource db {
 }
 
 model User {
-  id        String   @id @default(uuid())
-  email     String   @unique
-  name      String?
-  createdAt DateTime @default(now())
+  id            String         @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  email         String         @unique
+  name          String?
+  createdAt     DateTime       @default(now()) @db.Timestamptz(6)
   learningTasks LearningTask[]
+  role          user_role      @default(trainee)
+  
+  // No password field as it's managed by Supabase Auth
+  
+  // Maps to auth.users in Supabase
+  @@map("users")
 }
 
 model LearningTask {
-  id         String    @id @default(uuid())
-  title      String
-  kpiTech    String?   // combine technical KPIs as one string
-  kpiConcept String?
-  presenter  String
+  id          String             @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  title       String
+  kpiTech     String?
+  kpiConcept  String?
+  presenter   String
   affiliation String?
-  date       DateTime
+  date        DateTime           @db.Timestamptz(6)
+  userId      String             @db.Uuid
+  dictations  Dictation[]
+  urls        ExternalResource[]
+  flowcharts  Flowchart[]
+  user        User               @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  mediaItems  MediaItem[]
+  procedures  Procedure[]
+  simulations Simulation[]
+  yamlOutputs YamlOutput[]
 
-  userId     String
-  user       User      @relation(fields: [userId], references: [id])
-
-  mediaItems     MediaItem[]
-  urls           ExternalResource[]
-  dictations     Dictation[]
-  procedures     Procedure[]
-  yamlOutputs    YamlOutput[]
-  flowcharts     Flowchart[]
-  simulations    Simulation[]
+  @@index([userId])
 }
 
 model MediaItem {
-  id          String   @id @default(uuid())
-  type        MediaType
-  caption     String?
+  id        String         @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  type      MediaType
+  caption   String?
+  url       String
+  relevance String?
+  createdAt DateTime       @default(now()) @db.Timestamptz(6)
+  taskId    String         @db.Uuid
+  stepId    String?        @db.Uuid
+  step      ProcedureStep? @relation(fields: [stepId], references: [id], onUpdate: NoAction)
+  task      LearningTask   @relation(fields: [taskId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([stepId])
+  @@index([taskId])
+}
+
+model ExternalResource {
+  id          String       @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
   url         String
-  relevance   String?
-  createdAt   DateTime @default(now())
+  description String
+  taskId      String       @db.Uuid
+  task        LearningTask @relation(fields: [taskId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
-  taskId      String
-  task        LearningTask @relation(fields: [taskId], references: [id])
+  @@index([taskId])
+}
 
-  stepId      String?       
-  step        ProcedureStep? @relation(fields: [stepId], references: [id])
+model Dictation {
+  id            String         @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  audioUrl      String
+  transcript    String
+  createdAt     DateTime       @default(now()) @db.Timestamptz(6)
+  taskId        String         @db.Uuid
+  aiSuggestions AISuggestion[]
+  task          LearningTask   @relation(fields: [taskId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  questions     Question[]
+
+  @@index([taskId])
+}
+
+model AISuggestion {
+  id          String         @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  text        String
+  kind        SuggestionType
+  dictationId String         @db.Uuid
+  dictation   Dictation      @relation(fields: [dictationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([dictationId])
+}
+
+model Question {
+  id          String         @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  type        QuestionType
+  content     String
+  options     String?
+  correct     String?
+  dictationId String?        @db.Uuid
+  stepId      String?        @db.Uuid
+  dictation   Dictation?     @relation(fields: [dictationId], references: [id], onUpdate: NoAction)
+  step        ProcedureStep? @relation(fields: [stepId], references: [id], onUpdate: NoAction)
+
+  @@index([dictationId])
+  @@index([stepId])
+}
+
+model Procedure {
+  id     String          @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  title  String
+  taskId String          @db.Uuid
+  task   LearningTask    @relation(fields: [taskId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  steps  ProcedureStep[]
+
+  @@index([taskId])
+}
+
+model ProcedureStep {
+  id          String      @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  index       Int
+  content     String
+  notes       String?
+  conditions  String?
+  procedureId String      @db.Uuid
+  media       MediaItem[]
+  procedure   Procedure   @relation(fields: [procedureId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  questions   Question[]
+
+  @@index([procedureId])
+}
+
+model YamlOutput {
+  id      String       @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  content String
+  taskId  String       @db.Uuid
+  task    LearningTask @relation(fields: [taskId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([taskId])
+}
+
+model Flowchart {
+  id      String       @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  mermaid String
+  taskId  String       @db.Uuid
+  task    LearningTask @relation(fields: [taskId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([taskId])
+}
+
+model Simulation {
+  id     String           @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  taskId String           @db.Uuid
+  task   LearningTask     @relation(fields: [taskId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  steps  SimulationStep[]
+
+  @@index([taskId])
+}
+
+model SimulationStep {
+  id               String     @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  prompt           String
+  expectedAnswer   String?
+  mediaUrl         String?
+  latencyThreshold Int?
+  feedback         String?
+  simulationId     String     @db.Uuid
+  simulation       Simulation @relation(fields: [simulationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([simulationId])
 }
 
 enum MediaType {
@@ -65,33 +178,6 @@ enum MediaType {
   PDF
 }
 
-model ExternalResource {
-  id          String   @id @default(uuid())
-  url         String
-  description String
-  taskId      String
-  task        LearningTask @relation(fields: [taskId], references: [id])
-}
-
-model Dictation {
-  id            String   @id @default(uuid())
-  audioUrl      String
-  transcript    String
-  createdAt     DateTime @default(now())
-  taskId        String
-  task          LearningTask @relation(fields: [taskId], references: [id])
-  aiSuggestions AISuggestion[]
-  questions     Question[]
-}
-
-model AISuggestion {
-  id            String   @id @default(uuid())
-  text          String
-  kind          SuggestionType
-  dictationId   String
-  dictation     Dictation @relation(fields: [dictationId], references: [id])
-}
-
 enum SuggestionType {
   INSERTION
   CLARIFYING_QUESTION
@@ -99,75 +185,13 @@ enum SuggestionType {
   OPEN_ENDED
 }
 
-model Question {
-  id          String   @id @default(uuid())
-  type        QuestionType
-  content     String
-  options     String?   // Store as JSON string
-  correct     String?
-  dictationId String?  
-  stepId      String?
-
-  dictation   Dictation?     @relation(fields: [dictationId], references: [id])
-  step        ProcedureStep? @relation(fields: [stepId], references: [id])
-}
-
 enum QuestionType {
   MCQ
   OPEN_ENDED
 }
 
-model Procedure {
-  id        String   @id @default(uuid())
-  title     String
-  taskId    String
-  task      LearningTask @relation(fields: [taskId], references: [id])
-  steps     ProcedureStep[]
-}
-
-model ProcedureStep {
-  id          String   @id @default(uuid())
-  index       Int
-  content     String
-  notes       String?
-  conditions  String?
-
-  procedureId String
-  procedure   Procedure @relation(fields: [procedureId], references: [id])
-
-  media       MediaItem[]
-  questions   Question[]
-}
-
-model YamlOutput {
-  id        String   @id @default(uuid())
-  content   String
-  taskId    String
-  task      LearningTask @relation(fields: [taskId], references: [id])
-}
-
-model Flowchart {
-  id        String   @id @default(uuid())
-  mermaid   String
-  taskId    String
-  task      LearningTask @relation(fields: [taskId], references: [id])
-}
-
-model Simulation {
-  id        String   @id @default(uuid())
-  taskId    String
-  task      LearningTask @relation(fields: [taskId], references: [id])
-  steps     SimulationStep[]
-}
-
-model SimulationStep {
-  id              String   @id @default(uuid())
-  prompt          String
-  expectedAnswer  String?
-  mediaUrl        String?
-  latencyThreshold Int?
-  feedback        String?
-
-  simulationId    String
-  simulation      Simulation @relation(fields: [simulationId], references: [id])
+enum user_role {
+  sme
+  trainee
+  admin
 }
