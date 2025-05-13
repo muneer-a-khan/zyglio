@@ -1,22 +1,57 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
-import { Upload, Image, FileText, Video, File, X, Music } from "lucide-react";
+import { Upload, Image, FileText, Video, File, X, Music, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { MediaItem } from "@/lib/ProcedureService";
+import { v4 as uuidv4 } from 'uuid';
 
-interface MediaFile {
-  id: string;
-  name: string;
-  type: string;
-  url: string;
-  size: string;
+interface MediaUploaderProps {
+  mediaItems?: MediaItem[];
+  onChange: (items: MediaItem[]) => void;
 }
 
-const MediaUploader = () => {
-  const [mediaFiles, setMediaFiles] = useState<MediaFile[]>([]);
+const MediaUploader = ({ mediaItems = [], onChange }: MediaUploaderProps) => {
+  const [items, setItems] = useState<MediaItem[]>(mediaItems);
   const [isDragging, setIsDragging] = useState(false);
+
+  // Update local state when props change
+  useEffect(() => {
+    setItems(mediaItems);
+  }, [mediaItems]);
+
+  const handleAddItem = () => {
+    const newItem: MediaItem = {
+      id: uuidv4(),
+      type: "IMAGE",
+      url: "",
+      caption: ""
+    };
+    
+    const newItems = [...items, newItem];
+    setItems(newItems);
+    onChange(newItems);
+  };
+
+  const handleRemoveItem = (id: string) => {
+    const newItems = items.filter(item => item.id !== id);
+    setItems(newItems);
+    onChange(newItems);
+  };
+
+  const handleItemChange = (id: string, field: keyof MediaItem, value: string) => {
+    const newItems = items.map(item => {
+      if (item.id === id) {
+        return { ...item, [field]: value };
+      }
+      return item;
+    });
+    
+    setItems(newItems);
+    onChange(newItems);
+  };
 
   const handleFileDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -42,7 +77,7 @@ const MediaUploader = () => {
   };
 
   const handleFiles = (files: FileList) => {
-    const newMediaFiles: MediaFile[] = [];
+    const newMediaFiles: MediaItem[] = [];
 
     Array.from(files).forEach((file) => {
       const id = `file-${Date.now()}-${Math.random()
@@ -57,17 +92,20 @@ const MediaUploader = () => {
       });
     });
 
-    setMediaFiles((prev) => [...prev, ...newMediaFiles]);
+    const newItems = [...items, ...newMediaFiles];
+    setItems(newItems);
+    onChange(newItems);
   };
 
   const removeFile = (id: string) => {
-    setMediaFiles((prev) => {
+    setItems((prev) => {
       const fileToRemove = prev.find((file) => file.id === id);
       if (fileToRemove) {
         URL.revokeObjectURL(fileToRemove.url);
       }
       return prev.filter((file) => file.id !== id);
     });
+    onChange(items.filter((item) => item.id !== id));
   };
 
   const getFileIcon = (type: string) => {
@@ -84,93 +122,82 @@ const MediaUploader = () => {
 
   return (
     <div className="space-y-6">
-      <div
-        className={cn(
-          "border-2 border-dashed rounded-lg p-6 text-center cursor-pointer hover:bg-gray-50 transition-colors",
-          isDragging ? "border-blue-400 bg-blue-50" : "border-gray-300"
-        )}
-        onDragOver={(e) => {
-          e.preventDefault();
-          setIsDragging(true);
-        }}
-        onDragLeave={(e) => {
-          e.preventDefault();
-          setIsDragging(false);
-        }}
-        onDrop={handleFileDrop}
-        onClick={() => document.getElementById("file-upload")?.click()}
-      >
-        <div className="flex flex-col items-center space-y-2">
-          <div className="p-3 bg-blue-100 rounded-full">
-            <Upload className="h-6 w-6 text-blue-600" />
-          </div>
-          <h3 className="font-medium text-lg">Upload Media Files</h3>
-          <p className="text-sm text-muted-foreground">
-            Drag and drop files here or click to browse
-          </p>
-          <div className="text-xs text-muted-foreground mt-2">
-            Supports images, videos, PDFs and audio files
-          </div>
-        </div>
-        <Input
-          id="file-upload"
-          type="file"
-          className="hidden"
-          multiple
-          onChange={handleFileChange}
-        />
-      </div>
-
-      {mediaFiles.length > 0 && (
-        <div>
-          <h3 className="text-lg font-medium mb-3">
-            Uploaded Media ({mediaFiles.length})
-          </h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {mediaFiles.map((file) => (
-              <Card key={file.id} className="overflow-hidden">
-                <CardContent className="p-3 relative">
-                  <Button
-                    variant="destructive"
-                    size="icon"
-                    className="h-6 w-6 absolute top-1 right-1 z-10"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      removeFile(file.id);
-                    }}
+      <h2 className="text-xl font-semibold">Media Resources</h2>
+      <p className="text-gray-500">
+        Upload images, videos, or other media files to support your procedure.
+      </p>
+      
+      <div className="space-y-4">
+        {items.map((item, index) => (
+          <Card key={item.id} className="overflow-hidden">
+            <CardContent className="p-4">
+              <div className="grid grid-cols-1 md:grid-cols-[2fr,1fr,auto] gap-4 items-center">
+                <div>
+                  <Label htmlFor={`media-url-${index}`} className="mb-1 block">
+                    URL
+                  </Label>
+                  <Input
+                    id={`media-url-${index}`}
+                    value={item.url}
+                    onChange={(e) => handleItemChange(item.id, "url", e.target.value)}
+                    placeholder="https://example.com/image.jpg"
+                    type="url"
+                  />
+                </div>
+                
+                <div>
+                  <Label htmlFor={`media-type-${index}`} className="mb-1 block">
+                    Type
+                  </Label>
+                  <select 
+                    id={`media-type-${index}`}
+                    value={item.type}
+                    onChange={(e) => handleItemChange(item.id, "type", e.target.value)}
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    <X className="h-3 w-3" />
-                  </Button>
-
-                  {file.type.startsWith("image/") ? (
-                    <div className="aspect-video w-full overflow-hidden mb-2">
-                      <img
-                        src={file.url}
-                        alt={file.name}
-                        className="w-full h-full object-cover"
-                      />
-                    </div>
-                  ) : (
-                    <div className="p-2 flex items-center">
-                      <div className="p-2 bg-gray-100 rounded mr-3">
-                        {getFileIcon(file.type)}
-                      </div>
-                      <div className="truncate flex-1">
-                        <p className="text-sm font-medium truncate">
-                          {file.name}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          {file.size} • {file.type.split("/")[1].toUpperCase()}
-                        </p>
-                      </div>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </div>
-      )}
+                    <option value="IMAGE">Image</option>
+                    <option value="VIDEO">Video</option>
+                    <option value="AUDIO">Audio</option>
+                    <option value="PDF">PDF</option>
+                  </select>
+                </div>
+                
+                <Button 
+                  variant="outline" 
+                  size="icon"
+                  type="button"
+                  onClick={() => handleRemoveItem(item.id)}
+                  className="mt-7"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+              
+              <div className="mt-4">
+                <Label htmlFor={`media-caption-${index}`} className="mb-1 block">
+                  Caption
+                </Label>
+                <Input
+                  id={`media-caption-${index}`}
+                  value={item.caption || ""}
+                  onChange={(e) => handleItemChange(item.id, "caption", e.target.value)}
+                  placeholder="Describe this media resource"
+                />
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+      
+      <Button
+        type="button"
+        variant="outline"
+        onClick={handleAddItem}
+        className="w-full mt-4"
+      >
+        <Upload className="mr-2 h-4 w-4" />
+        Add Media Resource
+      </Button>
     </div>
   );
 };
