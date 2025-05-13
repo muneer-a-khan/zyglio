@@ -7,6 +7,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
+import TaskDefinitionForm from "@/components/TaskDefinitionForm";
+import MediaUploader from "@/components/MediaUploader";
+import VoiceRecorder from "@/components/VoiceRecorder";
+import TranscriptEditor from "@/components/TranscriptEditor";
+import FlowchartViewer from "@/components/FlowchartViewer";
+import YamlGenerator from "@/components/YamlGenerator";
+import SimulationBuilder from "@/components/SimulationBuilder";
 
 interface TaskDefinition {
   name: string;
@@ -18,9 +25,27 @@ interface TaskDefinition {
   date: string;
 }
 
+interface Step {
+  id: string;
+  content: string;
+  comments: string[];
+}
+
 export default function CreateProcedure() {
   const [activeTab, setActiveTab] = useState("task");
   const [taskDefinition, setTaskDefinition] = useState<TaskDefinition | null>(null);
+  const [transcript, setTranscript] = useState("");
+  const [steps, setSteps] = useState<Step[]>([]);
+
+  const handleTaskSubmit = (taskData: TaskDefinition) => {
+    setTaskDefinition(taskData);
+    toast.success("Task definition saved successfully!");
+    handleNextTab();
+  };
+
+  const handleTranscriptChange = (text: string) => {
+    setTranscript(text);
+  };
 
   const handleNextTab = () => {
     if (activeTab === "task") setActiveTab("media");
@@ -117,37 +142,7 @@ export default function CreateProcedure() {
           <TabsContent value="task">
             <Card>
               <CardContent className="pt-6">
-                <div className="space-y-6">
-                  <div>
-                    <h2 className="text-xl font-semibold mb-4">Task Definition</h2>
-                    <p className="text-sm text-gray-500 mb-6">
-                      Define the learning task with key performance indicators and presenter information.
-                    </p>
-                    <p className="text-sm bg-yellow-50 border border-yellow-200 p-4 rounded-md">
-                      Task definition form will be implemented here, based on the schema from your Prisma model.
-                    </p>
-                  </div>
-                  <div className="flex justify-end">
-                    <Button 
-                      onClick={() => {
-                        setTaskDefinition({
-                          name: "Sample Procedure",
-                          description: "This is a sample procedure",
-                          kpiTech: ["Technical Skill 1", "Technical Skill 2"],
-                          kpiConcept: ["Concept 1", "Concept 2"],
-                          presenter: "Dr. Jane Smith",
-                          affiliation: "Medical Center",
-                          date: new Date().toISOString(),
-                        });
-                        toast.success("Task definition saved successfully!");
-                        handleNextTab();
-                      }}
-                      className="bg-blue-600 hover:bg-blue-700"
-                    >
-                      Save & Continue <ChevronRight className="ml-2 h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
+                <TaskDefinitionForm onSubmit={handleTaskSubmit} />
               </CardContent>
             </Card>
           </TabsContent>
@@ -155,193 +150,163 @@ export default function CreateProcedure() {
           <TabsContent value="media">
             <Card>
               <CardContent className="pt-6">
-                <div className="space-y-6">
-                  <div>
-                    <h2 className="text-xl font-semibold mb-4">Media Library</h2>
-                    <p className="text-sm text-gray-500 mb-6">
-                      Upload supporting materials such as PDFs, images, audio files, and videos.
-                    </p>
-                    <p className="text-sm bg-yellow-50 border border-yellow-200 p-4 rounded-md">
-                      Media uploader component will be implemented here.
-                    </p>
-                  </div>
-                  <div className="flex justify-between">
-                    <Button 
-                      variant="outline" 
-                      onClick={handlePreviousTab}
-                    >
-                      <ChevronLeft className="mr-2 h-4 w-4" /> Previous Step
-                    </Button>
-                    <Button 
-                      onClick={handleNextTab}
-                      className="bg-blue-600 hover:bg-blue-700"
-                    >
-                      Next Step <ChevronRight className="ml-2 h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
+                <MediaUploader />
               </CardContent>
             </Card>
+            
+            <div className="flex justify-between mt-6">
+              <Button 
+                variant="outline" 
+                onClick={handlePreviousTab}
+              >
+                <ChevronLeft className="mr-2 h-4 w-4" /> Previous Step
+              </Button>
+              <Button 
+                onClick={handleNextTab}
+                className="bg-blue-600 hover:bg-blue-700"
+              >
+                Next Step <ChevronRight className="ml-2 h-4 w-4" />
+              </Button>
+            </div>
           </TabsContent>
           
           <TabsContent value="dictation">
-            <Card>
-              <CardContent className="pt-6">
-                <div className="space-y-6">
-                  <div>
-                    <h2 className="text-xl font-semibold mb-4">Voice Dictation</h2>
-                    <p className="text-sm text-gray-500 mb-6">
-                      Record your voice to create the procedure with AI assistance.
-                    </p>
-                    <p className="text-sm bg-yellow-50 border border-yellow-200 p-4 rounded-md">
-                      Voice recorder and transcript editor components will be implemented here.
-                    </p>
-                  </div>
-                  <div className="flex justify-between">
-                    <Button 
-                      variant="outline" 
-                      onClick={handlePreviousTab}
-                    >
-                      <ChevronLeft className="mr-2 h-4 w-4" /> Previous Step
-                    </Button>
-                    <Button 
-                      onClick={handleNextTab}
-                      className="bg-blue-600 hover:bg-blue-700"
-                    >
-                      Next Step <ChevronRight className="ml-2 h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <Card>
+                <CardContent className="pt-6">
+                  <h2 className="text-xl font-semibold mb-4">Voice Recording</h2>
+                  <VoiceRecorder onTranscriptUpdate={handleTranscriptChange} />
+                </CardContent>
+              </Card>
+              
+              <Card>
+                <CardContent className="pt-6">
+                  <h2 className="text-xl font-semibold mb-4">Transcript Editor</h2>
+                  <TranscriptEditor 
+                    transcript={transcript} 
+                    onChange={handleTranscriptChange}
+                  />
+                </CardContent>
+              </Card>
+            </div>
+            
+            <div className="flex justify-between mt-6">
+              <Button 
+                variant="outline" 
+                onClick={handlePreviousTab}
+              >
+                <ChevronLeft className="mr-2 h-4 w-4" /> Previous Step
+              </Button>
+              <Button 
+                onClick={handleNextTab}
+                className="bg-blue-600 hover:bg-blue-700"
+              >
+                Next Step <ChevronRight className="ml-2 h-4 w-4" />
+              </Button>
+            </div>
           </TabsContent>
           
           <TabsContent value="procedure">
             <Card>
               <CardContent className="pt-6">
-                <div className="space-y-6">
-                  <div>
-                    <h2 className="text-xl font-semibold mb-4">Procedure Steps</h2>
-                    <p className="text-sm text-gray-500 mb-6">
-                      Define and organize your procedure steps with associated media and questions.
-                    </p>
-                    <p className="text-sm bg-yellow-50 border border-yellow-200 p-4 rounded-md">
-                      Procedure step editor component will be implemented here.
-                    </p>
-                  </div>
-                  <div className="flex justify-between">
-                    <Button 
-                      variant="outline" 
-                      onClick={handlePreviousTab}
-                    >
-                      <ChevronLeft className="mr-2 h-4 w-4" /> Previous Step
-                    </Button>
-                    <Button 
-                      onClick={handleNextTab}
-                      className="bg-blue-600 hover:bg-blue-700"
-                    >
-                      Next Step <ChevronRight className="ml-2 h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
+                <TranscriptEditor 
+                  transcript={transcript} 
+                  onChange={handleTranscriptChange}
+                />
               </CardContent>
             </Card>
+            
+            <div className="flex justify-between mt-6">
+              <Button 
+                variant="outline" 
+                onClick={handlePreviousTab}
+              >
+                <ChevronLeft className="mr-2 h-4 w-4" /> Previous Step
+              </Button>
+              <Button 
+                onClick={handleNextTab}
+                className="bg-blue-600 hover:bg-blue-700"
+              >
+                Next Step <ChevronRight className="ml-2 h-4 w-4" />
+              </Button>
+            </div>
           </TabsContent>
           
           <TabsContent value="yaml">
             <Card>
               <CardContent className="pt-6">
-                <div className="space-y-6">
-                  <div>
-                    <h2 className="text-xl font-semibold mb-4">YAML Generation</h2>
-                    <p className="text-sm text-gray-500 mb-6">
-                      Auto-generate YAML schema of the procedure with decision points and conditionals.
-                    </p>
-                    <p className="text-sm bg-yellow-50 border border-yellow-200 p-4 rounded-md">
-                      YAML generation and editing component will be implemented here.
-                    </p>
-                  </div>
-                  <div className="flex justify-between">
-                    <Button 
-                      variant="outline" 
-                      onClick={handlePreviousTab}
-                    >
-                      <ChevronLeft className="mr-2 h-4 w-4" /> Previous Step
-                    </Button>
-                    <Button 
-                      onClick={handleNextTab}
-                      className="bg-blue-600 hover:bg-blue-700"
-                    >
-                      Next Step <ChevronRight className="ml-2 h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
+                <YamlGenerator 
+                  steps={steps} 
+                  procedureName={taskDefinition?.name || "Procedure"}
+                />
               </CardContent>
             </Card>
+            
+            <div className="flex justify-between mt-6">
+              <Button 
+                variant="outline" 
+                onClick={handlePreviousTab}
+              >
+                <ChevronLeft className="mr-2 h-4 w-4" /> Previous Step
+              </Button>
+              <Button 
+                onClick={handleNextTab}
+                className="bg-blue-600 hover:bg-blue-700"
+              >
+                Next Step <ChevronRight className="ml-2 h-4 w-4" />
+              </Button>
+            </div>
           </TabsContent>
           
           <TabsContent value="flowchart">
             <Card>
               <CardContent className="pt-6">
-                <div className="space-y-6">
-                  <div>
-                    <h2 className="text-xl font-semibold mb-4">Flowchart Visualization</h2>
-                    <p className="text-sm text-gray-500 mb-6">
-                      Visualize your procedure as an editable flowchart.
-                    </p>
-                    <p className="text-sm bg-yellow-50 border border-yellow-200 p-4 rounded-md">
-                      Flowchart editor component using Mermaid.js will be implemented here.
-                    </p>
-                  </div>
-                  <div className="flex justify-between">
-                    <Button 
-                      variant="outline" 
-                      onClick={handlePreviousTab}
-                    >
-                      <ChevronLeft className="mr-2 h-4 w-4" /> Previous Step
-                    </Button>
-                    <Button 
-                      onClick={handleNextTab}
-                      className="bg-blue-600 hover:bg-blue-700"
-                    >
-                      Next Step <ChevronRight className="ml-2 h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
+                <FlowchartViewer 
+                  steps={steps.map(step => step.content)}
+                />
               </CardContent>
             </Card>
+            
+            <div className="flex justify-between mt-6">
+              <Button 
+                variant="outline" 
+                onClick={handlePreviousTab}
+              >
+                <ChevronLeft className="mr-2 h-4 w-4" /> Previous Step
+              </Button>
+              <Button 
+                onClick={handleNextTab}
+                className="bg-blue-600 hover:bg-blue-700"
+              >
+                Next Step <ChevronRight className="ml-2 h-4 w-4" />
+              </Button>
+            </div>
           </TabsContent>
           
           <TabsContent value="simulation">
             <Card>
               <CardContent className="pt-6">
-                <div className="space-y-6">
-                  <div>
-                    <h2 className="text-xl font-semibold mb-4">Simulation Builder</h2>
-                    <p className="text-sm text-gray-500 mb-6">
-                      Create a voice-first simulation experience from your procedure.
-                    </p>
-                    <p className="text-sm bg-yellow-50 border border-yellow-200 p-4 rounded-md">
-                      Simulation builder component will be implemented here.
-                    </p>
-                  </div>
-                  <div className="flex justify-between">
-                    <Button 
-                      variant="outline" 
-                      onClick={handlePreviousTab}
-                    >
-                      <ChevronLeft className="mr-2 h-4 w-4" /> Previous Step
-                    </Button>
-                    <Button 
-                      className="bg-green-600 hover:bg-green-700"
-                      onClick={() => toast.success("Procedure saved successfully!")}
-                    >
-                      Save & Publish
-                    </Button>
-                  </div>
-                </div>
+                <SimulationBuilder 
+                  steps={steps}
+                  procedureName={taskDefinition?.name || "Procedure"}
+                />
               </CardContent>
             </Card>
+            
+            <div className="flex justify-between mt-6">
+              <Button 
+                variant="outline" 
+                onClick={handlePreviousTab}
+              >
+                <ChevronLeft className="mr-2 h-4 w-4" /> Previous Step
+              </Button>
+              <Button 
+                className="bg-green-600 hover:bg-green-700"
+                onClick={() => toast.success("Procedure saved successfully!")}
+              >
+                Save & Publish
+              </Button>
+            </div>
           </TabsContent>
         </Tabs>
       </main>
