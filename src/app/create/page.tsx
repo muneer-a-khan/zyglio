@@ -92,8 +92,8 @@ export default function CreateProcedure() {
       toast.success("Task definition saved successfully!");
       handleNextTab();
     } catch (error) {
-      console.error("Error saving task definition:", error);
-      toast.error("Failed to save task definition");
+      console.error("Error saving task definition:", error, JSON.stringify(error));
+      toast.error(`Failed to save task definition: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   };
 
