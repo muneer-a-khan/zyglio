@@ -1,15 +1,12 @@
-
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Card, CardContent } from "@/components/ui/card";
-import { Plus, Trash, ArrowUpDown, MessageSquarePlus, Zap, ArrowUp, ArrowDown } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Plus, Trash, ArrowUp, ArrowDown, MessageSquare, Zap, RotateCw } from "lucide-react";
+import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
-
-interface TranscriptEditorProps {
-  transcript: string;
-  onChange: (text: string) => void;
-}
+import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 
 interface Step {
   id: string;
@@ -17,11 +14,18 @@ interface Step {
   comments: string[];
 }
 
+interface TranscriptEditorProps {
+  transcript: string;
+  onChange: (text: string) => void;
+}
+
 const TranscriptEditor = ({ transcript, onChange }: TranscriptEditorProps) => {
   const [editedTranscript, setEditedTranscript] = useState("");
   const [steps, setSteps] = useState<Step[]>([]);
   const [isGeneratingSteps, setIsGeneratingSteps] = useState(false);
   const [isAddingQuestions, setIsAddingQuestions] = useState(false);
+  const [newComment, setNewComment] = useState("");
+  const [activeStepId, setActiveStepId] = useState<string | null>(null);
 
   useEffect(() => {
     setEditedTranscript(transcript);
@@ -43,149 +47,133 @@ const TranscriptEditor = ({ transcript, onChange }: TranscriptEditorProps) => {
       setSteps([...steps, newStep]);
       setEditedTranscript("");
       onChange("");
+      toast.success("Step created successfully");
     }
   };
 
-  const generateStepsWithAI = async () => {
-    if (!editedTranscript.trim()) {
-      toast.error("Please record or enter a transcript first");
-      return;
+  const updateStep = (id: string, content: string) => {
+    setSteps(steps.map(step => 
+      step.id === id ? { ...step, content } : step
+    ));
+  };
+
+  const deleteStep = (id: string) => {
+    setSteps(steps.filter(step => step.id !== id));
+    if (activeStepId === id) {
+      setActiveStepId(null);
     }
-
-    setIsGeneratingSteps(true);
-    
-    try {
-      // For demo purposes, we'll simulate AI processing with a timeout
-      // In a real implementation, this would be an API call to an AI service
-      setTimeout(() => {
-        const sentences = editedTranscript
-          .split(/(?<=\.|\?|\!)\s+/)
-          .filter(sentence => sentence.trim().length > 0);
-        
-        const generatedSteps = sentences.map(sentence => ({
-          id: crypto.randomUUID(),
-          content: sentence.trim(),
-          comments: []
-        }));
-        
-        setSteps(generatedSteps);
-        setEditedTranscript("");
-        onChange("");
-        toast.success("Steps generated successfully!");
-        setIsGeneratingSteps(false);
-      }, 1500);
-      
-    } catch (error) {
-      console.error("Error generating steps:", error);
-      toast.error("Failed to generate steps. Please try again.");
-      setIsGeneratingSteps(false);
-    }
+    toast.success("Step deleted");
   };
 
-  const addQuestionsWithAI = async () => {
-    if (steps.length === 0) {
-      toast.error("Please create steps first");
-      return;
-    }
-    
-    setIsAddingQuestions(true);
-    
-    try {
-      // Simulate AI processing
-      setTimeout(() => {
-        const updatedSteps = steps.map(step => {
-          // Only add a comment to steps that don't have comments yet
-          if (step.comments.length === 0) {
-            return {
-              ...step,
-              comments: ["Is this step necessary for all cases, or are there exceptions?"]
-            };
-          }
-          return step;
-        });
-        
-        setSteps(updatedSteps);
-        toast.success("Questions added successfully!");
-        setIsAddingQuestions(false);
-      }, 1500);
-      
-    } catch (error) {
-      console.error("Error adding questions:", error);
-      toast.error("Failed to add questions. Please try again.");
-      setIsAddingQuestions(false);
-    }
-  };
-
-  const handleStepChange = (id: string, newContent: string) => {
-    const updatedSteps = steps.map(step => 
-      step.id === id ? { ...step, content: newContent } : step
-    );
-    setSteps(updatedSteps);
-  };
-
-  const handleStepDelete = (id: string) => {
-    const updatedSteps = steps.filter(step => step.id !== id);
-    setSteps(updatedSteps);
-    toast.info("Step deleted");
-  };
-
-  const handleAddComment = (stepId: string) => {
-    const updatedSteps = steps.map(step => {
-      if (step.id === stepId) {
-        return {
-          ...step,
-          comments: [...step.comments, ""]
-        };
-      }
-      return step;
-    });
-    setSteps(updatedSteps);
-  };
-
-  const handleCommentChange = (stepId: string, commentIndex: number, content: string) => {
-    const updatedSteps = steps.map(step => {
-      if (step.id === stepId) {
-        const updatedComments = [...step.comments];
-        updatedComments[commentIndex] = content;
-        return {
-          ...step,
-          comments: updatedComments
-        };
-      }
-      return step;
-    });
-    setSteps(updatedSteps);
-  };
-
-  const handleDeleteComment = (stepId: string, commentIndex: number) => {
-    const updatedSteps = steps.map(step => {
-      if (step.id === stepId) {
-        const updatedComments = step.comments.filter((_, i) => i !== commentIndex);
-        return {
-          ...step,
-          comments: updatedComments
-        };
-      }
-      return step;
-    });
-    setSteps(updatedSteps);
-  };
-
-  const moveStep = (index: number, direction: 'up' | 'down') => {
-    if ((direction === 'up' && index === 0) || 
-        (direction === 'down' && index === steps.length - 1)) {
-      return;
-    }
-    
+  const moveStepUp = (index: number) => {
+    if (index === 0) return;
     const newSteps = [...steps];
-    const newIndex = direction === 'up' ? index - 1 : index + 1;
-    
-    [newSteps[index], newSteps[newIndex]] = [newSteps[newIndex], newSteps[index]];
+    const temp = newSteps[index];
+    newSteps[index] = newSteps[index - 1];
+    newSteps[index - 1] = temp;
     setSteps(newSteps);
   };
 
+  const moveStepDown = (index: number) => {
+    if (index === steps.length - 1) return;
+    const newSteps = [...steps];
+    const temp = newSteps[index];
+    newSteps[index] = newSteps[index + 1];
+    newSteps[index + 1] = temp;
+    setSteps(newSteps);
+  };
+
+  const addComment = (stepId: string) => {
+    if (!newComment.trim()) return;
+    
+    setSteps(steps.map(step => 
+      step.id === stepId 
+        ? { ...step, comments: [...step.comments, newComment.trim()] } 
+        : step
+    ));
+    
+    setNewComment("");
+    toast.success("Comment added");
+  };
+
+  const removeComment = (stepId: string, commentIndex: number) => {
+    setSteps(steps.map(step => 
+      step.id === stepId 
+        ? { 
+            ...step, 
+            comments: step.comments.filter((_, i) => i !== commentIndex) 
+          } 
+        : step
+    ));
+  };
+
+  const generateStepsWithAI = () => {
+    if (!editedTranscript.trim()) return;
+    
+    setIsGeneratingSteps(true);
+    
+    // Simulate AI processing
+    setTimeout(() => {
+      // Example: Split by sentences and create steps
+      const sentences = editedTranscript
+        .split(/[.!?]+/)
+        .filter(sentence => sentence.trim().length > 5)
+        .map(sentence => sentence.trim());
+      
+      const newSteps = sentences.map(sentence => ({
+        id: crypto.randomUUID(),
+        content: sentence,
+        comments: []
+      }));
+      
+      if (newSteps.length > 0) {
+        setSteps([...steps, ...newSteps]);
+        setEditedTranscript("");
+        onChange("");
+        toast.success(`Created ${newSteps.length} steps from transcript`);
+      } else {
+        toast.error("Could not generate any meaningful steps from transcript");
+      }
+      
+      setIsGeneratingSteps(false);
+    }, 1500);
+  };
+
+  const addQuestionsWithAI = () => {
+    if (steps.length === 0) return;
+    
+    setIsAddingQuestions(true);
+    
+    // Simulate AI processing
+    setTimeout(() => {
+      const updatedSteps = steps.map(step => {
+        // Only add a question if the step doesn't already have one
+        if (step.comments.length === 0) {
+          const questionTypes = [
+            "What is the importance of this step?",
+            "What could go wrong at this point?",
+            "What alternative approaches could be used here?",
+            "What is the next step after this one?",
+            "Why is this technique preferred?"
+          ];
+          
+          const randomQuestion = questionTypes[Math.floor(Math.random() * questionTypes.length)];
+          return {
+            ...step,
+            comments: [...step.comments, randomQuestion]
+          };
+        }
+        return step;
+      });
+      
+      setSteps(updatedSteps);
+      toast.success("Added questions to steps");
+      setIsAddingQuestions(false);
+    }, 2000);
+  };
+
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <div className="bg-white rounded-lg shadow p-4 border">
         <h3 className="text-lg font-medium mb-2">Current Transcript</h3>
         <Textarea
@@ -199,6 +187,7 @@ const TranscriptEditor = ({ transcript, onChange }: TranscriptEditorProps) => {
             onClick={createStep} 
             disabled={!editedTranscript.trim()}
             size="sm"
+            className="bg-blue-600 hover:bg-blue-700"
           >
             <Plus className="mr-1 h-4 w-4" /> Create Single Step
           </Button>
@@ -222,100 +211,112 @@ const TranscriptEditor = ({ transcript, onChange }: TranscriptEditorProps) => {
               size="sm"
               className={isAddingQuestions ? "animate-pulse" : ""}
             >
-              <MessageSquarePlus className="mr-1 h-4 w-4" /> 
+              <MessageSquare className="mr-1 h-4 w-4" /> 
               {isAddingQuestions ? "Adding..." : "Add Questions with AI"}
             </Button>
           </div>
         </div>
       </div>
 
-      <div className="space-y-3">
-        <h3 className="text-lg font-medium">Procedural Steps</h3>
-        {steps.length === 0 ? (
-          <div className="text-center py-8 bg-gray-50 rounded-lg border border-dashed">
-            <p className="text-muted-foreground">No steps created yet. Record and create your first step.</p>
-          </div>
-        ) : (
-          <div className="space-y-4">
+      {steps.length > 0 && (
+        <div>
+          <h3 className="text-lg font-medium mb-3">Procedure Steps ({steps.length})</h3>
+          <div className="space-y-3">
             {steps.map((step, index) => (
-              <Card key={step.id} className="transition-all hover:shadow-md">
-                <CardContent className="pt-4">
-                  <div className="flex items-center justify-between mb-2">
-                    <h4 className="font-medium">Step {index + 1}</h4>
-                    <div className="flex gap-1">
-                      <Button 
-                        variant="ghost" 
-                        size="sm" 
-                        onClick={() => moveStep(index, 'up')}
-                        disabled={index === 0}
-                        className="text-xs h-7 px-2"
-                      >
-                        <ArrowUp className="h-3.5 w-3.5" />
-                      </Button>
-                      
-                      <Button 
-                        variant="ghost" 
-                        size="sm" 
-                        onClick={() => moveStep(index, 'down')}
-                        disabled={index === steps.length - 1}
-                        className="text-xs h-7 px-2"
-                      >
-                        <ArrowDown className="h-3.5 w-3.5" />
-                      </Button>
-                      
-                      <Button 
-                        variant="ghost" 
-                        size="sm" 
-                        onClick={() => handleStepDelete(step.id)}
-                        className="text-xs h-7 px-2 text-red-500 hover:text-red-700 hover:bg-red-50"
-                      >
-                        <Trash className="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
+              <Card key={step.id} className={cn(
+                "border", 
+                activeStepId === step.id ? "border-blue-500 shadow-md" : ""
+              )}>
+                <CardHeader className="p-3 pb-0 flex flex-row items-start justify-between">
+                  <CardTitle className="text-base">Step {index + 1}</CardTitle>
+                  <div className="flex gap-1">
+                    <Button 
+                      variant="ghost" 
+                      size="icon" 
+                      className="h-8 w-8"
+                      onClick={() => moveStepUp(index)}
+                      disabled={index === 0}
+                    >
+                      <ArrowUp className="h-4 w-4" />
+                    </Button>
+                    <Button 
+                      variant="ghost" 
+                      size="icon" 
+                      className="h-8 w-8"
+                      onClick={() => moveStepDown(index)}
+                      disabled={index === steps.length - 1}
+                    >
+                      <ArrowDown className="h-4 w-4" />
+                    </Button>
+                    <Button 
+                      variant="ghost" 
+                      size="icon" 
+                      className="h-8 w-8 text-red-500"
+                      onClick={() => deleteStep(step.id)}
+                    >
+                      <Trash className="h-4 w-4" />
+                    </Button>
                   </div>
-                  
+                </CardHeader>
+                <CardContent className="p-3">
                   <Textarea
                     value={step.content}
-                    onChange={(e) => handleStepChange(step.id, e.target.value)}
-                    className="min-h-[80px] mb-2"
+                    onChange={(e) => updateStep(step.id, e.target.value)}
+                    className="min-h-[80px] mb-3"
                   />
                   
-                  {/* Comments/Questions section */}
-                  <div className="mt-3">
-                    {step.comments.map((comment, commentIndex) => (
-                      <div key={commentIndex} className="flex mt-2 gap-2">
-                        <Textarea
-                          value={comment}
-                          onChange={(e) => handleCommentChange(step.id, commentIndex, e.target.value)}
-                          className="text-sm bg-gray-50 min-h-[60px] flex-grow"
-                          placeholder="Comment or question..."
-                        />
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 w-7 p-0 text-red-500"
-                          onClick={() => handleDeleteComment(step.id, commentIndex)}
-                        >
-                          <Trash className="h-3.5 w-3.5" />
-                        </Button>
+                  {step.comments.length > 0 && (
+                    <div className="mb-3 space-y-2">
+                      <h4 className="text-sm font-medium">Comments/Questions:</h4>
+                      <div className="space-y-2">
+                        {step.comments.map((comment, commentIndex) => (
+                          <div key={commentIndex} className="flex justify-between items-start text-sm p-2 bg-gray-50 rounded-md">
+                            <p>{comment}</p>
+                            <Button 
+                              variant="ghost" 
+                              size="icon" 
+                              className="h-6 w-6"
+                              onClick={() => removeComment(step.id, commentIndex)}
+                            >
+                              <Trash className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        ))}
                       </div>
-                    ))}
-                    
-                    <Button
-                      variant="ghost"
+                    </div>
+                  )}
+                  
+                  <div className="flex gap-2">
+                    <Input 
+                      placeholder="Add a comment or question..." 
+                      value={activeStepId === step.id ? newComment : ""}
+                      onChange={(e) => {
+                        setActiveStepId(step.id);
+                        setNewComment(e.target.value);
+                      }}
+                      className="text-sm"
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && activeStepId === step.id) {
+                          e.preventDefault();
+                          addComment(step.id);
+                        }
+                      }}
+                    />
+                    <Button 
+                      variant="outline" 
                       size="sm"
-                      onClick={() => handleAddComment(step.id)}
-                      className="mt-2"
+                      onClick={() => addComment(step.id)}
+                      disabled={!newComment.trim() || activeStepId !== step.id}
                     >
-                      <MessageSquarePlus className="mr-1 h-4 w-4" /> Add Comment
+                      <Plus className="h-4 w-4" />
                     </Button>
                   </div>
                 </CardContent>
               </Card>
             ))}
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 };
