@@ -72,6 +72,135 @@ export interface Database {
           }
         ]
       }
+      procedures: {
+        Row: {
+          id: string
+          name: string
+          description: string
+          presenter: string
+          affiliation: string
+          date: string
+          kpi_tech: string[]
+          kpi_concept: string[]
+          transcript: string
+          yaml_content: string | null
+          simulation_settings: Json | null
+          created_at: string
+          updated_at: string
+          user_id: string | null
+        }
+        Insert: {
+          id?: string
+          name: string
+          description: string
+          presenter: string
+          affiliation: string
+          date: string
+          kpi_tech?: string[]
+          kpi_concept?: string[]
+          transcript?: string
+          yaml_content?: string | null
+          simulation_settings?: Json | null
+          created_at?: string
+          updated_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          id?: string
+          name?: string
+          description?: string
+          presenter?: string
+          affiliation?: string
+          date?: string
+          kpi_tech?: string[]
+          kpi_concept?: string[]
+          transcript?: string
+          yaml_content?: string | null
+          simulation_settings?: Json | null
+          created_at?: string
+          updated_at?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "procedures_user_id_fkey"
+            columns: ["user_id"]
+            referencedRelation: "User"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      media_items: {
+        Row: {
+          id: string
+          procedure_id: string
+          name: string
+          type: string
+          url: string
+          size: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          procedure_id: string
+          name: string
+          type: string
+          url: string
+          size: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          procedure_id?: string
+          name?: string
+          type?: string
+          url?: string
+          size?: string
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "media_items_procedure_id_fkey"
+            columns: ["procedure_id"]
+            referencedRelation: "procedures"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      steps: {
+        Row: {
+          id: string
+          procedure_id: string
+          content: string
+          comments: string[]
+          order: number
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          procedure_id: string
+          content: string
+          comments?: string[]
+          order: number
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          procedure_id?: string
+          content?: string
+          comments?: string[]
+          order?: number
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "steps_procedure_id_fkey"
+            columns: ["procedure_id"]
+            referencedRelation: "procedures"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
     }
     Views: {
       [_ in never]: never
