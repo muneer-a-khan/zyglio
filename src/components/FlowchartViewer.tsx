@@ -1,132 +1,116 @@
-import { useEffect, useRef, useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Download, Edit, ZoomIn, ZoomOut, RefreshCw } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
+import { Textarea } from "@/components/ui/textarea";
+import mermaid from "mermaid";
 
-interface FlowchartViewerProps {
+export interface FlowchartViewerProps {
   steps: string[];
+  initialMermaid?: string;
+  onChange?: (content: string) => void;
 }
 
-const FlowchartViewer = ({ steps = [] }: FlowchartViewerProps) => {
-  const [activeTab, setActiveTab] = useState("flowchart");
+const FlowchartViewer = ({ steps, initialMermaid = "", onChange }: FlowchartViewerProps) => {
+  const [activeTab, setActiveTab] = useState("visual");
   const [isRendering, setIsRendering] = useState(false);
   const [mermaidCode, setMermaidCode] = useState("");
-  const mermaidRef = useRef<HTMLDivElement>(null);
+  const flowchartRef = useRef<HTMLDivElement>(null);
 
+  // Initialize mermaid library
   useEffect(() => {
-    // Dynamically import mermaid to avoid SSR issues
-    import("mermaid")
-      .then((mermaid) => {
-        mermaid.default.initialize({
-          startOnLoad: true,
-          theme: "neutral",
-          flowchart: {
-            useMaxWidth: true,
-            curve: "basis",
-          },
-          securityLevel: "loose",
-        });
-
-        renderFlowchart();
-      })
-      .catch((err) => {
-        console.error("Error loading mermaid:", err);
-        toast.error("Failed to load flowchart library");
-      });
-  }, []);
-
-  useEffect(() => {
-    renderFlowchart();
-  }, [steps]);
-
-  const renderFlowchart = async () => {
-    if (steps.length === 0 || !mermaidRef.current) return;
-
-    setIsRendering(true);
-
-    try {
-      const flowchartDefinition = generateMermaidFlowchart(steps);
-      setMermaidCode(flowchartDefinition);
-
-      // Dynamically import mermaid
-      const mermaid = await import("mermaid");
-      mermaidRef.current.innerHTML = ""; // Clear previous render
-
-      const { svg } = await mermaid.default.render(
-        "mermaid-svg",
-        flowchartDefinition
-      );
-      if (mermaidRef.current) {
-        mermaidRef.current.innerHTML = svg;
-      }
-    } catch (error) {
-      console.error("Error rendering flowchart:", error);
-      toast.error("Failed to render flowchart");
-    } finally {
-      setIsRendering(false);
-    }
-  };
-
-  const generateMermaidFlowchart = (steps: string[]): string => {
-    let flowchart = "graph TD;\n";
-
-    if (steps.length === 0) {
-      return flowchart + 'noSteps["No steps available"]';
-    }
-
-    // Add start node
-    flowchart += "start([Start]);\n";
-
-    // Add each step
-    steps.forEach((step, index) => {
-      const truncatedStep =
-        step.length > 40 ? step.substring(0, 40) + "..." : step;
-      const sanitizedStep = truncatedStep.replace(/"/g, "'");
-      flowchart += `step${index}["Step ${index + 1}: ${sanitizedStep}"];\n`;
+    mermaid.initialize({
+      startOnLoad: true,
+      securityLevel: 'loose',
+      theme: 'default'
     });
-
-    // Add end node
-    flowchart += "end([End]);\n";
-
-    // Connect all nodes
-    flowchart += "start --> step0;\n";
-
-    for (let i = 0; i < steps.length - 1; i++) {
-      flowchart += `step${i} --> step${i + 1};\n`;
-    }
-
-    if (steps.length > 0) {
-      flowchart += `step${steps.length - 1} --> end;\n`;
+  }, []);
+  
+  // Load initial mermaid code if provided
+  useEffect(() => {
+    if (initialMermaid) {
+      setMermaidCode(initialMermaid);
     } else {
-      flowchart += "start --> end;\n";
+      // Generate mermaid code from steps
+      generateFlowchart();
     }
-
-    return flowchart;
-  };
-
-  const downloadSvg = () => {
-    if (mermaidRef.current) {
-      const svgData = mermaidRef.current.innerHTML;
-      const svgBlob = new Blob([svgData], {
-        type: "image/svg+xml;charset=utf-8",
-      });
-      const svgUrl = URL.createObjectURL(svgBlob);
-      const downloadLink = document.createElement("a");
-      downloadLink.href = svgUrl;
-      downloadLink.download = "procedure_flowchart.svg";
-      document.body.appendChild(downloadLink);
-      downloadLink.click();
-      document.body.removeChild(downloadLink);
-      URL.revokeObjectURL(svgUrl);
-      toast.success("Flowchart downloaded as SVG");
+  }, [initialMermaid, steps]);
+  
+  // Render the flowchart whenever the code changes
+  useEffect(() => {
+    if (flowchartRef.current && mermaidCode) {
+      try {
+        mermaid.render('flowchart', mermaidCode, (svgCode) => {
+          if (flowchartRef.current) {
+            flowchartRef.current.innerHTML = svgCode;
+          }
+        });
+      } catch (error) {
+        console.error('Error rendering mermaid flowchart:', error);
+      }
     }
+    
+    // Notify parent component about the code change
+    if (onChange) {
+      onChange(mermaidCode);
+    }
+  }, [mermaidCode, onChange]);
+  
+  const generateFlowchart = () => {
+    if (steps.length === 0) {
+      setMermaidCode("");
+      return;
+    }
+    
+    let code = "flowchart TD\n";
+    
+    steps.forEach((step, index) => {
+      const currentId = `step${index + 1}`;
+      const nextId = `step${index + 2}`;
+      
+      // Add the current step node
+      code += `  ${currentId}["Step ${index + 1}: ${step.substring(0, 30)}${step.length > 30 ? '...' : ''}"]\n`;
+      
+      // Add connection to the next step if it exists
+      if (index < steps.length - 1) {
+        code += `  ${currentId} --> ${nextId}\n`;
+      }
+    });
+    
+    setMermaidCode(code);
   };
-
-  const refreshFlowchart = () => {
-    renderFlowchart();
-    toast.success("Flowchart refreshed");
+  
+  const handleCodeChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setMermaidCode(e.target.value);
+  };
+  
+  const copyToClipboard = () => {
+    navigator.clipboard.writeText(mermaidCode)
+      .then(() => toast.success("Flowchart code copied to clipboard"))
+      .catch(() => toast.error("Failed to copy code"));
+  };
+  
+  const exportAsSvg = () => {
+    if (flowchartRef.current) {
+      const svgElement = flowchartRef.current.querySelector('svg');
+      if (svgElement) {
+        const svgData = new XMLSerializer().serializeToString(svgElement);
+        const blob = new Blob([svgData], { type: 'image/svg+xml' });
+        const url = URL.createObjectURL(blob);
+        
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = 'procedure_flowchart.svg';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        
+        toast.success("Flowchart exported as SVG");
+      }
+    }
   };
 
   return (
@@ -137,7 +121,7 @@ const FlowchartViewer = ({ steps = [] }: FlowchartViewerProps) => {
           <Button
             variant="outline"
             size="sm"
-            onClick={downloadSvg}
+            onClick={exportAsSvg}
             disabled={steps.length === 0}
           >
             <Download className="mr-1 h-4 w-4" /> Export
@@ -145,7 +129,7 @@ const FlowchartViewer = ({ steps = [] }: FlowchartViewerProps) => {
           <Button
             variant="outline"
             size="sm"
-            onClick={refreshFlowchart}
+            onClick={generateFlowchart}
             disabled={isRendering}
           >
             <RefreshCw
@@ -157,35 +141,40 @@ const FlowchartViewer = ({ steps = [] }: FlowchartViewerProps) => {
       </CardHeader>
       <CardContent>
         <Tabs
-          defaultValue="flowchart"
+          defaultValue="visual"
           value={activeTab}
           onValueChange={setActiveTab}
         >
           <TabsList className="mb-4">
-            <TabsTrigger value="flowchart">Flowchart</TabsTrigger>
-            <TabsTrigger value="code">Mermaid Code</TabsTrigger>
+            <TabsTrigger value="visual">Visual</TabsTrigger>
+            <TabsTrigger value="code">Code</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="flowchart">
-            {steps.length === 0 ? (
-              <div className="text-center py-12 bg-gray-50 rounded-lg border border-dashed">
-                <p className="text-muted-foreground">
-                  Create steps to generate a flowchart
-                </p>
+          <TabsContent value="visual">
+            <div className="bg-white rounded-lg border p-4 overflow-auto">
+              <div ref={flowchartRef} className="flex justify-center min-h-[300px]">
+                {!mermaidCode && (
+                  <div className="flex items-center justify-center h-full text-gray-400">
+                    No steps available to display
+                  </div>
+                )}
               </div>
-            ) : (
-              <div
-                ref={mermaidRef}
-                className="overflow-auto max-w-full"
-                style={{ minHeight: "300px" }}
-              />
-            )}
+            </div>
           </TabsContent>
 
           <TabsContent value="code">
-            <pre className="bg-gray-50 p-4 rounded-md overflow-auto max-h-[300px] text-sm">
-              {mermaidCode || "No code generated yet"}
-            </pre>
+            <Textarea
+              value={mermaidCode}
+              onChange={handleCodeChange}
+              placeholder="Enter mermaid flowchart code here..."
+              className="font-mono min-h-[300px]"
+            />
+            
+            <div className="flex justify-end mt-4">
+              <Button variant="outline" onClick={copyToClipboard}>
+                Copy to Clipboard
+              </Button>
+            </div>
           </TabsContent>
         </Tabs>
       </CardContent>
