@@ -68,11 +68,48 @@ interface ProcedureRecord {
 
 class ProcedureService {
   private currentProcedureId: string | null = null;
+  private isAuthenticated: boolean = false;
 
   constructor() {
     // Initialize with a new ID or get from local storage/session
     if (typeof window !== 'undefined') {
       this.currentProcedureId = localStorage.getItem('current_procedure_id') || null;
+      this.initializeAuth();
+    }
+  }
+
+  /**
+   * Initialize authentication (sign in anonymously)
+   */
+  private async initializeAuth(): Promise<void> {
+    try {
+      // Check if we already have a session
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      
+      if (sessionError) throw sessionError;
+      
+      if (session) {
+        this.isAuthenticated = true;
+        return;
+      }
+      
+      // Sign in anonymously
+      const { error: signInError } = await supabase.auth.signInAnonymously();
+      
+      if (signInError) throw signInError;
+      
+      this.isAuthenticated = true;
+    } catch (error) {
+      console.error('Authentication error:', error);
+    }
+  }
+
+  /**
+   * Ensures authentication before operations
+   */
+  private async ensureAuth(): Promise<void> {
+    if (!this.isAuthenticated) {
+      await this.initializeAuth();
     }
   }
 
@@ -81,6 +118,9 @@ class ProcedureService {
    */
   async createProcedure(taskDefinition: TaskDefinition): Promise<string> {
     try {
+      // Ensure we're authenticated first
+      await this.ensureAuth();
+      
       if (!this.currentProcedureId) {
         const procedureId = uuidv4();
         
@@ -120,6 +160,8 @@ class ProcedureService {
    */
   async updateProcedure(procedureData: Partial<Procedure>): Promise<void> {
     try {
+      await this.ensureAuth();
+      
       if (!this.currentProcedureId) {
         throw new Error('No active procedure to update');
       }
@@ -149,6 +191,8 @@ class ProcedureService {
    */
   async saveSteps(steps: Step[]): Promise<void> {
     try {
+      await this.ensureAuth();
+      
       if (!this.currentProcedureId) {
         throw new Error('No active procedure to update steps for');
       }
@@ -190,6 +234,8 @@ class ProcedureService {
    */
   async saveMediaItems(mediaItems: MediaItem[]): Promise<void> {
     try {
+      await this.ensureAuth();
+      
       if (!this.currentProcedureId) {
         throw new Error('No active procedure to update media for');
       }
@@ -232,6 +278,8 @@ class ProcedureService {
    */
   async saveTranscript(transcript: string): Promise<void> {
     try {
+      await this.ensureAuth();
+      
       // The transcript field doesn't exist in the procedures table
       // For now, we'll store it in memory only
       console.warn('saveTranscript: transcript field does not exist in procedures table');
@@ -247,6 +295,8 @@ class ProcedureService {
    */
   async saveYaml(yamlContent: string): Promise<void> {
     try {
+      await this.ensureAuth();
+      
       // The yaml_content field doesn't exist in the procedures table
       // For now, we'll store it in memory only
       console.warn('saveYaml: yaml_content field does not exist in procedures table');
@@ -262,6 +312,8 @@ class ProcedureService {
    */
   async saveFlowchart(flowchartCode: string): Promise<void> {
     try {
+      await this.ensureAuth();
+      
       // The flowchart_code field doesn't exist in the procedures table
       // For now, we'll store it in memory only
       console.warn('saveFlowchart: flowchart_code field does not exist in procedures table');
@@ -277,6 +329,8 @@ class ProcedureService {
    */
   async saveSimulationSettings(simulationSettings: SimulationSettings): Promise<void> {
     try {
+      await this.ensureAuth();
+      
       // The simulation_settings field doesn't exist in the procedures table
       // For now, we'll store it in memory only
       console.warn('saveSimulationSettings: simulation_settings field does not exist in procedures table');
@@ -292,6 +346,8 @@ class ProcedureService {
    */
   async getProcedure(id?: string): Promise<Procedure | null> {
     try {
+      await this.ensureAuth();
+      
       const procedureId = id || this.currentProcedureId;
       
       if (!procedureId) {
@@ -367,6 +423,8 @@ class ProcedureService {
    */
   async getAllProcedures(): Promise<Procedure[]> {
     try {
+      await this.ensureAuth();
+      
       const { data, error } = await supabase
         .from('procedures')
         .select('*')
@@ -399,6 +457,8 @@ class ProcedureService {
    */
   async publishProcedure(): Promise<boolean> {
     try {
+      await this.ensureAuth();
+      
       if (!this.currentProcedureId) {
         throw new Error('No active procedure to publish');
       }

@@ -93,7 +93,13 @@ export default function CreateProcedure() {
       handleNextTab();
     } catch (error) {
       console.error("Error saving task definition:", error, JSON.stringify(error));
-      toast.error(`Failed to save task definition: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      
+      // Check if this is a Row Level Security error
+      if (error instanceof Error && error.message.includes('new row violates row-level security policy')) {
+        toast.error('Cannot create procedure due to permission restrictions. Please sign in to continue.');
+      } else {
+        toast.error(`Failed to save task definition: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
     }
   };
 
