@@ -40,12 +40,33 @@ export interface Procedure {
   flowchartCode?: string;
 }
 
+// Define database record types that match Supabase schema
+interface ProcedureRecord {
+  id: string;
+  title: string;
+  description: string;
+  created_at: string;
+  updated_at: string;
+  presenter?: string;
+  affiliation?: string;
+  kpi_tech?: string[];
+  kpi_concept?: string[];
+  date?: string;
+  transcript?: string;
+  yaml_content?: string;
+  flowchart_code?: string;
+  published?: boolean;
+  published_at?: string;
+}
+
 class ProcedureService {
   private currentProcedureId: string | null = null;
 
   constructor() {
     // Initialize with a new ID or get from local storage/session
-    this.currentProcedureId = localStorage.getItem('current_procedure_id') || null;
+    if (typeof window !== 'undefined') {
+      this.currentProcedureId = localStorage.getItem('current_procedure_id') || null;
+    }
   }
 
   /**
@@ -62,6 +83,11 @@ class ProcedureService {
             id: procedureId,
             title: taskDefinition.name,
             description: taskDefinition.description,
+            presenter: taskDefinition.presenter,
+            affiliation: taskDefinition.affiliation,
+            kpi_tech: taskDefinition.kpiTech,
+            kpi_concept: taskDefinition.kpiConcept,
+            date: taskDefinition.date,
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString()
           });
@@ -69,7 +95,9 @@ class ProcedureService {
         if (error) throw error;
         
         // Store procedure ID in local storage
-        localStorage.setItem('current_procedure_id', procedureId);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('current_procedure_id', procedureId);
+        }
         this.currentProcedureId = procedureId;
         
         return procedureId;
@@ -91,12 +119,25 @@ class ProcedureService {
         throw new Error('No active procedure to update');
       }
 
+      // Map from Procedure interface to database field names
+      const dbData: Record<string, any> = {
+        updated_at: new Date().toISOString()
+      };
+
+      if (procedureData.title) dbData.title = procedureData.title;
+      if (procedureData.description) dbData.description = procedureData.description;
+      if (procedureData.presenter) dbData.presenter = procedureData.presenter;
+      if (procedureData.affiliation) dbData.affiliation = procedureData.affiliation;
+      if (procedureData.kpiTech) dbData.kpi_tech = procedureData.kpiTech;
+      if (procedureData.kpiConcept) dbData.kpi_concept = procedureData.kpiConcept;
+      if (procedureData.date) dbData.date = procedureData.date;
+      if (procedureData.transcript) dbData.transcript = procedureData.transcript;
+      if (procedureData.yamlContent) dbData.yaml_content = procedureData.yamlContent;
+      if (procedureData.flowchartCode) dbData.flowchart_code = procedureData.flowchartCode;
+
       const { error } = await supabase
         .from('procedures')
-        .update({
-          ...procedureData,
-          updated_at: new Date().toISOString()
-        })
+        .update(dbData)
         .eq('id', this.currentProcedureId);
 
       if (error) throw error;
@@ -126,7 +167,7 @@ class ProcedureService {
       // Insert new steps
       const stepsToInsert = steps.map((step, index) => ({
         id: step.id,
-        procedure_id: this.currentProcedureId,
+        procedure_id: this.currentProcedureId as string,
         title: `Step ${index + 1}`,
         description: step.content,
         step_number: index + 1,
@@ -134,11 +175,13 @@ class ProcedureService {
         updated_at: new Date().toISOString()
       }));
 
-      const { error: insertError } = await supabase
-        .from('procedure_steps')
-        .insert(stepsToInsert);
+      if (stepsToInsert.length > 0) {
+        const { error: insertError } = await supabase
+          .from('procedure_steps')
+          .insert(stepsToInsert);
 
-      if (insertError) throw insertError;
+        if (insertError) throw insertError;
+      }
     } catch (error) {
       console.error('Error saving steps:', error);
       throw error;
@@ -165,20 +208,22 @@ class ProcedureService {
       // Insert new media items
       const mediaToInsert = mediaItems.map(item => ({
         id: item.id,
-        step_id: this.currentProcedureId,
+        step_id: this.currentProcedureId as string,
         title: item.caption || 'Media',
-        description: item.caption,
+        description: item.caption || null,
         media_type: item.type,
         media_url: item.url,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       }));
 
-      const { error: insertError } = await supabase
-        .from('mentor_media')
-        .insert(mediaToInsert);
+      if (mediaToInsert.length > 0) {
+        const { error: insertError } = await supabase
+          .from('mentor_media')
+          .insert(mediaToInsert);
 
-      if (insertError) throw insertError;
+        if (insertError) throw insertError;
+      }
     } catch (error) {
       console.error('Error saving media items:', error);
       throw error;
@@ -241,6 +286,8 @@ class ProcedureService {
 
       if (procedureError) throw procedureError;
 
+      const record = procedureData as ProcedureRecord;
+
       // Get procedure steps
       const { data: stepsData, error: stepsError } = await supabase
         .from('procedure_steps')
@@ -274,19 +321,19 @@ class ProcedureService {
       }));
 
       return {
-        id: procedureData.id,
-        title: procedureData.title,
-        description: procedureData.description,
-        presenter: procedureData.presenter || '',
-        affiliation: procedureData.affiliation || '',
-        kpiTech: procedureData.kpi_tech || [],
-        kpiConcept: procedureData.kpi_concept || [],
-        date: procedureData.date || new Date().toISOString(),
+        id: record.id,
+        title: record.title,
+        description: record.description,
+        presenter: record.presenter || '',
+        affiliation: record.affiliation || '',
+        kpiTech: record.kpi_tech || [],
+        kpiConcept: record.kpi_concept || [],
+        date: record.date || new Date().toISOString(),
         steps,
         mediaItems,
-        transcript: procedureData.transcript,
-        yamlContent: procedureData.yaml_content,
-        flowchartCode: procedureData.flowchart_code
+        transcript: record.transcript,
+        yamlContent: record.yaml_content,
+        flowchartCode: record.flowchart_code
       };
     } catch (error) {
       console.error('Error loading procedure:', error);
@@ -306,7 +353,9 @@ class ProcedureService {
 
       if (error) throw error;
 
-      return data.map(item => ({
+      if (!data) return [];
+
+      return data.map((item: ProcedureRecord) => ({
         id: item.id,
         title: item.title,
         description: item.description,
@@ -345,7 +394,9 @@ class ProcedureService {
       if (error) throw error;
 
       // Clear the current procedure ID from local storage
-      localStorage.removeItem('current_procedure_id');
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('current_procedure_id');
+      }
       this.currentProcedureId = null;
       
       return true;
@@ -359,7 +410,9 @@ class ProcedureService {
    * Clears the current procedure context
    */
   clearCurrentProcedure(): void {
-    localStorage.removeItem('current_procedure_id');
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('current_procedure_id');
+    }
     this.currentProcedureId = null;
   }
 }
