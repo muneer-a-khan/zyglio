@@ -14,6 +14,12 @@ model User {
   name          String?
   createdAt     DateTime       @default(now()) @db.Timestamptz(6)
   learningTasks LearningTask[]
+  role          user_role      @default(trainee)
+  
+  // No password field as it's managed by Supabase Auth
+  
+  // Maps to auth.users in Supabase
+  @@map("users")
 }
 
 model LearningTask {

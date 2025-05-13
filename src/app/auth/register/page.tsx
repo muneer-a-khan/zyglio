@@ -1,18 +1,19 @@
 "use client";
 
 import { useState } from "react";
-import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import Link from "next/link";
+import { supabase } from "@/integrations/supabase/client";
 
-export default function SignIn() {
+export default function Register() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [name, setName] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
 
@@ -21,22 +22,31 @@ export default function SignIn() {
     setIsLoading(true);
 
     try {
-      const result = await signIn("credentials", {
+      // Create user in Supabase Auth
+      const { data, error } = await supabase.auth.signUp({
         email,
         password,
-        redirect: false,
+        options: {
+          data: {
+            name,
+          },
+        },
       });
 
-      if (result?.error) {
-        toast.error("Invalid credentials");
+      if (error) {
+        toast.error(error.message);
+        return;
+      }
+
+      if (data.user) {
+        toast.success("Registration successful! Please sign in.");
+        router.push("/auth/signin");
       } else {
-        toast.success("Signed in successfully");
-        router.push("/create");
-        router.refresh();
+        toast.info("Please check your email to confirm your account.");
       }
     } catch (error) {
-      console.error("Sign in error:", error);
-      toast.error("An error occurred during sign in");
+      console.error("Registration error:", error);
+      toast.error("An error occurred during registration");
     } finally {
       setIsLoading(false);
     }
@@ -46,10 +56,21 @@ export default function SignIn() {
     <div className="min-h-screen flex items-center justify-center">
       <Card className="w-full max-w-md">
         <CardHeader>
-          <CardTitle className="text-2xl text-center">Sign In</CardTitle>
+          <CardTitle className="text-2xl text-center">Register</CardTitle>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="name">Name</Label>
+              <Input
+                id="name"
+                type="text"
+                placeholder="Your name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                required
+              />
+            </div>
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
               <Input
@@ -66,10 +87,11 @@ export default function SignIn() {
               <Input
                 id="password"
                 type="password"
-                placeholder="Your password"
+                placeholder="Create a strong password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
+                minLength={8}
               />
             </div>
             <Button
@@ -77,15 +99,15 @@ export default function SignIn() {
               className="w-full bg-blue-600 hover:bg-blue-700"
               disabled={isLoading}
             >
-              {isLoading ? "Signing in..." : "Sign In"}
+              {isLoading ? "Registering..." : "Register"}
             </Button>
           </form>
 
           <div className="mt-4 text-center text-sm">
             <p>
-              Don't have an account?{" "}
-              <Link href="/auth/register" className="text-blue-600 hover:underline">
-                Register
+              Already have an account?{" "}
+              <Link href="/auth/signin" className="text-blue-600 hover:underline">
+                Sign In
               </Link>
             </p>
           </div>

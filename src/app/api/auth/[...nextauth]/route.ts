@@ -2,6 +2,7 @@ import NextAuth from "next-auth";
 import type { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import { supabase } from "@/integrations/supabase/client";
+import prisma from "@/lib/prisma";
 
 // Define the auth options
 export const authOptions: NextAuthOptions = {
@@ -28,10 +29,26 @@ export const authOptions: NextAuthOptions = {
             return null;
           }
 
+          // Check if user exists in Prisma, if not create the user
+          let user = await prisma.user.findUnique({
+            where: { id: data.user.id }
+          });
+
+          if (!user) {
+            // User doesn't exist in Prisma yet, create them
+            user = await prisma.user.create({
+              data: {
+                id: data.user.id,
+                email: data.user.email!,
+                name: data.user.email?.split('@')[0] || 'User',
+              }
+            });
+          }
+
           return {
             id: data.user.id,
             email: data.user.email,
-            name: data.user.email?.split('@')[0] || 'User',
+            name: user.name || data.user.email?.split('@')[0] || 'User',
           };
         } catch (error) {
           console.error("Authentication error:", error);
