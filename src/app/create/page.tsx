@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -14,22 +14,8 @@ import TranscriptEditor from "@/components/TranscriptEditor";
 import FlowchartViewer from "@/components/FlowchartViewer";
 import YamlGenerator from "@/components/YamlGenerator";
 import SimulationBuilder from "@/components/SimulationBuilder";
-
-interface TaskDefinition {
-  name: string;
-  description: string;
-  kpiTech: string[];
-  kpiConcept: string[];
-  presenter: string;
-  affiliation: string;
-  date: string;
-}
-
-interface Step {
-  id: string;
-  content: string;
-  comments: string[];
-}
+import { procedureService, TaskDefinition, Step, MediaItem } from "@/lib/ProcedureService";
+import { v4 as uuidv4 } from 'uuid';
 
 export default function CreateProcedure() {
   const [activeTab, setActiveTab] = useState("task");
@@ -38,34 +24,191 @@ export default function CreateProcedure() {
   );
   const [transcript, setTranscript] = useState("");
   const [steps, setSteps] = useState<Step[]>([]);
+  const [mediaItems, setMediaItems] = useState<MediaItem[]>([]);
+  const [yamlContent, setYamlContent] = useState("");
+  const [flowchartContent, setFlowchartContent] = useState("");
+  const [loading, setLoading] = useState(true);
 
-  const handleTaskSubmit = (taskData: TaskDefinition) => {
-    setTaskDefinition(taskData);
-    toast.success("Task definition saved successfully!");
-    handleNextTab();
+  // Load any existing procedure data when the component mounts
+  useEffect(() => {
+    const loadProcedure = async () => {
+      try {
+        const procedure = await procedureService.getProcedure();
+        
+        if (procedure) {
+          // Set all the state variables from the loaded procedure
+          setTaskDefinition({
+            name: procedure.title,
+            description: procedure.description,
+            presenter: procedure.presenter,
+            affiliation: procedure.affiliation,
+            kpiTech: procedure.kpiTech,
+            kpiConcept: procedure.kpiConcept,
+            date: procedure.date
+          });
+          
+          if (procedure.steps.length > 0) {
+            setSteps(procedure.steps);
+          }
+          
+          if (procedure.mediaItems.length > 0) {
+            setMediaItems(procedure.mediaItems);
+          }
+          
+          if (procedure.transcript) {
+            setTranscript(procedure.transcript);
+          }
+          
+          if (procedure.yamlContent) {
+            setYamlContent(procedure.yamlContent);
+          }
+          
+          if (procedure.flowchartCode) {
+            setFlowchartContent(procedure.flowchartCode);
+          }
+        }
+      } catch (error) {
+        console.error("Error loading procedure:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    loadProcedure();
+  }, []);
+
+  const handleTaskSubmit = async (taskData: TaskDefinition) => {
+    try {
+      setTaskDefinition(taskData);
+      
+      // Save task definition to database
+      await procedureService.createProcedure(taskData);
+      
+      toast.success("Task definition saved successfully!");
+      handleNextTab();
+    } catch (error) {
+      console.error("Error saving task definition:", error);
+      toast.error("Failed to save task definition");
+    }
   };
 
-  const handleTranscriptChange = (text: string) => {
+  const handleTranscriptChange = async (text: string) => {
     setTranscript(text);
+    
+    try {
+      // Save transcript to database
+      await procedureService.saveTranscript(text);
+    } catch (error) {
+      console.error("Error saving transcript:", error);
+    }
+  };
+  
+  const handleStepsChange = async (newSteps: Step[]) => {
+    setSteps(newSteps);
+    
+    try {
+      // Save steps to database
+      await procedureService.saveSteps(newSteps);
+    } catch (error) {
+      console.error("Error saving steps:", error);
+    }
+  };
+  
+  const handleMediaItemsChange = async (newMediaItems: MediaItem[]) => {
+    setMediaItems(newMediaItems);
+    
+    try {
+      // Save media items to database
+      await procedureService.saveMediaItems(newMediaItems);
+    } catch (error) {
+      console.error("Error saving media items:", error);
+    }
+  };
+  
+  const handleYamlChange = async (content: string) => {
+    setYamlContent(content);
+    
+    try {
+      // Save YAML content to database
+      await procedureService.saveYaml(content);
+    } catch (error) {
+      console.error("Error saving YAML:", error);
+    }
+  };
+  
+  const handleFlowchartChange = async (content: string) => {
+    setFlowchartContent(content);
+    
+    try {
+      // Save flowchart content to database
+      await procedureService.saveFlowchart(content);
+    } catch (error) {
+      console.error("Error saving flowchart:", error);
+    }
+  };
+
+  const handleTabChange = async (value: string) => {
+    // Save current tab's data before changing
+    try {
+      if (activeTab === "dictation" && transcript) {
+        await procedureService.saveTranscript(transcript);
+      } else if (activeTab === "procedure" && steps.length > 0) {
+        await procedureService.saveSteps(steps);
+      } else if (activeTab === "yaml" && yamlContent) {
+        await procedureService.saveYaml(yamlContent);
+      } else if (activeTab === "flowchart" && flowchartContent) {
+        await procedureService.saveFlowchart(flowchartContent);
+      }
+    } catch (error) {
+      console.error("Error saving data before tab change:", error);
+    }
+    
+    setActiveTab(value);
   };
 
   const handleNextTab = () => {
-    if (activeTab === "task") setActiveTab("media");
-    else if (activeTab === "media") setActiveTab("dictation");
-    else if (activeTab === "dictation") setActiveTab("procedure");
-    else if (activeTab === "procedure") setActiveTab("yaml");
-    else if (activeTab === "yaml") setActiveTab("flowchart");
-    else if (activeTab === "flowchart") setActiveTab("simulation");
+    if (activeTab === "task") handleTabChange("media");
+    else if (activeTab === "media") handleTabChange("dictation");
+    else if (activeTab === "dictation") handleTabChange("procedure");
+    else if (activeTab === "procedure") handleTabChange("yaml");
+    else if (activeTab === "yaml") handleTabChange("flowchart");
+    else if (activeTab === "flowchart") handleTabChange("simulation");
   };
 
   const handlePreviousTab = () => {
-    if (activeTab === "media") setActiveTab("task");
-    else if (activeTab === "dictation") setActiveTab("media");
-    else if (activeTab === "procedure") setActiveTab("dictation");
-    else if (activeTab === "yaml") setActiveTab("procedure");
-    else if (activeTab === "flowchart") setActiveTab("yaml");
-    else if (activeTab === "simulation") setActiveTab("flowchart");
+    if (activeTab === "media") handleTabChange("task");
+    else if (activeTab === "dictation") handleTabChange("media");
+    else if (activeTab === "procedure") handleTabChange("dictation");
+    else if (activeTab === "yaml") handleTabChange("procedure");
+    else if (activeTab === "flowchart") handleTabChange("yaml");
+    else if (activeTab === "simulation") handleTabChange("flowchart");
   };
+  
+  const handlePublish = async () => {
+    try {
+      const success = await procedureService.publishProcedure();
+      
+      if (success) {
+        toast.success("Procedure published successfully!");
+        // Could redirect to the procedures list page here
+      } else {
+        toast.error("Failed to publish procedure");
+      }
+    } catch (error) {
+      console.error("Error publishing procedure:", error);
+      toast.error("Failed to publish procedure");
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-lg">Loading...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -133,7 +276,7 @@ export default function CreateProcedure() {
         <Tabs
           defaultValue="task"
           value={activeTab}
-          onValueChange={setActiveTab}
+          onValueChange={handleTabChange}
         >
           <div className="mb-8">
             <TabsList className="grid w-full grid-cols-7">
@@ -150,7 +293,10 @@ export default function CreateProcedure() {
           <TabsContent value="task">
             <Card>
               <CardContent className="pt-6">
-                <TaskDefinitionForm onSubmit={handleTaskSubmit} />
+                <TaskDefinitionForm 
+                  onSubmit={handleTaskSubmit} 
+                  initialData={taskDefinition}
+                />
               </CardContent>
             </Card>
           </TabsContent>
@@ -158,7 +304,10 @@ export default function CreateProcedure() {
           <TabsContent value="media">
             <Card>
               <CardContent className="pt-6">
-                <MediaUploader />
+                <MediaUploader 
+                  mediaItems={mediaItems}
+                  onChange={handleMediaItemsChange}
+                />
               </CardContent>
             </Card>
 
@@ -218,6 +367,8 @@ export default function CreateProcedure() {
                 <TranscriptEditor
                   transcript={transcript}
                   onChange={handleTranscriptChange}
+                  onStepsChange={handleStepsChange}
+                  steps={steps}
                 />
               </CardContent>
             </Card>
@@ -241,6 +392,8 @@ export default function CreateProcedure() {
                 <YamlGenerator
                   steps={steps}
                   procedureName={taskDefinition?.name || "Procedure"}
+                  initialYaml={yamlContent}
+                  onChange={handleYamlChange}
                 />
               </CardContent>
             </Card>
@@ -261,7 +414,11 @@ export default function CreateProcedure() {
           <TabsContent value="flowchart">
             <Card>
               <CardContent className="pt-6">
-                <FlowchartViewer steps={steps.map((step) => step.content)} />
+                <FlowchartViewer 
+                  steps={steps.map((step) => step.content)} 
+                  initialMermaid={flowchartContent}
+                  onChange={handleFlowchartChange}
+                />
               </CardContent>
             </Card>
 
@@ -294,7 +451,7 @@ export default function CreateProcedure() {
               </Button>
               <Button
                 className="bg-green-600 hover:bg-green-700"
-                onClick={() => toast.success("Procedure saved successfully!")}
+                onClick={handlePublish}
               >
                 Save & Publish
               </Button>
