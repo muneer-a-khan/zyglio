@@ -1,77 +1,62 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Plus, X } from "lucide-react";
+import { TaskDefinition } from "@/lib/ProcedureService";
 
-interface TaskDefinition {
-  name: string;
-  description: string;
-  kpiTech: string[];
-  kpiConcept: string[];
-  presenter: string;
-  affiliation: string;
-  date: string;
-}
-
-interface TaskDefinitionFormProps {
+export interface TaskDefinitionFormProps {
   onSubmit: (taskData: TaskDefinition) => void;
+  initialData?: TaskDefinition | null;
 }
 
-const TaskDefinitionForm = ({ onSubmit }: TaskDefinitionFormProps) => {
-  const [taskData, setTaskData] = useState<TaskDefinition>({
-    name: "",
-    description: "",
-    presenter: "",
-    affiliation: "",
-    kpiTech: [""],
-    kpiConcept: [""],
-    date: new Date().toISOString().split("T")[0],
-  });
-
-  const handleChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
-  ) => {
-    const { name, value } = e.target;
-    setTaskData((prev) => ({ ...prev, [name]: value }));
-  };
-
-  const handleKpiChange = (
-    type: "kpiTech" | "kpiConcept",
-    index: number,
-    value: string
-  ) => {
-    const newKpis = [...taskData[type]];
-    newKpis[index] = value;
-    setTaskData((prev) => ({ ...prev, [type]: newKpis }));
-  };
-
-  const addKpi = (type: "kpiTech" | "kpiConcept") => {
-    setTaskData((prev) => ({ ...prev, [type]: [...prev[type], ""] }));
-  };
-
-  const removeKpi = (type: "kpiTech" | "kpiConcept", index: number) => {
-    if (taskData[type].length > 1) {
-      const newKpis = taskData[type].filter((_, i) => i !== index);
-      setTaskData((prev) => ({ ...prev, [type]: newKpis }));
+const TaskDefinitionForm = ({ onSubmit, initialData }: TaskDefinitionFormProps) => {
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [presenter, setPresenter] = useState("");
+  const [affiliation, setAffiliation] = useState("");
+  const [kpiTechInput, setKpiTechInput] = useState("");
+  const [kpiConceptInput, setKpiConceptInput] = useState("");
+  const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
+  
+  // Load initial data if provided
+  useEffect(() => {
+    if (initialData) {
+      setName(initialData.name || "");
+      setDescription(initialData.description || "");
+      setPresenter(initialData.presenter || "");
+      setAffiliation(initialData.affiliation || "");
+      setKpiTechInput(initialData.kpiTech ? initialData.kpiTech.join(", ") : "");
+      setKpiConceptInput(initialData.kpiConcept ? initialData.kpiConcept.join(", ") : "");
+      setDate(initialData.date || new Date().toISOString().split("T")[0]);
     }
-  };
+  }, [initialData]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    // Filter out empty KPIs
-    const filteredKpiTech = taskData.kpiTech.filter((kpi) => kpi.trim() !== "");
-    const filteredKpiConcept = taskData.kpiConcept.filter(
-      (kpi) => kpi.trim() !== ""
-    );
-    const updatedTaskData = {
-      ...taskData,
-      kpiTech: filteredKpiTech,
-      kpiConcept: filteredKpiConcept,
-    };
-    onSubmit(updatedTaskData);
+    
+    // Convert comma-separated KPI strings to arrays
+    const techKpis = kpiTechInput
+      .split(',')
+      .map(k => k.trim())
+      .filter(k => k);
+      
+    const conceptKpis = kpiConceptInput
+      .split(',')
+      .map(k => k.trim())
+      .filter(k => k);
+    
+    onSubmit({
+      name,
+      description,
+      presenter,
+      affiliation,
+      kpiTech: techKpis,
+      kpiConcept: conceptKpis,
+      date
+    });
   };
 
   return (
@@ -87,8 +72,8 @@ const TaskDefinitionForm = ({ onSubmit }: TaskDefinitionFormProps) => {
               id="name"
               name="name"
               placeholder="Enter the procedure or task name"
-              value={taskData.name}
-              onChange={handleChange}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
               required
             />
           </div>
@@ -99,9 +84,10 @@ const TaskDefinitionForm = ({ onSubmit }: TaskDefinitionFormProps) => {
               id="description"
               name="description"
               placeholder="Briefly describe the procedure or task"
-              value={taskData.description}
-              onChange={handleChange}
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
               className="min-h-[100px]"
+              required
             />
           </div>
 
@@ -112,8 +98,8 @@ const TaskDefinitionForm = ({ onSubmit }: TaskDefinitionFormProps) => {
                 id="presenter"
                 name="presenter"
                 placeholder="Enter presenter name"
-                value={taskData.presenter}
-                onChange={handleChange}
+                value={presenter}
+                onChange={(e) => setPresenter(e.target.value)}
               />
             </div>
 
@@ -123,8 +109,8 @@ const TaskDefinitionForm = ({ onSubmit }: TaskDefinitionFormProps) => {
                 id="affiliation"
                 name="affiliation"
                 placeholder="Enter affiliation"
-                value={taskData.affiliation}
-                onChange={handleChange}
+                value={affiliation}
+                onChange={(e) => setAffiliation(e.target.value)}
               />
             </div>
           </div>
@@ -135,33 +121,21 @@ const TaskDefinitionForm = ({ onSubmit }: TaskDefinitionFormProps) => {
               id="date"
               name="date"
               type="date"
-              value={taskData.date}
-              onChange={handleChange}
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
             />
           </div>
 
           <div className="space-y-2">
             <Label>Technical Skills (KPIs)</Label>
 
-            {taskData.kpiTech.map((kpi, index) => (
+            {kpiTechInput.split(',').map((kpi, index) => (
               <div key={`tech-${index}`} className="flex space-x-2">
                 <Input
                   placeholder={`Technical Skill ${index + 1}`}
                   value={kpi}
-                  onChange={(e) =>
-                    handleKpiChange("kpiTech", index, e.target.value)
-                  }
+                  onChange={(e) => setKpiTechInput(e.target.value)}
                 />
-
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  onClick={() => removeKpi("kpiTech", index)}
-                  disabled={taskData.kpiTech.length === 1}
-                >
-                  <X className="h-4 w-4" />
-                </Button>
               </div>
             ))}
 
@@ -169,7 +143,7 @@ const TaskDefinitionForm = ({ onSubmit }: TaskDefinitionFormProps) => {
               type="button"
               variant="outline"
               className="w-full"
-              onClick={() => addKpi("kpiTech")}
+              onClick={() => setKpiTechInput(kpiTechInput + ",")}
             >
               <Plus className="mr-1 h-4 w-4" />
               Add Technical Skill
@@ -179,25 +153,13 @@ const TaskDefinitionForm = ({ onSubmit }: TaskDefinitionFormProps) => {
           <div className="space-y-2">
             <Label>Conceptual Skills (KPIs)</Label>
 
-            {taskData.kpiConcept.map((kpi, index) => (
+            {kpiConceptInput.split(',').map((kpi, index) => (
               <div key={`concept-${index}`} className="flex space-x-2">
                 <Input
                   placeholder={`Conceptual Skill ${index + 1}`}
                   value={kpi}
-                  onChange={(e) =>
-                    handleKpiChange("kpiConcept", index, e.target.value)
-                  }
+                  onChange={(e) => setKpiConceptInput(e.target.value)}
                 />
-
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  onClick={() => removeKpi("kpiConcept", index)}
-                  disabled={taskData.kpiConcept.length === 1}
-                >
-                  <X className="h-4 w-4" />
-                </Button>
               </div>
             ))}
 
@@ -205,7 +167,7 @@ const TaskDefinitionForm = ({ onSubmit }: TaskDefinitionFormProps) => {
               type="button"
               variant="outline"
               className="w-full"
-              onClick={() => addKpi("kpiConcept")}
+              onClick={() => setKpiConceptInput(kpiConceptInput + ",")}
             >
               <Plus className="mr-1 h-4 w-4" />
               Add Conceptual Skill
