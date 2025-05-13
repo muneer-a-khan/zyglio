@@ -25,30 +25,43 @@ export const authOptions: NextAuthOptions = {
             password: credentials.password,
           });
 
-          if (error || !data.user) {
+          if (error) {
+            console.error("Supabase auth error:", error);
             return null;
           }
 
-          // Check if user exists in Prisma, if not create the user
+          if (!data?.user) {
+            console.error("No user data returned from Supabase");
+            return null;
+          }
+
+          // Check if user exists in Prisma
           let user = await prisma.user.findUnique({
             where: { id: data.user.id }
           });
 
+          // If user doesn't exist in Prisma but exists in Supabase Auth, create the user in Prisma
           if (!user) {
-            // User doesn't exist in Prisma yet, create them
-            user = await prisma.user.create({
-              data: {
-                id: data.user.id,
-                email: data.user.email!,
-                name: data.user.email?.split('@')[0] || 'User',
-              }
-            });
+            try {
+              user = await prisma.user.create({
+                data: {
+                  id: data.user.id,
+                  email: data.user.email!,
+                  name: data.user.user_metadata?.name || data.user.email?.split('@')[0] || 'User',
+                }
+              });
+              console.log("Created new user in Prisma:", user.id);
+            } catch (createError) {
+              console.error("Error creating user in Prisma:", createError);
+              // Continue with auth even if Prisma creation fails
+            }
           }
 
+          // Return the user for NextAuth
           return {
             id: data.user.id,
             email: data.user.email,
-            name: user.name || data.user.email?.split('@')[0] || 'User',
+            name: user?.name || data.user.user_metadata?.name || data.user.email?.split('@')[0] || 'User',
           };
         } catch (error) {
           console.error("Authentication error:", error);
@@ -73,10 +86,12 @@ export const authOptions: NextAuthOptions = {
   },
   pages: {
     signIn: '/auth/signin',
+    error: '/auth/error',
   },
   session: {
     strategy: "jwt",
   },
+  debug: process.env.NODE_ENV === 'development',
   secret: process.env.NEXTAUTH_SECRET || "your-fallback-secret-for-development",
 };
 

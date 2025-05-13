@@ -28,7 +28,12 @@ export default function SignIn() {
       });
 
       if (result?.error) {
-        toast.error("Invalid credentials");
+        console.error("Sign-in error:", result.error);
+        if (result.error === "CredentialsSignin") {
+          toast.error("Invalid email or password");
+        } else {
+          toast.error(`Authentication error: ${result.error}`);
+        }
       } else {
         toast.success("Signed in successfully");
         router.push("/create");

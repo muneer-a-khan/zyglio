@@ -30,6 +30,7 @@ export default function Register() {
           data: {
             name,
           },
+          emailRedirectTo: `${window.location.origin}/auth/callback`,
         },
       });
 
@@ -39,8 +40,14 @@ export default function Register() {
       }
 
       if (data.user) {
-        toast.success("Registration successful! Please sign in.");
-        router.push("/auth/signin");
+        toast.success("Registration email sent! Please check your inbox and click the confirmation link.");
+        
+        // Don't redirect yet - user needs to confirm email first
+        // Instead, show a message that explains what to do next
+        setIsLoading(false);
+        setEmail("");
+        setPassword("");
+        setName("");
       } else {
         toast.info("Please check your email to confirm your account.");
       }
