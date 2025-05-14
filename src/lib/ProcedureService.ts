@@ -474,8 +474,16 @@ class ProcedureService {
       console.log('Fetching procedure via API:', procedureId);
       const response = await fetch(`/api/procedures/${procedureId}`);
       
+      // If the procedure doesn't exist, return null instead of throwing
+      if (response.status === 404) {
+        console.log('Procedure not found, returning null');
+        return null;
+      }
+      
+      // For other errors, handle gracefully
       if (!response.ok) {
-        throw new Error('Failed to fetch procedure data');
+        console.error(`API error (${response.status}): ${response.statusText}`);
+        return null;
       }
       
       const data = await response.json();
@@ -486,7 +494,7 @@ class ProcedureService {
         return data.procedure;
       }
       
-      throw new Error(data.message || 'Failed to get procedure data');
+      return null;
     } catch (error) {
       console.error('Error fetching procedure via API:', error);
       return null;
