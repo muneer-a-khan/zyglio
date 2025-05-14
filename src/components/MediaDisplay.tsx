@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { MediaItem } from '@/lib/ProcedureService';
-import { Image, Video, FileText, Music, AlertCircle } from 'lucide-react';
+import { Image, Video, FileText, Music, AlertCircle, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 interface MediaDisplayProps {
@@ -109,7 +109,10 @@ export default function MediaDisplay({ item }: MediaDisplayProps) {
               <span>{item.caption || 'PDF Document'}</span>
             </div>
             <div className="flex justify-between">
-              <Button onClick={() => window.open(mediaUrl, '_blank')}>
+              <Button 
+                onClick={() => window.open(mediaUrl, '_blank')}
+                variant="outline"
+              >
                 View PDF
               </Button>
             </div>
@@ -140,8 +143,19 @@ export default function MediaDisplay({ item }: MediaDisplayProps) {
               variant="outline" 
               onClick={refreshUrl} 
               disabled={isLoading || !item.filePath}
+              className="flex items-center"
             >
-              {isLoading ? 'Refreshing...' : 'Refresh URL'}
+              {isLoading ? (
+                <>
+                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                  Refreshing...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Refresh URL
+                </>
+              )}
             </Button>
           </div>
         </div>

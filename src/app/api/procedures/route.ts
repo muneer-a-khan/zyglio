@@ -97,4 +97,49 @@ export async function PUT(req: NextRequest) {
       message: error.message || "An error occurred" 
     }, { status: 500 });
   }
+}
+
+export async function GET(req: NextRequest) {
+  try {
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.id) {
+      return NextResponse.json(
+        { success: false, message: "Not authenticated" },
+        { status: 401 }
+      );
+    }
+
+    // Get all procedures
+    const procedureData = await prisma.procedure.findMany({
+      orderBy: { id: 'desc' },
+      include: {
+        task: true
+      }
+    });
+
+    // Format procedures
+    const procedures = procedureData.map(procedure => ({
+      id: procedure.id,
+      title: procedure.title,
+      description: procedure.title, // Assuming no separate description field
+      presenter: procedure.task?.presenter || '',
+      affiliation: procedure.task?.affiliation || '',
+      kpiTech: procedure.task?.kpiTech ? [procedure.task.kpiTech] : [],
+      kpiConcept: procedure.task?.kpiConcept ? [procedure.task.kpiConcept] : [],
+      date: procedure.task?.date?.toISOString() || new Date().toISOString(),
+      steps: [],
+      mediaItems: []
+    }));
+
+    return NextResponse.json({
+      success: true,
+      procedures
+    });
+  } catch (error) {
+    console.error("Error fetching procedures:", error);
+    return NextResponse.json(
+      { success: false, message: "Failed to fetch procedures" },
+      { status: 500 }
+    );
+  }
 } 

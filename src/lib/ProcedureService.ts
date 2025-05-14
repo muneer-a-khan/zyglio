@@ -1,9 +1,14 @@
-import prisma from '@/lib/prisma';
-import { v4 as uuidv4 } from 'uuid';
 import { createClient } from '@supabase/supabase-js';
 
-// Check if we're running on the server
-const isServer = typeof window === 'undefined';
+// Import Prisma only in non-browser environments
+let prisma: any = null;
+if (typeof window === 'undefined') {
+  // We're in a Node.js environment
+  prisma = require('./prisma').default;
+}
+
+// For storing procedure data during the session
+let procedureCache: Record<string, any> = {};
 
 // Create a Supabase client for client-side operations when Prisma isn't available
 const supabaseClient = createClient(
@@ -80,10 +85,13 @@ interface ProcedureRecord {
 class ProcedureService {
   private currentProcedureId: string | null = null;
   private currentTaskId: string | null = null;
+  private isServer: boolean;
 
   constructor() {
+    this.isServer = typeof window === 'undefined';
+    
     // Initialize with IDs from local storage/session
-    if (typeof window !== 'undefined') {
+    if (!this.isServer) {
       this.currentProcedureId = localStorage.getItem('current_procedure_id') || null;
       this.currentTaskId = localStorage.getItem('current_task_id') || null;
     }
@@ -372,10 +380,16 @@ class ProcedureService {
 
       console.log('Attempting to load procedure with ID:', procedureId);
       
-      // Check if we're in a browser environment
-      if (!isServer) {
-        console.log('Running in browser environment, using API instead of Prisma');
+      // In browser, fetch via API
+      if (!this.isServer) {
+        console.log('Running in browser, using API to fetch procedure');
         return this.getProcedureViaApi(procedureId);
+      }
+      
+      // On server, use Prisma directly
+      if (!prisma) {
+        console.error('Prisma client is not available');
+        return null;
       }
       
       // Get procedure data using Prisma (server-side only)
@@ -387,8 +401,6 @@ class ProcedureService {
         console.error('No procedure data found for ID:', procedureId);
         return null;
       }
-
-      console.log('Procedure record loaded:', JSON.stringify(procedureData));
 
       // Get procedure steps using Prisma
       const stepsData = await prisma.procedureStep.findMany({
@@ -414,7 +426,7 @@ class ProcedureService {
         type: media.type.toString(),
         caption: media.caption || undefined,
         url: media.url,
-        filePath: media.url.split('?')[0].split('/').slice(-2).join('/') // Extract filePath from URL if available
+        filePath: media.filePath || undefined
       })) : [];
 
       // Get the learning task associated with this procedure
@@ -439,9 +451,10 @@ class ProcedureService {
       };
     } catch (error) {
       console.error('Error loading procedure:', error);
-      // Fallback to API if Prisma fails
-      if (id || this.currentProcedureId) {
-        return this.getProcedureViaApi(id || this.currentProcedureId);
+      
+      // Try API fallback if we're on the client side or if Prisma fails
+      if ((id || this.currentProcedureId) && (!this.isServer || !prisma)) {
+        return this.getProcedureViaApi(id || this.currentProcedureId!);
       }
       return null;
     }
@@ -452,6 +465,13 @@ class ProcedureService {
    */
   private async getProcedureViaApi(procedureId: string): Promise<Procedure | null> {
     try {
+      // Check cache first
+      if (procedureCache[procedureId]) {
+        console.log('Returning cached procedure data');
+        return procedureCache[procedureId];
+      }
+      
+      console.log('Fetching procedure via API:', procedureId);
       const response = await fetch(`/api/procedures/${procedureId}`);
       
       if (!response.ok) {
@@ -459,7 +479,14 @@ class ProcedureService {
       }
       
       const data = await response.json();
-      return data.procedure;
+      
+      if (data.success && data.procedure) {
+        // Cache the result
+        procedureCache[procedureId] = data.procedure;
+        return data.procedure;
+      }
+      
+      throw new Error(data.message || 'Failed to get procedure data');
     } catch (error) {
       console.error('Error fetching procedure via API:', error);
       return null;
@@ -471,6 +498,17 @@ class ProcedureService {
    */
   async getAllProcedures(): Promise<Procedure[]> {
     try {
+      // On client side, use API
+      if (!this.isServer) {
+        return this.getAllProceduresViaApi();
+      }
+      
+      // On server, use Prisma
+      if (!prisma) {
+        console.error('Prisma client is not available');
+        return [];
+      }
+      
       // Get all procedures using Prisma
       const procedures = await prisma.procedure.findMany({
         orderBy: { id: 'desc' },
@@ -481,7 +519,7 @@ class ProcedureService {
 
       if (!procedures.length) return [];
 
-      return procedures.map((item) => ({
+      return procedures.map((item: any) => ({
         id: item.id,
         title: item.title,
         description: item.title, // Assuming no separate description field
@@ -495,6 +533,35 @@ class ProcedureService {
       }));
     } catch (error) {
       console.error('Error getting all procedures:', error);
+      
+      // Try API fallback if we're on the client side or if Prisma fails
+      if (!this.isServer || !prisma) {
+        return this.getAllProceduresViaApi();
+      }
+      return [];
+    }
+  }
+  
+  /**
+   * Gets all procedures via API when Prisma is not available
+   */
+  private async getAllProceduresViaApi(): Promise<Procedure[]> {
+    try {
+      const response = await fetch('/api/procedures');
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch procedures data');
+      }
+      
+      const data = await response.json();
+      
+      if (data.success && Array.isArray(data.procedures)) {
+        return data.procedures;
+      }
+      
+      throw new Error(data.message || 'Failed to get procedures data');
+    } catch (error) {
+      console.error('Error fetching all procedures via API:', error);
       return [];
     }
   }

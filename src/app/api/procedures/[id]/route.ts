@@ -49,7 +49,7 @@ export async function GET(
       where: { procedureId: procedureId }
     });
 
-    // For each media item, refresh the signed URL if needed
+    // Refresh signed URLs for media items if needed
     const supabaseAdmin = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL || '',
       process.env.SUPABASE_SERVICE_ROLE_KEY || '',
@@ -61,60 +61,56 @@ export async function GET(
       }
     );
 
-    // Create a helper function to check if URL is a signed URL and if it's close to expiration
-    const refreshSignedUrls = async (mediaItems: any[]) => {
-      return Promise.all(
-        mediaItems.map(async (media) => {
-          // Extract file path from URL if available
-          let filePath = '';
-          
-          // Check if media has filePath directly
-          if (media.filePath) {
-            filePath = media.filePath;
-          } 
-          // Try to extract from storage URL structure
-          else if (media.url && media.url.includes('user-uploads')) {
+    // Format and refresh media items
+    const mediaItems = await Promise.all(
+      mediaData.map(async (media) => {
+        // Extract file path from URL if available
+        let filePath = media.filePath || '';
+        
+        // Try to extract from storage URL structure if no filePath
+        if (!filePath && media.url && media.url.includes('user-uploads')) {
+          try {
             const urlParts = media.url.split('?')[0].split('/');
             const bucketIndex = urlParts.findIndex(part => part === 'user-uploads');
             if (bucketIndex >= 0 && bucketIndex < urlParts.length - 1) {
               filePath = urlParts.slice(bucketIndex + 1).join('/');
             }
+          } catch (err) {
+            console.error('Error extracting file path from URL:', err);
           }
+        }
 
-          if (filePath) {
-            try {
-              // Create a new signed URL with 7-day expiry
-              const { data, error } = await supabaseAdmin.storage
-                .from('user-uploads')
-                .createSignedUrl(filePath, 60 * 60 * 24 * 7);
+        // Try to refresh URL if we have a file path
+        if (filePath) {
+          try {
+            // Create a new signed URL with 7-day expiry
+            const { data, error } = await supabaseAdmin.storage
+              .from('user-uploads')
+              .createSignedUrl(filePath, 60 * 60 * 24 * 7);
 
-              if (data && !error) {
-                return {
-                  ...media,
-                  url: data.signedUrl,
-                  filePath: filePath
-                };
-              }
-            } catch (error) {
-              console.error(`Error refreshing signed URL for ${filePath}:`, error);
+            if (data && !error) {
+              return {
+                id: media.id,
+                type: media.type.toString(),
+                caption: media.caption || undefined,
+                url: data.signedUrl,
+                filePath: filePath
+              };
             }
+          } catch (error) {
+            console.error(`Error refreshing signed URL for ${filePath}:`, error);
           }
-          
-          // Return original if refresh failed or wasn't needed
-          return media;
-        })
-      );
-    };
-
-    // Format data and refresh URLs if needed
-    const mediaItems = await refreshSignedUrls(
-      mediaData.map(media => ({
-        id: media.id,
-        type: media.type,
-        caption: media.caption || undefined,
-        url: media.url,
-        filePath: media.filePath || undefined
-      }))
+        }
+        
+        // Return original if refresh failed or wasn't needed
+        return {
+          id: media.id,
+          type: media.type.toString(),
+          caption: media.caption || undefined,
+          url: media.url,
+          filePath: filePath || undefined
+        };
+      })
     );
 
     // Format steps
