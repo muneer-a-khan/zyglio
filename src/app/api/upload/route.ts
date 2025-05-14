@@ -68,15 +68,30 @@ export async function POST(req: NextRequest) {
       }, { status: 500 });
     }
     
-    // Get public URL
-    const { data: { publicUrl } } = supabaseAdmin.storage
+    // For private buckets, we need to create a signed URL (with expiry time)
+    // You can adjust the expiresIn value as needed (in seconds)
+    const { data: signedUrlData, error: signedUrlError } = await supabaseAdmin.storage
       .from('user-uploads')
-      .getPublicUrl(`${folder}/${session.user.id}_${fileName}`);
+      .createSignedUrl(`${folder}/${session.user.id}_${fileName}`, 60 * 60 * 24 * 365 * 10); // 10 years expiry
+    
+    if (signedUrlError) {
+      console.error('Error creating signed URL:', signedUrlError);
+      return NextResponse.json({ 
+        success: false, 
+        message: 'Failed to generate access URL for file' 
+      }, { status: 500 });
+    }
+    
+    const fileUrl = signedUrlData.signedUrl;
+    
+    // Store the file path in the database so we can generate new signed URLs later if needed
+    const filePath = `${folder}/${session.user.id}_${fileName}`;
     
     return NextResponse.json({
       success: true,
       data: {
-        url: publicUrl,
+        url: fileUrl,
+        filePath: filePath, // Store this in your database along with the media item
         fileName,
         contentType: file.type,
         folder

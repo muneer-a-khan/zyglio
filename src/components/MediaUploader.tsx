@@ -175,6 +175,7 @@ const MediaUploader = ({ mediaItems = [], onChange }: MediaUploaderProps) => {
               type,
               url: responseData.data.url,
               caption: file.name,
+              filePath: responseData.data.filePath
             });
           }
         } catch (fileError) {

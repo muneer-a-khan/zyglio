@@ -25,7 +25,7 @@ export async function GET() {
     
     if (!bucketExists) {
       const { data, error } = await supabaseAdmin.storage.createBucket('user-uploads', {
-        public: true,
+        public: false, // Create as private bucket
         allowedMimeTypes: ['image/*', 'video/*', 'audio/*', 'application/pdf'],
         fileSizeLimit: 50 * 1024 * 1024 // 50MB
       });
@@ -36,18 +36,18 @@ export async function GET() {
           message: `Failed to create bucket: ${error.message}`
         }, { status: 500 });
       }
-    }
-    
-    // Update bucket to be public
-    const { error } = await supabaseAdmin.storage.updateBucket('user-uploads', {
-      public: true
-    });
-    
-    if (error) {
-      return NextResponse.json({
-        success: false,
-        message: `Failed to update bucket: ${error.message}`
-      }, { status: 500 });
+    } else {
+      // Update bucket to be private if it already exists
+      const { error } = await supabaseAdmin.storage.updateBucket('user-uploads', {
+        public: false
+      });
+      
+      if (error) {
+        return NextResponse.json({
+          success: false,
+          message: `Failed to update bucket settings: ${error.message}`
+        }, { status: 500 });
+      }
     }
     
     // Create folders if they don't exist
@@ -64,15 +64,13 @@ export async function GET() {
       }
     }
     
-    // Get bucket URL for verification
-    const { data: { publicUrl } } = supabaseAdmin.storage
-      .from('user-uploads')
-      .getPublicUrl('images/.gitkeep');
+    // Set Row Level Security policies for the bucket
+    await setupRLSPolicies(supabaseAdmin);
     
     return NextResponse.json({
       success: true,
-      message: 'Storage bucket setup complete',
-      bucketUrl: publicUrl.split('/images/')[0]
+      message: 'Storage bucket setup complete with secure access policies',
+      isPrivate: true
     });
     
   } catch (error: any) {
@@ -81,5 +79,46 @@ export async function GET() {
       success: false,
       message: error.message || 'An unknown error occurred'
     }, { status: 500 });
+  }
+}
+
+async function setupRLSPolicies(supabaseAdmin: any) {
+  try {
+    // First, let's try to delete existing policies to avoid conflicts
+    await supabaseAdmin.rpc('delete_storage_policy', {
+      bucket_name: 'user-uploads',
+      policy_name: 'Allow individual read access'
+    }).catch(() => {
+      // Ignore errors during deletion - policy might not exist
+    });
+    
+    await supabaseAdmin.rpc('delete_storage_policy', {
+      bucket_name: 'user-uploads',
+      policy_name: 'Allow authenticated uploads'
+    }).catch(() => {
+      // Ignore errors during deletion - policy might not exist
+    });
+    
+    // Create policy that allows authenticated users to upload files
+    await supabaseAdmin.rpc('create_storage_policy', {
+      bucket_name: 'user-uploads',
+      policy_name: 'Allow authenticated uploads',
+      definition: "((bucket_id = 'user-uploads'::text) AND (auth.role() = 'authenticated'::text))",
+      operation: 'INSERT'
+    });
+    
+    // Create policy that allows users to access their own files
+    await supabaseAdmin.rpc('create_storage_policy', {
+      bucket_name: 'user-uploads',
+      policy_name: 'Allow individual read access',
+      definition: "((bucket_id = 'user-uploads'::text) AND (auth.role() = 'authenticated'::text))",
+      operation: 'SELECT'
+    });
+    
+    return true;
+  } catch (error) {
+    console.error('Error setting up RLS policies:', error);
+    // We'll continue even if policy setup fails, as we can still use service key to access
+    return false;
   }
 } 

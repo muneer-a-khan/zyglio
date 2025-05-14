@@ -1,5 +1,15 @@
 import prisma from '@/lib/prisma';
 import { v4 as uuidv4 } from 'uuid';
+import { createClient } from '@supabase/supabase-js';
+
+// Check if we're running on the server
+const isServer = typeof window === 'undefined';
+
+// Create a Supabase client for client-side operations when Prisma isn't available
+const supabaseClient = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL || '',
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
+);
 
 export interface TaskDefinition {
   name: string;
@@ -22,6 +32,7 @@ export interface MediaItem {
   type: string;
   caption?: string;
   url: string;
+  filePath?: string;
 }
 
 export interface SimulationSettings {
@@ -361,7 +372,13 @@ class ProcedureService {
 
       console.log('Attempting to load procedure with ID:', procedureId);
       
-      // Get procedure data using Prisma
+      // Check if we're in a browser environment
+      if (!isServer) {
+        console.log('Running in browser environment, using API instead of Prisma');
+        return this.getProcedureViaApi(procedureId);
+      }
+      
+      // Get procedure data using Prisma (server-side only)
       const procedureData = await prisma.procedure.findUnique({
         where: { id: procedureId }
       });
@@ -396,7 +413,8 @@ class ProcedureService {
         id: media.id,
         type: media.type.toString(),
         caption: media.caption || undefined,
-        url: media.url
+        url: media.url,
+        filePath: media.url.split('?')[0].split('/').slice(-2).join('/') // Extract filePath from URL if available
       })) : [];
 
       // Get the learning task associated with this procedure
@@ -421,6 +439,29 @@ class ProcedureService {
       };
     } catch (error) {
       console.error('Error loading procedure:', error);
+      // Fallback to API if Prisma fails
+      if (id || this.currentProcedureId) {
+        return this.getProcedureViaApi(id || this.currentProcedureId);
+      }
+      return null;
+    }
+  }
+
+  /**
+   * Gets a procedure via API when Prisma is not available (client-side)
+   */
+  private async getProcedureViaApi(procedureId: string): Promise<Procedure | null> {
+    try {
+      const response = await fetch(`/api/procedures/${procedureId}`);
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch procedure data');
+      }
+      
+      const data = await response.json();
+      return data.procedure;
+    } catch (error) {
+      console.error('Error fetching procedure via API:', error);
       return null;
     }
   }

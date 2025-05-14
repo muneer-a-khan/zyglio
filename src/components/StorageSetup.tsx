@@ -1,14 +1,14 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
+import { CheckCircle, AlertCircle, Loader2, Lock } from 'lucide-react';
 
 const StorageSetup = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [result, setResult] = useState<{
     success: boolean;
     message: string;
-    bucketUrl?: string;
+    isPrivate?: boolean;
   } | null>(null);
 
   const setupStorage = async () => {
@@ -33,12 +33,15 @@ const StorageSetup = () => {
   return (
     <Card className="mt-8">
       <CardHeader>
-        <CardTitle>Storage Bucket Setup</CardTitle>
+        <CardTitle className="flex items-center">
+          <Lock className="h-5 w-5 mr-2" />
+          Storage Bucket Security Configuration
+        </CardTitle>
       </CardHeader>
       <CardContent>
         <p className="mb-4 text-gray-600">
-          If you're having issues uploading files, you can use this utility to ensure your Supabase 
-          storage bucket is correctly configured with public access.
+          This utility will configure your Supabase storage bucket with secure, private access for authenticated users only.
+          Use this if you're experiencing upload issues or want to ensure proper security settings.
         </p>
 
         <Button 
@@ -49,10 +52,10 @@ const StorageSetup = () => {
           {isLoading ? (
             <>
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Setting up storage...
+              Configuring secure storage...
             </>
           ) : (
-            'Configure Storage Bucket'
+            'Configure Secure Storage Bucket'
           )}
         </Button>
 
@@ -72,9 +75,10 @@ const StorageSetup = () => {
                 </h3>
                 <div className={`mt-2 text-sm ${result.success ? 'text-green-700' : 'text-red-700'}`}>
                   <p>{result.message}</p>
-                  {result.bucketUrl && (
-                    <p className="mt-2">
-                      Bucket URL: <span className="font-mono text-xs break-all">{result.bucketUrl}</span>
+                  {result.success && result.isPrivate && (
+                    <p className="mt-2 flex items-center">
+                      <Lock className="h-4 w-4 mr-1" />
+                      Bucket is configured as private with secure access control
                     </p>
                   )}
                 </div>
