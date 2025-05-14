@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabase } from "@/integrations/supabase/client";
+import { createClient } from '@supabase/supabase-js';
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { v4 as uuidv4 } from "uuid";
@@ -39,8 +39,20 @@ export async function POST(req: NextRequest) {
     
     console.log(`Uploading to bucket: user-uploads, folder: ${folder}, file: ${fileName}`);
     
-    // Upload to Supabase Storage
-    const { data, error } = await supabase.storage
+    // Create a Supabase client with the service role key to bypass RLS
+    const supabaseAdmin = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL || '',
+      process.env.SUPABASE_SERVICE_ROLE_KEY || '',
+      {
+        auth: {
+          autoRefreshToken: false,
+          persistSession: false
+        }
+      }
+    );
+    
+    // Upload to Supabase Storage with admin privileges
+    const { data, error } = await supabaseAdmin.storage
       .from('user-uploads')
       .upload(`${folder}/${session.user.id}_${fileName}`, fileBuffer, {
         contentType: file.type,
@@ -57,7 +69,7 @@ export async function POST(req: NextRequest) {
     }
     
     // Get public URL
-    const { data: { publicUrl } } = supabase.storage
+    const { data: { publicUrl } } = supabaseAdmin.storage
       .from('user-uploads')
       .getPublicUrl(`${folder}/${session.user.id}_${fileName}`);
     

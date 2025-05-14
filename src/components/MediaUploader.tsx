@@ -5,13 +5,14 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { 
   Upload, Image, FileText, Video, File, X, Music, 
-  Trash2, Plus, ExternalLink, Loader2, UploadCloud 
+  Trash2, Plus, ExternalLink, Loader2, UploadCloud, Settings 
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MediaItem } from "@/lib/ProcedureService";
 import { v4 as uuidv4 } from 'uuid';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
+import StorageSetup from "./StorageSetup";
 
 interface MediaUploaderProps {
   mediaItems?: MediaItem[];
@@ -27,6 +28,7 @@ const MediaUploader = ({ mediaItems = [], onChange }: MediaUploaderProps) => {
   const [urlInput, setUrlInput] = useState<string>("");
   const [urlCaption, setUrlCaption] = useState<string>("");
   const [urlType, setUrlType] = useState<string>("IMAGE");
+  const [showStorageSetup, setShowStorageSetup] = useState(false);
 
   // Update local state when props change
   useEffect(() => {
@@ -123,53 +125,72 @@ const MediaUploader = ({ mediaItems = [], onChange }: MediaUploaderProps) => {
         
         console.log(`Uploading file: ${file.name}, type: ${file.type}, size: ${file.size}`);
         
-        const response = await fetch('/api/upload', {
-          method: 'POST',
-          body: formData,
-        });
-        
-        if (!response.ok) {
-          const error = await response.json();
-          console.error('Upload error response:', error);
-          throw new Error(error.message || `Failed to upload file ${file.name}`);
-        }
-        
-        const result = await response.json();
-        console.log('Upload success response:', result);
-        
-        if (result.success) {
-          // Determine file type from mime type or extension
-          let type: string = "IMAGE";
-          if (file.type.startsWith('image/')) type = "IMAGE";
-          else if (file.type.startsWith('video/')) type = "VIDEO";
-          else if (file.type.startsWith('audio/')) type = "AUDIO";
-          else if (file.type.startsWith('application/pdf') || file.name.toLowerCase().endsWith('.pdf')) type = "PDF";
-          else {
-            // Fallback to extension check if MIME type is not standard
-            const extension = file.name.split('.').pop()?.toLowerCase();
-            if (extension) {
-              if (['jpg', 'jpeg', 'png', 'gif', 'svg', 'webp'].includes(extension)) type = "IMAGE";
-              else if (['mp4', 'webm', 'mov', 'avi'].includes(extension)) type = "VIDEO";
-              else if (['mp3', 'wav', 'ogg', 'm4a'].includes(extension)) type = "AUDIO";
-              else if (extension === 'pdf') type = "PDF";
+        try {
+          const response = await fetch('/api/upload', {
+            method: 'POST',
+            body: formData,
+          });
+          
+          const responseData = await response.json();
+          
+          if (!response.ok) {
+            console.error('Upload error response:', responseData);
+            
+            // Show a more specific error message
+            let errorMessage = `Failed to upload file ${file.name}`;
+            if (responseData.message) {
+              if (responseData.message.includes('row-level security policy')) {
+                errorMessage = `Security policy error: You don't have permission to upload this file. Please check with the administrator.`;
+              } else {
+                errorMessage = responseData.message;
+              }
             }
+            
+            toast.error(errorMessage);
+            continue; // Skip this file but continue with others
           }
           
-          newItems.push({
-            id: uuidv4(),
-            type,
-            url: result.data.url,
-            caption: file.name,
-          });
+          console.log('Upload success response:', responseData);
+          
+          if (responseData.success) {
+            // Determine file type from mime type or extension
+            let type: string = "IMAGE";
+            if (file.type.startsWith('image/')) type = "IMAGE";
+            else if (file.type.startsWith('video/')) type = "VIDEO";
+            else if (file.type.startsWith('audio/')) type = "AUDIO";
+            else if (file.type.startsWith('application/pdf') || file.name.toLowerCase().endsWith('.pdf')) type = "PDF";
+            else {
+              // Fallback to extension check if MIME type is not standard
+              const extension = file.name.split('.').pop()?.toLowerCase();
+              if (extension) {
+                if (['jpg', 'jpeg', 'png', 'gif', 'svg', 'webp'].includes(extension)) type = "IMAGE";
+                else if (['mp4', 'webm', 'mov', 'avi'].includes(extension)) type = "VIDEO";
+                else if (['mp3', 'wav', 'ogg', 'm4a'].includes(extension)) type = "AUDIO";
+                else if (extension === 'pdf') type = "PDF";
+              }
+            }
+            
+            newItems.push({
+              id: uuidv4(),
+              type,
+              url: responseData.data.url,
+              caption: file.name,
+            });
+          }
+        } catch (fileError) {
+          console.error(`Error processing file ${file.name}:`, fileError);
+          toast.error(`Failed to process ${file.name}: ${fileError instanceof Error ? fileError.message : 'Unknown error'}`);
+          // Continue with other files
         }
       }
       
-      const updatedItems = [...items, ...newItems];
-      setItems(updatedItems);
-      onChange(updatedItems);
-      
       if (newItems.length > 0) {
+        const updatedItems = [...items, ...newItems];
+        setItems(updatedItems);
+        onChange(updatedItems);
         toast.success(`Successfully uploaded ${newItems.length} file(s)`);
+      } else {
+        toast.error("No files were uploaded successfully.");
       }
     } catch (error) {
       console.error('Upload error:', error);
@@ -237,10 +258,22 @@ const MediaUploader = ({ mediaItems = [], onChange }: MediaUploaderProps) => {
 
   return (
     <div className="space-y-6">
-      <h2 className="text-xl font-semibold">Media Resources</h2>
+      <div className="flex justify-between items-center">
+        <h2 className="text-xl font-semibold">Media Resources</h2>
+        <Button 
+          variant="outline" 
+          size="sm" 
+          onClick={() => setShowStorageSetup(!showStorageSetup)}
+        >
+          <Settings className="h-4 w-4 mr-2" />
+          Storage Settings
+        </Button>
+      </div>
       <p className="text-gray-500">
         Upload images, videos, or other media files to support your procedure.
       </p>
+      
+      {showStorageSetup && <StorageSetup />}
       
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="grid w-full grid-cols-2">
