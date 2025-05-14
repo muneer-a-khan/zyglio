@@ -1,4 +1,3 @@
-import { supabase } from '@/integrations/supabase/client';
 import prisma from '@/lib/prisma';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -58,7 +57,7 @@ export interface Procedure {
   simulationSettings?: SimulationSettings;
 }
 
-// Define database record types that match Supabase schema
+// Define database record types that match Prisma schema
 interface ProcedureRecord {
   id: string;
   title: string;
@@ -192,21 +191,51 @@ class ProcedureService {
         throw new Error('No active task to update media for');
       }
 
-      const response = await fetch('/api/procedures/media', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          taskId: this.currentTaskId,
-          mediaItems,
-        }),
+      // Get the current procedure
+      const procedure = await prisma.procedure.findFirst({
+        where: { taskId: this.currentTaskId }
       });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Failed to save media items');
+      
+      if (!procedure) {
+        throw new Error('No procedure found for the current task');
       }
+
+      console.log(`Saving ${mediaItems.length} media items for procedure ${procedure.id}`);
+      
+      // Delete existing media items for this procedure
+      await prisma.mediaItem.deleteMany({
+        where: { procedureId: procedure.id }
+      });
+      
+      // Create new media items
+      if (mediaItems.length > 0) {
+        // Map MediaType enum values
+        const mapMediaType = (type: string) => {
+          switch (type) {
+            case 'IMAGE': return 'IMAGE';
+            case 'VIDEO': return 'VIDEO';
+            case 'AUDIO': return 'AUDIO';
+            case 'PDF': return 'PDF';
+            default: return 'IMAGE';
+          }
+        };
+        
+        // Create media items
+        await Promise.all(mediaItems.map(async (item) => {
+          await prisma.mediaItem.create({
+            data: {
+              id: item.id,
+              type: mapMediaType(item.type),
+              caption: item.caption || null,
+              url: item.url,
+              taskId: this.currentTaskId as string,
+              procedureId: procedure.id
+            }
+          });
+        }));
+      }
+      
+      console.log('Media items saved successfully');
     } catch (error) {
       console.error('Error saving media items:', error);
       throw error;
@@ -326,66 +355,69 @@ class ProcedureService {
       const procedureId = id || this.currentProcedureId;
       
       if (!procedureId) {
+        console.log('No procedure ID provided and no current procedure ID set');
         return null;
       }
 
-      // Get procedure data
-      const { data: procedureData, error: procedureError } = await supabase
-        .from('procedures')
-        .select('*')
-        .eq('id', procedureId)
-        .single();
+      console.log('Attempting to load procedure with ID:', procedureId);
+      
+      // Get procedure data using Prisma
+      const procedureData = await prisma.procedure.findUnique({
+        where: { id: procedureId }
+      });
 
-      if (procedureError) throw procedureError;
+      if (!procedureData) {
+        console.error('No procedure data found for ID:', procedureId);
+        return null;
+      }
 
-      const record = procedureData as ProcedureRecord;
+      console.log('Procedure record loaded:', JSON.stringify(procedureData));
 
-      // Get procedure steps
-      const { data: stepsData, error: stepsError } = await supabase
-        .from('procedure_steps')
-        .select('*')
-        .eq('procedure_id', procedureId)
-        .order('step_number', { ascending: true });
+      // Get procedure steps using Prisma
+      const stepsData = await prisma.procedureStep.findMany({
+        where: { procedureId: procedureId },
+        orderBy: { index: 'asc' }
+      });
 
-      if (stepsError) throw stepsError;
-
-      // Get media items
-      const { data: mediaData, error: mediaError } = await supabase
-        .from('mentor_media')
-        .select('*')
-        .eq('step_id', procedureId);
-
-      if (mediaError) throw mediaError;
+      // Get media items using Prisma
+      const mediaData = await prisma.mediaItem.findMany({
+        where: { procedureId: procedureId }
+      });
 
       // Format steps
       const steps = stepsData ? stepsData.map(step => ({
         id: step.id,
-        content: step.description,
-        comments: []
+        content: step.content,
+        comments: step.notes ? [step.notes] : []
       })) : [];
 
       // Format media items
       const mediaItems = mediaData ? mediaData.map(media => ({
         id: media.id,
-        type: media.media_type,
-        caption: media.description || undefined,
-        url: media.media_url
+        type: media.type.toString(),
+        caption: media.caption || undefined,
+        url: media.url
       })) : [];
 
+      // Get the learning task associated with this procedure
+      const task = await prisma.learningTask.findFirst({
+        where: { id: procedureData.taskId }
+      });
+
       return {
-        id: record.id,
-        title: record.title,
-        description: record.description,
-        presenter: '',
-        affiliation: '',
-        kpiTech: [],
-        kpiConcept: [],
-        date: new Date().toISOString(),
+        id: procedureData.id,
+        title: procedureData.title,
+        description: procedureData.title, // Assuming no separate description field
+        presenter: task?.presenter || '',
+        affiliation: task?.affiliation || '',
+        kpiTech: task?.kpiTech ? [task.kpiTech] : [],
+        kpiConcept: task?.kpiConcept ? [task.kpiConcept] : [],
+        date: task?.date?.toISOString() || new Date().toISOString(),
         steps,
         mediaItems,
-        transcript: '',
-        yamlContent: '',
-        flowchartCode: ''
+        transcript: '', // Need to check where transcript is stored
+        yamlContent: '', // Need to check where YAML is stored
+        flowchartCode: '' // Need to check where flowchart is stored
       };
     } catch (error) {
       console.error('Error loading procedure:', error);
@@ -398,24 +430,25 @@ class ProcedureService {
    */
   async getAllProcedures(): Promise<Procedure[]> {
     try {
-      const { data, error } = await supabase
-        .from('procedures')
-        .select('*')
-        .order('created_at', { ascending: false });
+      // Get all procedures using Prisma
+      const procedures = await prisma.procedure.findMany({
+        orderBy: { id: 'desc' },
+        include: {
+          task: true
+        }
+      });
 
-      if (error) throw error;
+      if (!procedures.length) return [];
 
-      if (!data) return [];
-
-      return data.map((item: ProcedureRecord) => ({
+      return procedures.map((item) => ({
         id: item.id,
         title: item.title,
-        description: item.description,
-        presenter: '',
-        affiliation: '',
-        kpiTech: [],
-        kpiConcept: [],
-        date: '',
+        description: item.title, // Assuming no separate description field
+        presenter: item.task?.presenter || '',
+        affiliation: item.task?.affiliation || '',
+        kpiTech: item.task?.kpiTech ? [item.task.kpiTech] : [],
+        kpiConcept: item.task?.kpiConcept ? [item.task.kpiConcept] : [],
+        date: item.task?.date?.toISOString() || '',
         steps: [],
         mediaItems: []
       }));
@@ -434,16 +467,11 @@ class ProcedureService {
         throw new Error('No active procedure to publish');
       }
 
-      // The published and published_at fields don't exist in the schema
-      // Just update the timestamp to indicate it was modified
-      const { error } = await supabase
-        .from('procedures')
-        .update({
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', this.currentProcedureId);
-
-      if (error) throw error;
+      // Update the procedure using Prisma
+      await prisma.procedure.update({
+        where: { id: this.currentProcedureId },
+        data: {}  // Just touch the record to update timestamps
+      });
 
       // Clear the current procedure ID from local storage
       if (typeof window !== 'undefined') {

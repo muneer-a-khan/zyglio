@@ -121,6 +121,8 @@ const MediaUploader = ({ mediaItems = [], onChange }: MediaUploaderProps) => {
         const formData = new FormData();
         formData.append('file', file);
         
+        console.log(`Uploading file: ${file.name}, type: ${file.type}, size: ${file.size}`);
+        
         const response = await fetch('/api/upload', {
           method: 'POST',
           body: formData,
@@ -128,17 +130,30 @@ const MediaUploader = ({ mediaItems = [], onChange }: MediaUploaderProps) => {
         
         if (!response.ok) {
           const error = await response.json();
-          throw new Error(error.message || 'Failed to upload file');
+          console.error('Upload error response:', error);
+          throw new Error(error.message || `Failed to upload file ${file.name}`);
         }
         
         const result = await response.json();
+        console.log('Upload success response:', result);
         
         if (result.success) {
+          // Determine file type from mime type or extension
           let type: string = "IMAGE";
           if (file.type.startsWith('image/')) type = "IMAGE";
           else if (file.type.startsWith('video/')) type = "VIDEO";
           else if (file.type.startsWith('audio/')) type = "AUDIO";
-          else type = "PDF";
+          else if (file.type.startsWith('application/pdf') || file.name.toLowerCase().endsWith('.pdf')) type = "PDF";
+          else {
+            // Fallback to extension check if MIME type is not standard
+            const extension = file.name.split('.').pop()?.toLowerCase();
+            if (extension) {
+              if (['jpg', 'jpeg', 'png', 'gif', 'svg', 'webp'].includes(extension)) type = "IMAGE";
+              else if (['mp4', 'webm', 'mov', 'avi'].includes(extension)) type = "VIDEO";
+              else if (['mp3', 'wav', 'ogg', 'm4a'].includes(extension)) type = "AUDIO";
+              else if (extension === 'pdf') type = "PDF";
+            }
+          }
           
           newItems.push({
             id: uuidv4(),

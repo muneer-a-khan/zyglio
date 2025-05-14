@@ -25,21 +25,24 @@ export async function POST(req: NextRequest) {
     const fileExt = file.name.split('.').pop();
     // Generate unique filename
     const fileName = `${uuidv4()}.${fileExt}`;
-    // Determine bucket based on file type
-    let bucket = 'media';
-    if (file.type.startsWith('image/')) bucket = 'media';
-    else if (file.type.startsWith('video/')) bucket = 'media';
-    else if (file.type.startsWith('audio/')) bucket = 'media';
-    else bucket = 'documents';
+    
+    // Determine folder based on file type
+    let folder = '';
+    if (file.type.startsWith('image/')) folder = 'images';
+    else if (file.type.startsWith('video/')) folder = 'videos';
+    else if (file.type.startsWith('audio/')) folder = 'audios';
+    else folder = 'pdfs';
     
     // Convert file to ArrayBuffer
     const arrayBuffer = await file.arrayBuffer();
     const fileBuffer = new Uint8Array(arrayBuffer);
     
+    console.log(`Uploading to bucket: user-uploads, folder: ${folder}, file: ${fileName}`);
+    
     // Upload to Supabase Storage
     const { data, error } = await supabase.storage
-      .from(bucket)
-      .upload(`${session.user.id}/${fileName}`, fileBuffer, {
+      .from('user-uploads')
+      .upload(`${folder}/${session.user.id}_${fileName}`, fileBuffer, {
         contentType: file.type,
         cacheControl: '3600',
         upsert: false
@@ -55,15 +58,16 @@ export async function POST(req: NextRequest) {
     
     // Get public URL
     const { data: { publicUrl } } = supabase.storage
-      .from(bucket)
-      .getPublicUrl(`${session.user.id}/${fileName}`);
+      .from('user-uploads')
+      .getPublicUrl(`${folder}/${session.user.id}_${fileName}`);
     
     return NextResponse.json({
       success: true,
       data: {
         url: publicUrl,
         fileName,
-        contentType: file.type
+        contentType: file.type,
+        folder
       }
     });
     
