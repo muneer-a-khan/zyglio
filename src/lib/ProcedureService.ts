@@ -218,30 +218,24 @@ class ProcedureService {
    */
   async saveTranscript(transcript: string): Promise<void> {
     try {
-      // For now, we'll store transcript in a Dictation record
-      if (!this.currentProcedureId) {
-        throw new Error('No active procedure to save transcript for');
+      if (!this.currentTaskId) {
+        throw new Error('No active task to save transcript for');
       }
       
-      // Find existing dictation or create a new one
-      const existingDictation = await prisma.dictation.findFirst({
-        where: { taskId: this.currentProcedureId }
+      const response = await fetch('/api/procedures/dictation', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          taskId: this.currentTaskId,
+          transcript,
+        }),
       });
-      
-      if (existingDictation) {
-        await prisma.dictation.update({
-          where: { id: existingDictation.id },
-          data: { transcript }
-        });
-      } else {
-        await prisma.dictation.create({
-          data: {
-            id: uuidv4(),
-            taskId: this.currentProcedureId,
-            transcript,
-            audioUrl: '', // Required field
-          }
-        });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to save transcript');
       }
     } catch (error) {
       console.error('Error saving transcript:', error);
@@ -254,28 +248,24 @@ class ProcedureService {
    */
   async saveYaml(yamlContent: string): Promise<void> {
     try {
-      if (!this.currentProcedureId) {
-        throw new Error('No active procedure to save YAML for');
+      if (!this.currentTaskId) {
+        throw new Error('No active task to save YAML for');
       }
       
-      // Find existing YAML output or create a new one
-      const existingYaml = await prisma.yamlOutput.findFirst({
-        where: { taskId: this.currentProcedureId }
+      const response = await fetch('/api/procedures/yaml', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          taskId: this.currentTaskId,
+          content: yamlContent,
+        }),
       });
-      
-      if (existingYaml) {
-        await prisma.yamlOutput.update({
-          where: { id: existingYaml.id },
-          data: { content: yamlContent }
-        });
-      } else {
-        await prisma.yamlOutput.create({
-          data: {
-            id: uuidv4(),
-            taskId: this.currentProcedureId,
-            content: yamlContent
-          }
-        });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to save YAML content');
       }
     } catch (error) {
       console.error('Error saving YAML content:', error);
@@ -288,12 +278,27 @@ class ProcedureService {
    */
   async saveFlowchart(flowchartCode: string): Promise<void> {
     try {
-      // The flowchart_code field doesn't exist in the procedures table
-      // For now, we'll store it in memory only
-      console.warn('saveFlowchart: flowchart_code field does not exist in procedures table');
-      // await this.updateProcedure({ flowchartCode });
+      if (!this.currentTaskId) {
+        throw new Error('No active task to save flowchart for');
+      }
+      
+      const response = await fetch('/api/procedures/flowchart', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          taskId: this.currentTaskId,
+          mermaid: flowchartCode,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to save flowchart');
+      }
     } catch (error) {
-      console.error('Error saving flowchart code:', error);
+      console.error('Error saving flowchart:', error);
       throw error;
     }
   }
