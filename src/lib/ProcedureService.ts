@@ -1,4 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
+import prisma from '@/lib/prisma';
 import { v4 as uuidv4 } from 'uuid';
 
 export interface TaskDefinition {
@@ -83,25 +84,55 @@ class ProcedureService {
     try {
       if (!this.currentProcedureId) {
         const procedureId = uuidv4();
+        const taskId = uuidv4();
         
-        const { error } = await supabase
-          .from('procedures')
-          .insert({
-            id: procedureId,
-            title: taskDefinition.name,
-            description: taskDefinition.description,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          });
-
-        if (error) {
-          console.error('Supabase error details:', JSON.stringify(error));
-          throw error;
+        // Get the current user ID from the session
+        let userId = '';
+        try {
+          const response = await fetch('/api/auth/session');
+          const session = await response.json();
+          userId = session?.user?.id || '';
+          
+          if (!userId) {
+            throw new Error('User ID not found in session');
+          }
+        } catch (error) {
+          console.error('Error getting user ID:', error);
+          throw new Error('Failed to get user ID from session');
         }
         
+        // Create a learning task and procedure in a transaction
+        const result = await prisma.$transaction(async (tx) => {
+          // First, create the learning task
+          const task = await tx.learningTask.create({
+            data: {
+              id: taskId,
+              title: taskDefinition.name,
+              kpiTech: taskDefinition.kpiTech?.join(', ') || null,
+              kpiConcept: taskDefinition.kpiConcept?.join(', ') || null,
+              presenter: taskDefinition.presenter,
+              affiliation: taskDefinition.affiliation,
+              date: new Date(taskDefinition.date),
+              userId: userId,
+            }
+          });
+          
+          // Then create the procedure linked to the task
+          const procedure = await tx.procedure.create({
+            data: {
+              id: procedureId,
+              title: taskDefinition.name,
+              taskId: task.id,
+            }
+          });
+          
+          return { taskId: task.id, procedureId: procedure.id };
+        });
+
         // Store procedure ID in local storage
         if (typeof window !== 'undefined') {
           localStorage.setItem('current_procedure_id', procedureId);
+          localStorage.setItem('current_task_id', result.taskId);
         }
         this.currentProcedureId = procedureId;
         
@@ -124,20 +155,15 @@ class ProcedureService {
         throw new Error('No active procedure to update');
       }
 
-      // Map from Procedure interface to database field names
-      const dbData: Record<string, any> = {
-        updated_at: new Date().toISOString()
-      };
-
-      if (procedureData.title) dbData.title = procedureData.title;
-      if (procedureData.description) dbData.description = procedureData.description;
-
-      const { error } = await supabase
-        .from('procedures')
-        .update(dbData)
-        .eq('id', this.currentProcedureId);
-
-      if (error) throw error;
+      // Use Prisma instead of Supabase
+      await prisma.procedure.update({
+        where: { id: this.currentProcedureId },
+        data: {
+          title: procedureData.title,
+          // Other fields as needed
+        }
+      });
+      
     } catch (error) {
       console.error('Error updating procedure:', error);
       throw error;
@@ -153,32 +179,28 @@ class ProcedureService {
         throw new Error('No active procedure to update steps for');
       }
 
-      // First, delete existing steps for this procedure to avoid duplicates
-      const { error: deleteError } = await supabase
-        .from('procedure_steps')
-        .delete()
-        .eq('procedure_id', this.currentProcedureId);
+      // Use Prisma transaction to delete existing steps and create new ones
+      await prisma.$transaction(async (tx) => {
+        // Delete existing steps
+        await tx.procedureStep.deleteMany({
+          where: { procedureId: this.currentProcedureId as string }
+        });
 
-      if (deleteError) throw deleteError;
-
-      // Insert new steps
-      const stepsToInsert = steps.map((step, index) => ({
-        id: step.id,
-        procedure_id: this.currentProcedureId as string,
-        title: `Step ${index + 1}`,
-        description: step.content,
-        step_number: index + 1,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      }));
-
-      if (stepsToInsert.length > 0) {
-        const { error: insertError } = await supabase
-          .from('procedure_steps')
-          .insert(stepsToInsert);
-
-        if (insertError) throw insertError;
-      }
+        // Create new steps
+        for (let i = 0; i < steps.length; i++) {
+          const step = steps[i];
+          await tx.procedureStep.create({
+            data: {
+              id: step.id,
+              procedureId: this.currentProcedureId as string,
+              index: i,
+              content: step.content,
+              // Map any other fields from your Step type to the ProcedureStep model
+            }
+          });
+        }
+      });
+      
     } catch (error) {
       console.error('Error saving steps:', error);
       throw error;
@@ -194,33 +216,29 @@ class ProcedureService {
         throw new Error('No active procedure to update media for');
       }
 
-      // First, delete existing media for this procedure to avoid duplicates
-      const { error: deleteError } = await supabase
-        .from('mentor_media')
-        .delete()
-        .eq('step_id', this.currentProcedureId);
+      // Use Prisma transaction
+      await prisma.$transaction(async (tx) => {
+        // Delete existing media for this procedure
+        await tx.mediaItem.deleteMany({
+          where: { taskId: this.currentProcedureId as string }
+        });
 
-      if (deleteError) throw deleteError;
-
-      // Insert new media items
-      const mediaToInsert = mediaItems.map(item => ({
-        id: item.id,
-        step_id: this.currentProcedureId as string,
-        title: item.caption || 'Media',
-        description: item.caption || null,
-        media_type: item.type,
-        media_url: item.url,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      }));
-
-      if (mediaToInsert.length > 0) {
-        const { error: insertError } = await supabase
-          .from('mentor_media')
-          .insert(mediaToInsert);
-
-        if (insertError) throw insertError;
-      }
+        // Create new media items
+        for (const item of mediaItems) {
+          await tx.mediaItem.create({
+            data: {
+              id: item.id,
+              taskId: this.currentProcedureId as string,
+              type: item.type as any, // Convert to MediaType enum
+              caption: item.caption || null,
+              url: item.url,
+              relevance: null,
+              // Add any other required fields
+            }
+          });
+        }
+      });
+      
     } catch (error) {
       console.error('Error saving media items:', error);
       throw error;
@@ -232,10 +250,31 @@ class ProcedureService {
    */
   async saveTranscript(transcript: string): Promise<void> {
     try {
-      // The transcript field doesn't exist in the procedures table
-      // For now, we'll store it in memory only
-      console.warn('saveTranscript: transcript field does not exist in procedures table');
-      // await this.updateProcedure({ transcript });
+      // For now, we'll store transcript in a Dictation record
+      if (!this.currentProcedureId) {
+        throw new Error('No active procedure to save transcript for');
+      }
+      
+      // Find existing dictation or create a new one
+      const existingDictation = await prisma.dictation.findFirst({
+        where: { taskId: this.currentProcedureId }
+      });
+      
+      if (existingDictation) {
+        await prisma.dictation.update({
+          where: { id: existingDictation.id },
+          data: { transcript }
+        });
+      } else {
+        await prisma.dictation.create({
+          data: {
+            id: uuidv4(),
+            taskId: this.currentProcedureId,
+            transcript,
+            audioUrl: '', // Required field
+          }
+        });
+      }
     } catch (error) {
       console.error('Error saving transcript:', error);
       throw error;
@@ -247,10 +286,29 @@ class ProcedureService {
    */
   async saveYaml(yamlContent: string): Promise<void> {
     try {
-      // The yaml_content field doesn't exist in the procedures table
-      // For now, we'll store it in memory only
-      console.warn('saveYaml: yaml_content field does not exist in procedures table');
-      // await this.updateProcedure({ yamlContent });
+      if (!this.currentProcedureId) {
+        throw new Error('No active procedure to save YAML for');
+      }
+      
+      // Find existing YAML output or create a new one
+      const existingYaml = await prisma.yamlOutput.findFirst({
+        where: { taskId: this.currentProcedureId }
+      });
+      
+      if (existingYaml) {
+        await prisma.yamlOutput.update({
+          where: { id: existingYaml.id },
+          data: { content: yamlContent }
+        });
+      } else {
+        await prisma.yamlOutput.create({
+          data: {
+            id: uuidv4(),
+            taskId: this.currentProcedureId,
+            content: yamlContent
+          }
+        });
+      }
     } catch (error) {
       console.error('Error saving YAML content:', error);
       throw error;
