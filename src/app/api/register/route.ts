@@ -1,6 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabase } from "@/integrations/supabase/client";
+import { createClient } from '@supabase/supabase-js';
 import prisma from "@/lib/prisma";
+
+// Create an admin client with the service role key
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL || '',
+  process.env.SUPABASE_SERVICE_ROLE_KEY || '',
+  {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false
+    }
+  }
+);
 
 export async function POST(req: NextRequest) {
   try {
@@ -13,8 +25,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // First, create the user in Supabase Auth
-    const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+    // First, create the user in Supabase Auth with admin privileges
+    const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
       email,
       password,
       email_confirm: true, // Auto-confirm email
@@ -59,7 +71,7 @@ export async function POST(req: NextRequest) {
       console.error("Prisma error:", dbError);
       
       // If we can't create in the database, revert the auth creation
-      await supabase.auth.admin.deleteUser(authData.user.id);
+      await supabaseAdmin.auth.admin.deleteUser(authData.user.id);
       
       return NextResponse.json(
         { success: false, message: dbError.message || "Database error" },
