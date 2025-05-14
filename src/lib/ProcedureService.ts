@@ -69,11 +69,13 @@ interface ProcedureRecord {
 
 class ProcedureService {
   private currentProcedureId: string | null = null;
+  private currentTaskId: string | null = null;
 
   constructor() {
-    // Initialize with a new ID or get from local storage/session
+    // Initialize with IDs from local storage/session
     if (typeof window !== 'undefined') {
       this.currentProcedureId = localStorage.getItem('current_procedure_id') || null;
+      this.currentTaskId = localStorage.getItem('current_task_id') || null;
     }
   }
 
@@ -83,60 +85,35 @@ class ProcedureService {
   async createProcedure(taskDefinition: TaskDefinition): Promise<string> {
     try {
       if (!this.currentProcedureId) {
-        const procedureId = uuidv4();
-        const taskId = uuidv4();
-        
-        // Get the current user ID from the session
-        let userId = '';
-        try {
-          const response = await fetch('/api/auth/session');
-          const session = await response.json();
-          userId = session?.user?.id || '';
-          
-          if (!userId) {
-            throw new Error('User ID not found in session');
-          }
-        } catch (error) {
-          console.error('Error getting user ID:', error);
-          throw new Error('Failed to get user ID from session');
-        }
-        
-        // Create a learning task and procedure in a transaction
-        const result = await prisma.$transaction(async (tx) => {
-          // First, create the learning task
-          const task = await tx.learningTask.create({
-            data: {
-              id: taskId,
-              title: taskDefinition.name,
-              kpiTech: taskDefinition.kpiTech?.join(', ') || null,
-              kpiConcept: taskDefinition.kpiConcept?.join(', ') || null,
-              presenter: taskDefinition.presenter,
-              affiliation: taskDefinition.affiliation,
-              date: new Date(taskDefinition.date),
-              userId: userId,
-            }
-          });
-          
-          // Then create the procedure linked to the task
-          const procedure = await tx.procedure.create({
-            data: {
-              id: procedureId,
-              title: taskDefinition.name,
-              taskId: task.id,
-            }
-          });
-          
-          return { taskId: task.id, procedureId: procedure.id };
+        const response = await fetch('/api/procedures', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(taskDefinition),
         });
 
-        // Store procedure ID in local storage
-        if (typeof window !== 'undefined') {
-          localStorage.setItem('current_procedure_id', procedureId);
-          localStorage.setItem('current_task_id', result.taskId);
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.message || 'Failed to create procedure');
         }
-        this.currentProcedureId = procedureId;
+
+        const data = await response.json();
         
-        return procedureId;
+        if (!data.success || !data.data?.procedureId) {
+          throw new Error('Failed to create procedure');
+        }
+        
+        // Store IDs in local storage
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('current_procedure_id', data.data.procedureId);
+          localStorage.setItem('current_task_id', data.data.taskId);
+        }
+        
+        this.currentProcedureId = data.data.procedureId;
+        this.currentTaskId = data.data.taskId;
+        
+        return data.data.procedureId;
       }
       
       return this.currentProcedureId;
@@ -155,15 +132,21 @@ class ProcedureService {
         throw new Error('No active procedure to update');
       }
 
-      // Use Prisma instead of Supabase
-      await prisma.procedure.update({
-        where: { id: this.currentProcedureId },
-        data: {
-          title: procedureData.title,
-          // Other fields as needed
-        }
+      const response = await fetch('/api/procedures', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          procedureId: this.currentProcedureId,
+          ...procedureData,
+        }),
       });
-      
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to update procedure');
+      }
     } catch (error) {
       console.error('Error updating procedure:', error);
       throw error;
@@ -179,28 +162,21 @@ class ProcedureService {
         throw new Error('No active procedure to update steps for');
       }
 
-      // Use Prisma transaction to delete existing steps and create new ones
-      await prisma.$transaction(async (tx) => {
-        // Delete existing steps
-        await tx.procedureStep.deleteMany({
-          where: { procedureId: this.currentProcedureId as string }
-        });
-
-        // Create new steps
-        for (let i = 0; i < steps.length; i++) {
-          const step = steps[i];
-          await tx.procedureStep.create({
-            data: {
-              id: step.id,
-              procedureId: this.currentProcedureId as string,
-              index: i,
-              content: step.content,
-              // Map any other fields from your Step type to the ProcedureStep model
-            }
-          });
-        }
+      const response = await fetch('/api/procedures/steps', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          procedureId: this.currentProcedureId,
+          steps,
+        }),
       });
-      
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to save steps');
+      }
     } catch (error) {
       console.error('Error saving steps:', error);
       throw error;
@@ -212,33 +188,25 @@ class ProcedureService {
    */
   async saveMediaItems(mediaItems: MediaItem[]): Promise<void> {
     try {
-      if (!this.currentProcedureId) {
-        throw new Error('No active procedure to update media for');
+      if (!this.currentTaskId) {
+        throw new Error('No active task to update media for');
       }
 
-      // Use Prisma transaction
-      await prisma.$transaction(async (tx) => {
-        // Delete existing media for this procedure
-        await tx.mediaItem.deleteMany({
-          where: { taskId: this.currentProcedureId as string }
-        });
-
-        // Create new media items
-        for (const item of mediaItems) {
-          await tx.mediaItem.create({
-            data: {
-              id: item.id,
-              taskId: this.currentProcedureId as string,
-              type: item.type as any, // Convert to MediaType enum
-              caption: item.caption || null,
-              url: item.url,
-              relevance: null,
-              // Add any other required fields
-            }
-          });
-        }
+      const response = await fetch('/api/procedures/media', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          taskId: this.currentTaskId,
+          mediaItems,
+        }),
       });
-      
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to save media items');
+      }
     } catch (error) {
       console.error('Error saving media items:', error);
       throw error;
