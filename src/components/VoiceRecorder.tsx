@@ -69,12 +69,20 @@ const VoiceRecorder = ({
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   // Add a flag to track recognition state to avoid race conditions
   const isRecognitionActiveRef = useRef<boolean>(false);
+  // Add a ref to track persistent transcript between recognition sessions
+  const persistentTranscriptRef = useRef<string>("");
 
   // Effect to monitor recording duration changes
   useEffect(() => {
     console.log("Recording duration updated:", recordingDuration);
   }, [recordingDuration]);
 
+  // Effect to update the persistent transcript ref when transcript state changes
+  useEffect(() => {
+    persistentTranscriptRef.current = transcript;
+    console.log("Updated persistent transcript ref:", persistentTranscriptRef.current);
+  }, [transcript]);
+  
   // Define a function to restart speech recognition
   const startSpeechRecognition = useCallback(() => {
     console.log("Manual restart of speech recognition requested");
@@ -133,15 +141,42 @@ const VoiceRecorder = ({
       recognition.interimResults = true;
       recognition.lang = "en-US";
       
+      // Get current transcript from persistent ref to avoid stale state issues
+      const currentTranscript = persistentTranscriptRef.current;
+      console.log("Starting new recognition with existing transcript:", currentTranscript);
+      
+      // These results are specific to this recognition session
+      let sessionResults = "";
+      
       recognition.onresult = (event: SpeechRecognitionEvent) => {
-        let currentTranscript = "";
-
+        // Process the results from this recognition session
+        sessionResults = "";
         for (let i = 0; i < event.results.length; i++) {
-          currentTranscript += event.results[i][0].transcript;
+          sessionResults += event.results[i][0].transcript;
         }
-
-        setTranscript(currentTranscript);
-        onTranscriptUpdate(currentTranscript);
+        
+        // Combine with existing transcript, adding a space if needed
+        const currentTranscript = persistentTranscriptRef.current;
+        let updatedTranscript = currentTranscript;
+        
+        // Only append if there's actually new content
+        if (sessionResults.trim()) {
+          if (currentTranscript && !currentTranscript.endsWith(" ")) {
+            updatedTranscript = currentTranscript + " " + sessionResults;
+          } else {
+            updatedTranscript = currentTranscript + sessionResults;
+          }
+        }
+        
+        console.log("Transcript update:", {
+          current: currentTranscript,
+          session: sessionResults,
+          updated: updatedTranscript
+        });
+        
+        // Update state and notify parent
+        setTranscript(updatedTranscript);
+        onTranscriptUpdate(updatedTranscript);
         
         // If we got a result, clear any network errors
         if (error && error.includes("network")) {
@@ -171,6 +206,11 @@ const VoiceRecorder = ({
         console.log("Speech recognition ended naturally");
         isRecognitionActiveRef.current = false;
         
+        // Save the final transcript from this session before restarting
+        if (sessionResults) {
+          console.log("Final session results on recognition end:", sessionResults);
+        }
+        
         // Try to restart if still recording and not paused
         if (isRecording && !isPaused) {
           console.log("Will attempt to restart in 500ms");
@@ -195,7 +235,7 @@ const VoiceRecorder = ({
       // Show more helpful error message to the user
       setError("Failed to start speech recognition. Please try again or check your browser permissions.");
     }
-  }, [isRecording, isPaused, onTranscriptUpdate, error]);
+  }, [isRecording, isPaused, onTranscriptUpdate, error, transcript]);
   
   // Set up speech recognition when recording state changes
   useEffect(() => {
@@ -290,6 +330,11 @@ const VoiceRecorder = ({
   const startRecording = async () => {
     console.log("START RECORDING CALLED");
     setError(null);
+    
+    // Clear transcript and reset persistent ref when starting a new recording
+    setTranscript("");
+    persistentTranscriptRef.current = "";
+    
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       mediaRecorderRef.current = new MediaRecorder(stream);
@@ -355,10 +400,16 @@ const VoiceRecorder = ({
         setRecordingDuration(elapsedSeconds);
       }, 1000);
       
+      // Log current transcript for debugging
+      console.log("Current transcript on resume:", transcript);
+      
       // Recognition will restart via useEffect when isPaused changes
     } else {
       // PAUSING
       console.log("PAUSING RECORDING");
+      
+      // Log current transcript for debugging
+      console.log("Current transcript on pause:", transcript);
       
       // Stop recognition when pausing
       if (recognitionRef.current) {
