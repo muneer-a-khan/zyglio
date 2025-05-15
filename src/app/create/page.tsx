@@ -32,7 +32,7 @@ export default function CreateProcedure() {
   const [yamlContent, setYamlContent] = useState("");
   const [flowchartContent, setFlowchartContent] = useState("");
   const [simulationSettings, setSimulationSettings] = useState<SimulationSettings | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
 
   // Redirect to sign-in if not authenticated
   useEffect(() => {
@@ -41,58 +41,14 @@ export default function CreateProcedure() {
     }
   }, [status, router]);
 
-  // Load any existing procedure data when the component mounts
+  // Clear any existing procedure ID when the create page loads
   useEffect(() => {
-    const loadProcedure = async () => {
-      if (status !== "authenticated") return;
-      
-      try {
-        const procedure = await procedureService.getProcedure();
-        
-        if (procedure) {
-          // Set all the state variables from the loaded procedure
-          setTaskDefinition({
-            name: procedure.title,
-            description: procedure.description,
-            presenter: procedure.presenter,
-            affiliation: procedure.affiliation,
-            kpiTech: procedure.kpiTech,
-            kpiConcept: procedure.kpiConcept,
-            date: procedure.date
-          });
-          
-          if (procedure.steps.length > 0) {
-            setSteps(procedure.steps);
-          }
-          
-          if (procedure.mediaItems.length > 0) {
-            setMediaItems(procedure.mediaItems);
-          }
-          
-          if (procedure.transcript) {
-            setTranscript(procedure.transcript);
-          }
-          
-          if (procedure.yamlContent) {
-            setYamlContent(procedure.yamlContent);
-          }
-          
-          if (procedure.flowchartCode) {
-            setFlowchartContent(procedure.flowchartCode);
-          }
-          
-          if (procedure.simulationSettings) {
-            setSimulationSettings(procedure.simulationSettings);
-          }
-        }
-      } catch (error) {
-        console.error("Error loading procedure:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    
-    loadProcedure();
+    // Only clear if authenticated
+    if (status === "authenticated") {
+      // This ensures we're starting fresh when creating a new procedure
+      procedureService.clearCurrentProcedure();
+      setLoading(false);
+    }
   }, [status]);
 
   // Handle sign out
@@ -193,8 +149,10 @@ export default function CreateProcedure() {
     try {
       if (activeTab === "dictation" && transcript) {
         await procedureService.saveTranscript(transcript);
-      } else if (activeTab === "procedure" && steps.length > 0) {
-        await procedureService.saveSteps(steps);
+        // Also save any steps parsed from the transcript
+        if (steps.length > 0) {
+          await procedureService.saveSteps(steps);
+        }
       } else if (activeTab === "yaml" && yamlContent) {
         await procedureService.saveYaml(yamlContent);
       } else if (activeTab === "flowchart" && flowchartContent) {
@@ -210,8 +168,7 @@ export default function CreateProcedure() {
   const handleNextTab = () => {
     if (activeTab === "task") handleTabChange("media");
     else if (activeTab === "media") handleTabChange("dictation");
-    else if (activeTab === "dictation") handleTabChange("procedure");
-    else if (activeTab === "procedure") handleTabChange("yaml");
+    else if (activeTab === "dictation") handleTabChange("yaml");
     else if (activeTab === "yaml") handleTabChange("flowchart");
     else if (activeTab === "flowchart") handleTabChange("simulation");
   };
@@ -219,8 +176,7 @@ export default function CreateProcedure() {
   const handlePreviousTab = () => {
     if (activeTab === "media") handleTabChange("task");
     else if (activeTab === "dictation") handleTabChange("media");
-    else if (activeTab === "procedure") handleTabChange("dictation");
-    else if (activeTab === "yaml") handleTabChange("procedure");
+    else if (activeTab === "yaml") handleTabChange("dictation");
     else if (activeTab === "flowchart") handleTabChange("yaml");
     else if (activeTab === "simulation") handleTabChange("flowchart");
   };
@@ -327,14 +283,13 @@ export default function CreateProcedure() {
           onValueChange={handleTabChange}
         >
           <div className="mb-8">
-            <TabsList className="grid w-full grid-cols-7">
+            <TabsList className="grid w-full grid-cols-6">
               <TabsTrigger value="task">1. Define Task</TabsTrigger>
               <TabsTrigger value="media">2. Media</TabsTrigger>
               <TabsTrigger value="dictation">3. Dictation</TabsTrigger>
-              <TabsTrigger value="procedure">4. Procedure</TabsTrigger>
-              <TabsTrigger value="yaml">5. YAML</TabsTrigger>
-              <TabsTrigger value="flowchart">6. Flowchart</TabsTrigger>
-              <TabsTrigger value="simulation">7. Simulation</TabsTrigger>
+              <TabsTrigger value="yaml">4. YAML</TabsTrigger>
+              <TabsTrigger value="flowchart">5. Flowchart</TabsTrigger>
+              <TabsTrigger value="simulation">6. Simulation</TabsTrigger>
             </TabsList>
           </div>
 
@@ -391,35 +346,12 @@ export default function CreateProcedure() {
                   <TranscriptEditor
                     transcript={transcript}
                     onChange={handleTranscriptChange}
+                    onStepsChange={handleStepsChange}
+                    steps={steps}
                   />
                 </CardContent>
               </Card>
             </div>
-
-            <div className="flex justify-between mt-6">
-              <Button variant="outline" onClick={handlePreviousTab}>
-                <ChevronLeft className="mr-2 h-4 w-4" /> Previous Step
-              </Button>
-              <Button
-                onClick={handleNextTab}
-                className="bg-blue-600 hover:bg-blue-700"
-              >
-                Next Step <ChevronRight className="ml-2 h-4 w-4" />
-              </Button>
-            </div>
-          </TabsContent>
-
-          <TabsContent value="procedure">
-            <Card>
-              <CardContent className="pt-6">
-                <TranscriptEditor
-                  transcript={transcript}
-                  onChange={handleTranscriptChange}
-                  onStepsChange={handleStepsChange}
-                  steps={steps}
-                />
-              </CardContent>
-            </Card>
 
             <div className="flex justify-between mt-6">
               <Button variant="outline" onClick={handlePreviousTab}>

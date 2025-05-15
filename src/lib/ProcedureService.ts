@@ -373,6 +373,16 @@ class ProcedureService {
    */
   async getProcedure(id?: string): Promise<Procedure | null> {
     try {
+      // Check if we're on the create page
+      if (!this.isServer && typeof window !== 'undefined') {
+        const pathname = window.location.pathname;
+        // If we're on the create page, return null immediately
+        if (pathname === '/create' || pathname === '/create/') {
+          console.log('On create page, not loading any existing procedure');
+          return null;
+        }
+      }
+
       const procedureId = id || this.currentProcedureId;
       
       if (!procedureId) {
@@ -416,14 +426,14 @@ class ProcedureService {
       });
 
       // Format steps
-      const steps = stepsData ? stepsData.map(step => ({
+      const steps = stepsData ? stepsData.map((step: any) => ({
         id: step.id,
         content: step.content,
         comments: step.notes ? [step.notes] : []
       })) : [];
 
       // Format media items
-      const mediaItems = mediaData ? mediaData.map(media => ({
+      const mediaItems = mediaData ? mediaData.map((media: any) => ({
         id: media.id,
         type: media.type.toString(),
         caption: media.caption || undefined,
