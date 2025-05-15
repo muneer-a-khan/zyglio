@@ -68,6 +68,11 @@ const VoiceRecorder = ({
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Effect to monitor recording duration changes
+  useEffect(() => {
+    console.log("Recording duration updated:", recordingDuration);
+  }, [recordingDuration]);
+
   // Set up SpeechRecognition
   useEffect(() => {
     // Check if browser supports SpeechRecognition
@@ -102,12 +107,30 @@ const VoiceRecorder = ({
     recognition.onerror = (event: any) => {
       console.error("Speech recognition error", event.error);
       setError(`Speech recognition error: ${event.error}`);
+      
+      // Don't stop recording on network errors, just show the error
+      if (event.error === 'network') {
+        // Try to restart recognition after a short delay
+        setTimeout(() => {
+          if (isRecording && !isPaused && recognitionRef.current) {
+            try {
+              recognitionRef.current.start();
+            } catch (e) {
+              console.error("Failed to restart recognition:", e);
+            }
+          }
+        }, 1000);
+      }
     };
 
     recognition.onend = () => {
       if (isRecording && !isPaused) {
         // If recording was not explicitly paused, but recognition ended, try to restart it
-        recognition.start();
+        try {
+          recognition.start();
+        } catch (e) {
+          console.error("Failed to restart recognition on end:", e);
+        }
       }
     };
 
@@ -125,78 +148,134 @@ const VoiceRecorder = ({
   }, [isRecording, isPaused, onTranscriptUpdate]);
 
   const startRecording = async () => {
+    console.log("START RECORDING CALLED");
     setError(null);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       mediaRecorderRef.current = new MediaRecorder(stream);
 
-      // Start recognition
-      if (recognitionRef.current) {
-        recognitionRef.current.start();
-      }
-
-      setIsRecording(true);
-      setIsPaused(false);
-
-      // Start timer
+      // Start timer immediately - do this first to ensure timer is running
       setRecordingDuration(0);
+      console.log("SETTING UP TIMER");
+      
+      // Clear any existing interval first
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+      
+      // Use a more reliable timer approach
+      const startTime = Date.now();
       timerRef.current = setInterval(() => {
-        setRecordingDuration((prev) => prev + 1);
+        const elapsedSeconds = Math.floor((Date.now() - startTime) / 1000);
+        console.log("TIMER TICK", elapsedSeconds);
+        setRecordingDuration(elapsedSeconds);
       }, 1000);
+      
+      // Start recognition - we already set recording state in the button handler
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.start();
+        } catch (e) {
+          console.error("Error starting recognition:", e);
+          // Still continue with recording even if recognition fails
+        }
+      }
     } catch (err) {
       console.error("Error accessing microphone:", err);
       setError(
         "Error accessing microphone. Please ensure your microphone is connected and you have granted permission to use it."
       );
+      // Reset recording state since we failed
+      setIsRecording(false);
+      setIsPaused(false);
     }
   };
 
   const pauseRecording = () => {
-    if (isPaused) {
-      // Resume recording
+    console.log("PAUSE RECORDING CALLED", isPaused);
+    
+    // Check current pause state - we already toggled it in the UI
+    const currentlyPaused = !isPaused;
+    
+    if (currentlyPaused) {
+      // We're now resuming (was paused, now is not)
       if (recognitionRef.current) {
-        recognitionRef.current.start();
+        try {
+          recognitionRef.current.start();
+        } catch (e) {
+          console.error("Error resuming recognition:", e);
+        }
       }
 
-      // Resume timer
+      // Resume timer with the current elapsed time
+      console.log("RESUMING TIMER");
+      
+      // Clear any existing interval first
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+      
+      // Store current duration
+      const currentDuration = recordingDuration;
+      const resumeTime = Date.now() - (currentDuration * 1000);
+      
       timerRef.current = setInterval(() => {
-        setRecordingDuration((prev) => prev + 1);
+        const elapsedSeconds = Math.floor((Date.now() - resumeTime) / 1000);
+        console.log("TIMER TICK (RESUME)", elapsedSeconds);
+        setRecordingDuration(elapsedSeconds);
       }, 1000);
-
-      setIsPaused(false);
     } else {
-      // Pause recording
+      // We're now pausing (was not paused, now is)
       if (recognitionRef.current) {
-        recognitionRef.current.stop();
+        try {
+          recognitionRef.current.stop();
+        } catch (e) {
+          console.error("Error pausing recognition:", e);
+        }
       }
 
       // Pause timer
+      console.log("PAUSING TIMER");
       if (timerRef.current) {
         clearInterval(timerRef.current);
+        timerRef.current = null;
       }
-
-      setIsPaused(true);
     }
   };
 
   const stopRecording = () => {
+    console.log("STOP RECORDING CALLED");
+    
+    // Stop media tracks
     if (mediaRecorderRef.current) {
-      mediaRecorderRef.current.stream
-        .getTracks()
-        .forEach((track) => track.stop());
+      try {
+        mediaRecorderRef.current.stream
+          .getTracks()
+          .forEach((track) => track.stop());
+      } catch (e) {
+        console.error("Error stopping media tracks:", e);
+      }
     }
 
+    // Stop recognition
     if (recognitionRef.current) {
-      recognitionRef.current.stop();
+      try {
+        recognitionRef.current.stop();
+      } catch (e) {
+        console.error("Error stopping recognition:", e);
+      }
     }
 
     // Stop timer
+    console.log("STOPPING TIMER");
     if (timerRef.current) {
       clearInterval(timerRef.current);
+      timerRef.current = null;
     }
-
-    setIsRecording(false);
-    setIsPaused(false);
+    
+    // We already set the states in the button handler
   };
 
   const formatTime = (seconds: number): string => {
@@ -210,9 +289,13 @@ const VoiceRecorder = ({
   return (
     <div className={cn("flex flex-col items-center", className)}>
       {error && (
-        <Alert variant="destructive" className="mb-4">
+        <Alert variant={error.includes("network") ? "warning" : "destructive"} className="mb-4">
           <AlertCircle className="h-4 w-4" />
-          <AlertDescription>{error}</AlertDescription>
+          <AlertDescription>
+            {error.includes("network") 
+              ? "Network issue with speech recognition. Your recording will continue, but transcription may be affected."
+              : error}
+          </AlertDescription>
         </Alert>
       )}
 
@@ -229,7 +312,14 @@ const VoiceRecorder = ({
 
           {!isRecording ? (
             <Button
-              onClick={startRecording}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                // Set state immediately before calling async function
+                setIsRecording(true);
+                setIsPaused(false);
+                startRecording();
+              }}
               className="bg-blue-600 hover:bg-blue-700 text-white h-20 w-20 rounded-full"
               disabled={!isSupported}
             >
@@ -238,7 +328,13 @@ const VoiceRecorder = ({
           ) : (
             <div className="flex gap-4">
               <Button
-                onClick={pauseRecording}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  // Toggle pause state immediately
+                  setIsPaused(!isPaused);
+                  pauseRecording();
+                }}
                 variant="outline"
                 className="h-12 w-12 rounded-full"
               >
@@ -249,7 +345,14 @@ const VoiceRecorder = ({
                 )}
               </Button>
               <Button
-                onClick={stopRecording}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  // Set state immediately
+                  setIsRecording(false);
+                  setIsPaused(false);
+                  stopRecording();
+                }}
                 variant="destructive"
                 className="h-12 w-12 rounded-full"
               >
