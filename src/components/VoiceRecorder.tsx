@@ -77,12 +77,6 @@ const VoiceRecorder = ({
     console.log("Recording duration updated:", recordingDuration);
   }, [recordingDuration]);
 
-  // Effect to update the persistent transcript ref when transcript state changes
-  useEffect(() => {
-    persistentTranscriptRef.current = transcript;
-    console.log("Updated persistent transcript ref:", persistentTranscriptRef.current);
-  }, [transcript]);
-  
   // Define a function to restart speech recognition
   const startSpeechRecognition = useCallback(() => {
     console.log("Manual restart of speech recognition requested");
@@ -137,46 +131,75 @@ const VoiceRecorder = ({
       
       console.log("Creating new speech recognition instance");
       const recognition = new SpeechRecognitionAPI();
-      recognition.continuous = true;
+      recognition.continuous = true; // Switch back to continuous for smoother recognition
       recognition.interimResults = true;
       recognition.lang = "en-US";
       
-      // Get current transcript from persistent ref to avoid stale state issues
-      const currentTranscript = persistentTranscriptRef.current;
-      console.log("Starting new recognition with existing transcript:", currentTranscript);
+      // Get current transcript from persistent ref
+      const startingTranscript = persistentTranscriptRef.current;
+      console.log("Starting new recognition with existing transcript:", startingTranscript);
       
-      // These results are specific to this recognition session
-      let sessionResults = "";
+      // Track if we got a final result
+      let finalResultReceived = false;
       
       recognition.onresult = (event: SpeechRecognitionEvent) => {
-        // Process the results from this recognition session
-        sessionResults = "";
+        // Process all the results
+        let fullSessionTranscript = "";
+        
         for (let i = 0; i < event.results.length; i++) {
-          sessionResults += event.results[i][0].transcript;
-        }
-        
-        // Combine with existing transcript, adding a space if needed
-        const currentTranscript = persistentTranscriptRef.current;
-        let updatedTranscript = currentTranscript;
-        
-        // Only append if there's actually new content
-        if (sessionResults.trim()) {
-          if (currentTranscript && !currentTranscript.endsWith(" ")) {
-            updatedTranscript = currentTranscript + " " + sessionResults;
-          } else {
-            updatedTranscript = currentTranscript + sessionResults;
+          const result = event.results[i];
+          // Only add final results to avoid duplication
+          if (result.isFinal) {
+            finalResultReceived = true;
+            fullSessionTranscript += result[0].transcript;
           }
         }
         
-        console.log("Transcript update:", {
-          current: currentTranscript,
-          session: sessionResults,
-          updated: updatedTranscript
-        });
-        
-        // Update state and notify parent
-        setTranscript(updatedTranscript);
-        onTranscriptUpdate(updatedTranscript);
+        if (finalResultReceived && fullSessionTranscript) {
+          // Build the new transcript
+          let newFullTranscript = startingTranscript;
+          
+          // Add a space if needed
+          if (startingTranscript && !startingTranscript.endsWith(" ") && 
+              fullSessionTranscript && !fullSessionTranscript.startsWith(" ")) {
+            newFullTranscript += " ";
+          }
+          
+          // Add the new content
+          newFullTranscript += fullSessionTranscript;
+          
+          console.log("Final result - updating full transcript:", {
+            previous: startingTranscript,
+            new: fullSessionTranscript,
+            result: newFullTranscript
+          });
+          
+          // Update both the state and ref
+          setTranscript(newFullTranscript);
+          persistentTranscriptRef.current = newFullTranscript;
+          onTranscriptUpdate(newFullTranscript);
+        } else {
+          // Show the latest interim result
+          const latestResult = event.results[event.results.length - 1];
+          if (!latestResult.isFinal) {
+            const interimText = latestResult[0].transcript;
+            
+            // Create a temp transcript with the interim result
+            let tempTranscript = startingTranscript;
+            
+            // Add a space if needed
+            if (startingTranscript && !startingTranscript.endsWith(" ") && 
+                interimText && !interimText.startsWith(" ")) {
+              tempTranscript += " ";
+            }
+            
+            tempTranscript += interimText;
+            
+            // Just update the UI state, not the persistent ref
+            setTranscript(tempTranscript);
+            onTranscriptUpdate(tempTranscript);
+          }
+        }
         
         // If we got a result, clear any network errors
         if (error && error.includes("network")) {
@@ -206,19 +229,11 @@ const VoiceRecorder = ({
         console.log("Speech recognition ended naturally");
         isRecognitionActiveRef.current = false;
         
-        // Save the final transcript from this session before restarting
-        if (sessionResults) {
-          console.log("Final session results on recognition end:", sessionResults);
-        }
-        
-        // Try to restart if still recording and not paused
-        if (isRecording && !isPaused) {
-          console.log("Will attempt to restart in 500ms");
-          setTimeout(() => {
-            if (isRecording && !isPaused && !isRecognitionActiveRef.current) {
-              startSpeechRecognition();
-            }
-          }, 500); // Increased delay to reduce rapid restarts
+        // If no final result was received, reset to the persistent transcript
+        if (!finalResultReceived) {
+          console.log("No final result - restoring original transcript");
+          setTranscript(persistentTranscriptRef.current);
+          onTranscriptUpdate(persistentTranscriptRef.current);
         }
       };
       
@@ -235,7 +250,7 @@ const VoiceRecorder = ({
       // Show more helpful error message to the user
       setError("Failed to start speech recognition. Please try again or check your browser permissions.");
     }
-  }, [isRecording, isPaused, onTranscriptUpdate, error, transcript]);
+  }, [isRecording, isPaused, onTranscriptUpdate, error]);
   
   // Set up speech recognition when recording state changes
   useEffect(() => {
@@ -403,7 +418,7 @@ const VoiceRecorder = ({
       // Log current transcript for debugging
       console.log("Current transcript on resume:", transcript);
       
-      // Recognition will restart via useEffect when isPaused changes
+      // Start speech recognition by changing the state - the useEffect will handle it
     } else {
       // PAUSING
       console.log("PAUSING RECORDING");
@@ -411,11 +426,12 @@ const VoiceRecorder = ({
       // Log current transcript for debugging
       console.log("Current transcript on pause:", transcript);
       
-      // Stop recognition when pausing
+      // Stop speech recognition completely when pausing
       if (recognitionRef.current) {
         try {
           console.log("Stopping recognition for pause");
           recognitionRef.current.stop();
+          recognitionRef.current = null; // Clear the reference to prevent automatic restarts
         } catch (e) {
           console.error("Error pausing recognition:", e);
         }
@@ -435,7 +451,7 @@ const VoiceRecorder = ({
     // Simplified function with more logging
     console.log("STOP RECORDING CALLED");
     
-    // Stop recognition first
+    // Stop recognition first and clear the reference
     if (recognitionRef.current) {
       try {
         console.log("Stopping recognition");
@@ -443,7 +459,7 @@ const VoiceRecorder = ({
       } catch (e) {
         console.error("Error stopping recognition:", e);
       }
-      // Immediately mark as inactive to prevent restarts
+      // Immediately mark as inactive and clear reference
       isRecognitionActiveRef.current = false;
       recognitionRef.current = null;
     }
@@ -455,6 +471,7 @@ const VoiceRecorder = ({
         mediaRecorderRef.current.stream
           .getTracks()
           .forEach((track) => track.stop());
+        mediaRecorderRef.current = null;
       } catch (e) {
         console.error("Error stopping media tracks:", e);
       }
@@ -481,10 +498,15 @@ const VoiceRecorder = ({
   // Handle start button click
   const handleStartClick = () => {
     console.log("START BUTTON CLICKED - HANDLER");
+    
     // Set state immediately before calling async function
     setIsRecording(true);
     setIsPaused(false);
+    
+    // Start recording and request microphone permission
     startRecording();
+    
+    // The useEffect watching isRecording will start speech recognition once state is updated
   };
 
   // These handlers are no longer used - we're using inline ones
@@ -581,8 +603,19 @@ const VoiceRecorder = ({
               onClick={() => {
                 console.log("CLICKED PAUSE/RESUME");
                 const newPauseState = !isPaused;
+                
+                // Change state first
                 setIsPaused(newPauseState);
+                
+                // Then perform the pause/resume action
                 pauseRecording(newPauseState);
+                
+                // If resuming, ensure speech recognition starts again
+                if (!newPauseState && isRecording && !isRecognitionActiveRef.current) {
+                  setTimeout(() => {
+                    startSpeechRecognition();
+                  }, 100);
+                }
               }}
               className={cn(
                 "flex items-center justify-center h-16 w-16 rounded-full shadow-md transition-all outline-none focus:outline-none focus:ring-2 focus:ring-blue-500",
@@ -604,8 +637,12 @@ const VoiceRecorder = ({
               type="button"
               onClick={() => {
                 console.log("CLICKED STOP");
+                
+                // First change states
                 setIsRecording(false);
                 setIsPaused(false);
+                
+                // Then perform the stop action
                 stopRecording();
               }}
               className="flex items-center justify-center h-16 w-16 rounded-full bg-red-500 hover:bg-red-600 text-white shadow-md transition-all outline-none focus:outline-none focus:ring-2 focus:ring-blue-500"
