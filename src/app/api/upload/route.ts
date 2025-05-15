@@ -37,12 +37,20 @@ export async function POST(req: NextRequest) {
     const arrayBuffer = await file.arrayBuffer();
     const fileBuffer = new Uint8Array(arrayBuffer);
     
-    console.log(`Uploading to bucket: user-uploads, folder: ${folder}, file: ${fileName}`);
-    
     // Create a Supabase client with the service role key to bypass RLS
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+    
+    if (!supabaseUrl || !supabaseKey) {
+      return NextResponse.json({ 
+        success: false, 
+        message: "Server configuration error - missing Supabase credentials" 
+      }, { status: 500 });
+    }
+    
     const supabaseAdmin = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL || '',
-      process.env.SUPABASE_SERVICE_ROLE_KEY || '',
+      supabaseUrl,
+      supabaseKey,
       {
         auth: {
           autoRefreshToken: false,
@@ -51,17 +59,46 @@ export async function POST(req: NextRequest) {
       }
     );
     
+    // Check if bucket exists and create it if it doesn't
+    const { data: buckets, error: bucketsError } = await supabaseAdmin.storage.listBuckets();
+    
+    if (bucketsError) {
+      return NextResponse.json({ 
+        success: false, 
+        message: "Error listing buckets: " + bucketsError.message 
+      }, { status: 500 });
+    }
+    
+    const userUploadsBucket = buckets.find(b => b.name === 'user-uploads');
+    
+    if (!userUploadsBucket) {
+      const { data: newBucket, error: createBucketError } = await supabaseAdmin.storage.createBucket('user-uploads', {
+        public: false,
+        allowedMimeTypes: ['image/*', 'video/*', 'audio/*', 'application/pdf'],
+        fileSizeLimit: 50 * 1024 * 1024 // 50MB
+      });
+      
+      if (createBucketError) {
+        return NextResponse.json({ 
+          success: false, 
+          message: "Failed to create storage bucket: " + createBucketError.message 
+        }, { status: 500 });
+      }
+    }
+    
+    // Construct the final file path
+    const filePath = `${folder}/${session.user.id}_${fileName}`;
+    
     // Upload to Supabase Storage with admin privileges
     const { data, error } = await supabaseAdmin.storage
       .from('user-uploads')
-      .upload(`${folder}/${session.user.id}_${fileName}`, fileBuffer, {
+      .upload(filePath, fileBuffer, {
         contentType: file.type,
         cacheControl: '3600',
         upsert: false
       });
       
     if (error) {
-      console.error('Supabase storage error:', error);
       return NextResponse.json({ 
         success: false, 
         message: error.message || "Failed to upload file" 
@@ -70,12 +107,12 @@ export async function POST(req: NextRequest) {
     
     // For private buckets, we need to create a signed URL (with expiry time)
     // You can adjust the expiresIn value as needed (in seconds)
+    const TEN_YEARS_IN_SECONDS = 60 * 60 * 24 * 365 * 10; // 10 years
     const { data: signedUrlData, error: signedUrlError } = await supabaseAdmin.storage
       .from('user-uploads')
-      .createSignedUrl(`${folder}/${session.user.id}_${fileName}`, 60 * 60 * 24 * 365 * 10); // 10 years expiry
+      .createSignedUrl(filePath, TEN_YEARS_IN_SECONDS);
     
     if (signedUrlError) {
-      console.error('Error creating signed URL:', signedUrlError);
       return NextResponse.json({ 
         success: false, 
         message: 'Failed to generate access URL for file' 
@@ -84,14 +121,37 @@ export async function POST(req: NextRequest) {
     
     const fileUrl = signedUrlData.signedUrl;
     
-    // Store the file path in the database so we can generate new signed URLs later if needed
-    const filePath = `${folder}/${session.user.id}_${fileName}`;
+    // Write to the database
+    try {
+      const prisma = require('@/lib/prisma').default;
+      
+      // Create a media item in the database
+      const mediaItem = await prisma.mediaItem.create({
+        data: {
+          id: uuidv4(),
+          type: file.type.startsWith('image/') ? 'IMAGE' : 
+                file.type.startsWith('video/') ? 'VIDEO' : 
+                file.type.startsWith('audio/') ? 'AUDIO' : 'PDF',
+          caption: file.name,
+          url: fileUrl,
+          filePath: filePath,
+          task: {
+            connect: {
+              userId: session.user.id
+            }
+          }
+        }
+      });
+    } catch (dbError) {
+      console.error('Warning: Failed to create database record:', dbError);
+      // Continue even if database fails - we'll still use the file from storage
+    }
     
     return NextResponse.json({
       success: true,
       data: {
         url: fileUrl,
-        filePath: filePath, // Store this in your database along with the media item
+        filePath: filePath,
         fileName,
         contentType: file.type,
         folder
@@ -102,7 +162,8 @@ export async function POST(req: NextRequest) {
     console.error('Error uploading file:', error);
     return NextResponse.json({ 
       success: false, 
-      message: error.message || "An error occurred" 
+      message: error.message || "An error occurred",
+      stack: error.stack
     }, { status: 500 });
   }
 } 

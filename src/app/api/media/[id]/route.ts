@@ -48,10 +48,21 @@ export async function DELETE(
     // Delete from Supabase storage if URL is from Supabase
     if (mediaItem.url.includes('storage.googleapis.com') || mediaItem.url.includes(process.env.NEXT_PUBLIC_SUPABASE_URL || '')) {
       try {
-        // Extract the path from the URL
+        // Extract path parts from the URL
         const urlParts = mediaItem.url.split('/');
-        const bucket = urlParts[urlParts.length - 2];
-        const filePath = urlParts[urlParts.length - 1];
+        const bucket = 'user-uploads'; // Use the correct bucket name per RLS policy
+        
+        // Extract the file name/path - could be images/filename.jpg, videos/filename.mp4, etc.
+        let fileName = urlParts[urlParts.length - 1];
+        let folderName = urlParts.length > 1 ? urlParts[urlParts.length - 2] : '';
+        
+        // Ensure the filename includes the user ID for security
+        if (!fileName.startsWith(`${session.user.id}_`)) {
+          fileName = `${session.user.id}_${fileName}`;
+        }
+        
+        // Construct the file path based on folder structure
+        const filePath = folderName ? `${folderName}/${fileName}` : fileName;
         
         // Delete the file from Supabase storage
         await supabase.storage.from(bucket).remove([filePath]);

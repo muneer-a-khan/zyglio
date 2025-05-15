@@ -38,6 +38,8 @@ export interface MediaItem {
   caption?: string;
   url: string;
   filePath?: string;
+  createdAt?: string | Date;
+  presenter?: string;
 }
 
 export interface SimulationSettings {

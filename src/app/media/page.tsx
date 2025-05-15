@@ -10,6 +10,8 @@ import { useRouter } from "next/navigation";
 import { MediaItem } from "@/lib/ProcedureService";
 import MediaGallery from "@/components/MediaGallery";
 import { toast } from "sonner";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Card, CardContent } from "@/components/ui/card";
 
 export default function MediaLibrary() {
   const { data: session, status } = useSession();
@@ -36,18 +38,29 @@ export default function MediaLibrary() {
         const response = await fetch('/api/media');
         
         if (!response.ok) {
-          throw new Error('Failed to fetch media items');
+          const errorData = await response.json();
+          console.error("API Error:", errorData);
+          throw new Error(`Failed to fetch media items: ${errorData.message || response.statusText}`);
         }
         
         const data = await response.json();
+        console.log("API Response:", data);
         
         if (data.success && Array.isArray(data.mediaItems)) {
           setMediaItems(data.mediaItems);
           setFilteredItems(data.mediaItems);
+          
+          if (data.mediaItems.length === 0) {
+            toast.info('No media items found in your account');
+          } else {
+            toast.success(`Loaded ${data.mediaItems.length} media items`);
+          }
+        } else {
+          throw new Error(data.message || 'Failed to get media data');
         }
       } catch (error) {
         console.error('Error fetching media items:', error);
-        toast.error('Failed to load media items');
+        toast.error(`${error}`);
       } finally {
         setIsLoading(false);
       }
@@ -91,6 +104,41 @@ export default function MediaLibrary() {
     } catch (error) {
       console.error('Error deleting media item:', error);
       toast.error('Failed to delete media item');
+    }
+  };
+
+  // Function to retry loading
+  const handleRefresh = async () => {
+    try {
+      setIsLoading(true);
+      toast.info('Refreshing media items...');
+      
+      // Clear cache if any
+      await fetch('/api/media/refresh-all', {
+        method: 'POST',
+      });
+      
+      // Reload items
+      const response = await fetch('/api/media');
+        
+      if (!response.ok) {
+        throw new Error('Failed to fetch media items');
+      }
+      
+      const data = await response.json();
+      
+      if (data.success && Array.isArray(data.mediaItems)) {
+        setMediaItems(data.mediaItems);
+        setFilteredItems(data.mediaItems);
+        toast.success(`Loaded ${data.mediaItems.length} media items`);
+      } else {
+        throw new Error(data.message || 'Failed to get media data');
+      }
+    } catch (error) {
+      console.error('Error refreshing media items:', error);
+      toast.error(`${error}`);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -169,12 +217,22 @@ export default function MediaLibrary() {
             </p>
           </div>
           
-          <Button 
-            onClick={() => router.push('/create?tab=media')}
-            className="bg-blue-600 hover:bg-blue-700"
-          >
-            <Upload className="mr-2 h-4 w-4" /> Upload New Media
-          </Button>
+          <div className="flex space-x-2">
+            <Button 
+              onClick={handleRefresh}
+              variant="outline"
+              disabled={isLoading}
+            >
+              Refresh Media
+            </Button>
+            
+            <Button 
+              onClick={() => router.push('/create?tab=media')}
+              className="bg-blue-600 hover:bg-blue-700"
+            >
+              <Upload className="mr-2 h-4 w-4" /> Upload New Media
+            </Button>
+          </div>
         </div>
         
         <div className="mb-6">

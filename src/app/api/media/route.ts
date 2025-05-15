@@ -16,8 +16,74 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ success: false, message: "Not authenticated" }, { status: 401 });
     }
 
-    // Fetch all media items for the authenticated user
-    const mediaItems = await prisma.mediaItem.findMany({
+    // Primarily fetch directly from Supabase storage
+    let allBucketFiles: any[] = [];
+    
+    // First check if the bucket exists
+    const { data: buckets, error: bucketError } = await supabase
+      .storage
+      .listBuckets();
+      
+    if (bucketError) {
+      return NextResponse.json({ 
+        success: false, 
+        message: "Error listing buckets: " + bucketError.message 
+      }, { status: 500 });
+    }
+    
+    // Verify user-uploads bucket exists
+    const userUploadsBucket = buckets.find(b => b.name === 'user-uploads');
+    if (!userUploadsBucket) {
+      return NextResponse.json({ 
+        success: false, 
+        message: "user-uploads bucket not found" 
+      }, { status: 404 });
+    }
+    
+    // List all files from main bucket
+    const { data: storageFiles, error } = await supabase
+      .storage
+      .from('user-uploads')
+      .list();
+
+    if (!error && storageFiles) {
+      allBucketFiles = storageFiles;
+    }
+    
+    // List files from subdirectories too (images, videos, etc.)
+    const subdirectories = ['images', 'videos', 'audios', 'pdfs'];
+    
+    for (const dir of subdirectories) {
+      const { data: dirFiles, error: dirError } = await supabase
+        .storage
+        .from('user-uploads')
+        .list(dir);
+        
+      if (!dirError && dirFiles && dirFiles.length > 0) {
+        // Add directory prefix to file names
+        const filesWithPath = dirFiles.map(file => ({
+          ...file,
+          name: `${dir}/${file.name}`
+        }));
+        allBucketFiles = [...allBucketFiles, ...filesWithPath];
+      }
+    }
+    
+    // Try multiple user ID formats - sometimes the ID formatting can be inconsistent
+    const possibleUserIds = [
+      session.user.id,
+      session.user.id.replace(/-/g, ''),
+      // Add any other possible formats your system might use
+    ];
+    
+    // Filter files to include those belonging to this user with any ID format
+    const userFiles = allBucketFiles.filter(file => {
+      // Check if file name contains any of the possible user IDs
+      return possibleUserIds.some(id => file.name.includes(id));
+    });
+    
+    // Also fetch from database as backup
+    const dbMediaItems = await prisma.mediaItem.findMany({
       where: {
         task: {
           userId: session.user.id
@@ -27,56 +93,76 @@ export async function GET(req: NextRequest) {
         createdAt: 'desc'
       }
     });
-
-    // Generate signed URLs for each media item
-    const mediaItemsWithSignedUrls = await Promise.all(
-      mediaItems.map(async (item) => {
-        let signedUrl = item.url;
+    
+    // Generate media items from storage files
+    const storageMediaItems = await Promise.all(
+      userFiles.map(async (file) => {
+        // Check if this file is already in our database items
+        const existingItem = dbMediaItems.find(item => 
+          item.url.includes(file.name)
+        );
         
-        // If the URL is a Supabase storage URL, get a signed URL
-        if (item.url.includes('storage.googleapis.com') || item.url.includes(supabaseUrl)) {
-          try {
-            // Extract the path from the URL
-            const urlParts = item.url.split('/');
-            const bucket = urlParts[urlParts.length - 2];
-            const filePath = urlParts[urlParts.length - 1];
+        if (existingItem) {
+          // If in database, use that record but refresh URL
+          const TEN_YEARS_IN_SECONDS = 60 * 60 * 24 * 365 * 10;
+          const { data, error: signedUrlError } = await supabase
+            .storage
+            .from('user-uploads')
+            .createSignedUrl(file.name, TEN_YEARS_IN_SECONDS);
             
-            // Get a signed URL that expires in 1 hour
-            const { data } = await supabase
-              .storage
-              .from(bucket)
-              .createSignedUrl(filePath, 3600);
-            
-            if (data?.signedUrl) {
-              signedUrl = data.signedUrl;
-            }
-          } catch (error) {
-            console.error('Error generating signed URL:', error);
-            // Fall back to the original URL
-          }
+          return {
+            ...existingItem,
+            url: data?.signedUrl || existingItem.url
+          };
         }
-        
-        return {
-          id: item.id,
-          type: item.type,
-          caption: item.caption || undefined,
-          url: signedUrl,
-          filePath: item.filePath || undefined,
-          createdAt: item.createdAt
+
+        // Determine media type from file name
+        let type = 'IMAGE';
+        const extension = file.name.split('.').pop()?.toLowerCase();
+        if (['mp4', 'webm', 'mov'].includes(extension || '')) type = 'VIDEO';
+        else if (['mp3', 'wav', 'ogg'].includes(extension || '')) type = 'AUDIO';
+        else if (['pdf'].includes(extension || '')) type = 'PDF';
+
+        // Generate signed URL with 10-year expiry
+        const TEN_YEARS_IN_SECONDS = 60 * 60 * 24 * 365 * 10;
+        const { data, error: signedUrlError } = await supabase
+          .storage
+          .from('user-uploads')
+          .createSignedUrl(file.name, TEN_YEARS_IN_SECONDS);
+
+        // Create a new clean file name for display (remove user ID prefix)
+        const displayName = file.name.includes('_') 
+          ? file.name.split('_').slice(1).join('_') 
+          : file.name;
+
+        const mediaItem = {
+          id: `storage-${file.name}`,
+          type,
+          caption: displayName,
+          url: data?.signedUrl || '',
+          filePath: file.name,
+          createdAt: file.created_at || new Date(),
+          presenter: ''
         };
+        
+        return mediaItem;
       })
     );
+    
+    // Combine all media items, prioritizing storage items
+    const allMediaItems = storageMediaItems.filter(Boolean);
 
     return NextResponse.json({
       success: true,
-      mediaItems: mediaItemsWithSignedUrls
+      mediaItems: allMediaItems
     });
     
   } catch (error: any) {
     console.error('Error fetching media items:', error);
     return NextResponse.json({ 
       success: false, 
-      message: error.message || "An error occurred while fetching media items" 
+      message: error.message || "An error occurred while fetching media items",
+      stack: error.stack 
     }, { status: 500 });
   }
 }
@@ -147,5 +233,18 @@ export async function DELETE(req: NextRequest) {
       success: false, 
       message: error.message || "An error occurred while deleting the media item" 
     }, { status: 500 });
+  }
+}
+
+// Helper function to get presenter for a task
+async function getPresenterForTask(taskId: string): Promise<string | undefined> {
+  try {
+    const task = await prisma.learningTask.findUnique({
+      where: { id: taskId }
+    });
+    return task?.presenter || undefined;
+  } catch (error) {
+    console.error('Error fetching presenter for task:', error);
+    return undefined;
   }
 } 

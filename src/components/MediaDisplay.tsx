@@ -1,20 +1,53 @@
 import { useState, useEffect } from 'react';
 import { MediaItem } from '@/lib/ProcedureService';
-import { Image, Video, FileText, Music, AlertCircle, RefreshCw } from 'lucide-react';
+import { Video, FileText, Music, AlertCircle, RefreshCw, ImageIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import NextImage from 'next/image';
 
 interface MediaDisplayProps {
   item: MediaItem;
 }
 
 export default function MediaDisplay({ item }: MediaDisplayProps) {
-  const [mediaUrl, setMediaUrl] = useState<string>(item.url);
+  const [mediaUrl, setMediaUrl] = useState<string>(item.url || '');
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [autoRefreshed, setAutoRefreshed] = useState<boolean>(false);
+  const [imageDimensions, setImageDimensions] = useState({ width: 0, height: 0 });
+
+  // Debug log function
+  const debugLog = (message: string, data?: any) => {
+    console.log(`[MEDIA-DISPLAY] ${item.id}: ${message}`);
+    if (data) {
+      console.log(data);
+    }
+  };
+
+  // Update URL when item changes
+  useEffect(() => {
+    debugLog(`Item URL changed or component mounted: ${item.url}`);
+    if (item.url !== mediaUrl) {
+      setMediaUrl(item.url || '');
+      setError(null);
+    }
+  }, [item.url]);
+
+  // Function to check if URL is valid
+  const isValidUrl = (url: string): boolean => {
+    try {
+      new URL(url);
+      return true;
+    } catch (e) {
+      return false;
+    }
+  };
 
   // Function to refresh URL if needed
   const refreshUrl = async () => {
-    if (!item.filePath) {
+    debugLog('Attempting to refresh URL');
+    
+    // If no filePath or URL is available, we can't refresh
+    if (!item.filePath && !item.url) {
       setError('No file path available to refresh URL');
       return;
     }
@@ -23,12 +56,17 @@ export default function MediaDisplay({ item }: MediaDisplayProps) {
     setError(null);
 
     try {
+      // Extract file path from URL if not provided
+      const filePath = item.filePath || item.url.split('/').pop();
+      
+      debugLog(`Refreshing URL with filePath: ${filePath}`);
+      
       const response = await fetch('/api/storage/refresh-url', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ filePath: item.filePath }),
+        body: JSON.stringify({ filePath }),
       });
 
       if (!response.ok) {
@@ -38,7 +76,9 @@ export default function MediaDisplay({ item }: MediaDisplayProps) {
       const data = await response.json();
       
       if (data.success && data.data.url) {
+        debugLog(`URL refreshed successfully: ${data.data.url}`);
         setMediaUrl(data.data.url);
+        setAutoRefreshed(true);
       } else {
         throw new Error(data.message || 'Failed to get new URL');
       }
@@ -50,19 +90,58 @@ export default function MediaDisplay({ item }: MediaDisplayProps) {
     }
   };
 
+  // Auto-refresh URL on error
+  const handleMediaError = () => {
+    debugLog('Media failed to load');
+    if (!autoRefreshed) {
+      setError('Media failed to load. Attempting to refresh URL...');
+      refreshUrl();
+    } else {
+      setError('Media failed to load even after refreshing the URL.');
+    }
+  };
+
   // Render different media types
   const renderMedia = () => {
+    // Check if URL is valid
+    if (!mediaUrl || !isValidUrl(mediaUrl)) {
+      debugLog('No valid URL available');
+      return (
+        <div className="flex flex-col items-center justify-center h-40 bg-gray-100 rounded">
+          <AlertCircle className="h-8 w-8 text-gray-400 mb-2" />
+          <p className="text-gray-500">Media unavailable</p>
+          <Button 
+            size="sm" 
+            variant="outline" 
+            onClick={refreshUrl} 
+            disabled={isLoading}
+            className="mt-2"
+          >
+            {isLoading ? 'Refreshing...' : 'Try to load'}
+          </Button>
+        </div>
+      );
+    }
+
+    debugLog(`Rendering media of type: ${item.type}`);
+    
     switch (item.type) {
       case 'IMAGE':
         return (
-          <div className="relative rounded overflow-hidden bg-gray-100">
+          <div className="relative rounded overflow-hidden bg-gray-100 flex items-center justify-center min-h-[150px]">
+            {/* Use next/image with fill for better performance */}
             <img
               src={mediaUrl}
               alt={item.caption || 'Image'}
               className="w-full h-auto max-h-96 object-contain"
-              onError={(e) => {
-                // If image fails to load, we might need to refresh the URL
-                setError('Image failed to load. The URL may have expired.');
+              onError={handleMediaError}
+              onLoad={(e) => {
+                const img = e.target as HTMLImageElement;
+                setImageDimensions({
+                  width: img.naturalWidth,
+                  height: img.naturalHeight
+                });
+                debugLog(`Image loaded: ${img.naturalWidth}x${img.naturalHeight}`);
               }}
             />
           </div>
@@ -75,9 +154,7 @@ export default function MediaDisplay({ item }: MediaDisplayProps) {
               src={mediaUrl}
               controls
               className="w-full h-auto max-h-96"
-              onError={() => {
-                setError('Video failed to load. The URL may have expired.');
-              }}
+              onError={handleMediaError}
             >
               Your browser does not support the video tag.
             </video>
@@ -92,9 +169,7 @@ export default function MediaDisplay({ item }: MediaDisplayProps) {
               src={mediaUrl}
               controls
               className="w-full"
-              onError={() => {
-                setError('Audio failed to load. The URL may have expired.');
-              }}
+              onError={handleMediaError}
             >
               Your browser does not support the audio tag.
             </audio>
@@ -142,7 +217,7 @@ export default function MediaDisplay({ item }: MediaDisplayProps) {
               size="sm" 
               variant="outline" 
               onClick={refreshUrl} 
-              disabled={isLoading || !item.filePath}
+              disabled={isLoading}
               className="flex items-center"
             >
               {isLoading ? (
@@ -161,8 +236,14 @@ export default function MediaDisplay({ item }: MediaDisplayProps) {
         </div>
       )}
       
-      {item.caption && (
+      {item.caption && !error && (
         <p className="text-sm text-gray-600 italic">{item.caption}</p>
+      )}
+      
+      {item.type === 'IMAGE' && imageDimensions.width > 0 && (
+        <p className="text-xs text-gray-400">
+          {imageDimensions.width} × {imageDimensions.height}
+        </p>
       )}
     </div>
   );

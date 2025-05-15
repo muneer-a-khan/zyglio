@@ -18,44 +18,46 @@ export async function POST(req: NextRequest) {
         message: "File path is required" 
       }, { status: 400 });
     }
+
+    // Create a Supabase client
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
     
-    // Create a Supabase client with the service role key to bypass RLS
-    const supabaseAdmin = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL || '',
-      process.env.SUPABASE_SERVICE_ROLE_KEY || '',
-      {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false
-        }
-      }
-    );
-    
-    // Create a new signed URL with a 7-day expiry
-    const { data, error } = await supabaseAdmin.storage
-      .from('user-uploads')
-      .createSignedUrl(filePath, 60 * 60 * 24 * 7); // 7 days
-      
-    if (error) {
-      console.error('Error refreshing signed URL:', error);
+    if (!supabaseUrl || !supabaseKey) {
       return NextResponse.json({ 
         success: false, 
-        message: error.message || "Failed to refresh URL" 
+        message: "Server configuration error - missing Supabase credentials" 
+      }, { status: 500 });
+    }
+    
+    const supabase = createClient(supabaseUrl, supabaseKey);
+    
+    // Generate a new signed URL with a long expiry
+    const TEN_YEARS_IN_SECONDS = 60 * 60 * 24 * 365 * 10; // 10 years
+    const { data, error } = await supabase.storage
+      .from('user-uploads')
+      .createSignedUrl(filePath, TEN_YEARS_IN_SECONDS);
+    
+    if (error) {
+      return NextResponse.json({ 
+        success: false, 
+        message: error.message || "Failed to refresh URL"
       }, { status: 500 });
     }
     
     return NextResponse.json({
       success: true,
       data: {
-        url: data.signedUrl
+        url: data.signedUrl,
+        filePath
       }
     });
     
   } catch (error: any) {
-    console.error('Error refreshing signed URL:', error);
+    console.error('Error refreshing URL:', error);
     return NextResponse.json({ 
       success: false, 
-      message: error.message || "An error occurred" 
+      message: error.message || "An error occurred while refreshing the URL"
     }, { status: 500 });
   }
 } 
