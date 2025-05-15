@@ -8,7 +8,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { supabase } from "@/integrations/supabase/client";
 
 export default function Register() {
   const [email, setEmail] = useState("");
@@ -22,35 +21,34 @@ export default function Register() {
     setIsLoading(true);
 
     try {
-      // Create user in Supabase Auth
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: {
-            name,
-          },
-          emailRedirectTo: `${window.location.origin}/auth/callback`,
+      // Use our custom API endpoint
+      const response = await fetch('/api/register', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
         },
+        body: JSON.stringify({ email, password, name }),
       });
 
-      if (error) {
-        toast.error(error.message);
+      const data = await response.json();
+
+      if (!response.ok) {
+        toast.error(data.message || 'Registration failed');
         return;
       }
 
-      if (data.user) {
-        toast.success("Registration email sent! Please check your inbox and click the confirmation link.");
-        
-        // Don't redirect yet - user needs to confirm email first
-        // Instead, show a message that explains what to do next
-        setIsLoading(false);
-        setEmail("");
-        setPassword("");
-        setName("");
-      } else {
-        toast.info("Please check your email to confirm your account.");
-      }
+      // Success
+      toast.success('Registration successful! You can now sign in.');
+      
+      // Reset form
+      setEmail("");
+      setPassword("");
+      setName("");
+      
+      // Redirect to sign in page
+      setTimeout(() => {
+        router.push('/auth/signin');
+      }, 1500);
     } catch (error) {
       console.error("Registration error:", error);
       toast.error("An error occurred during registration");
