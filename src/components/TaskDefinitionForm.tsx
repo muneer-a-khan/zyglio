@@ -17,8 +17,8 @@ const TaskDefinitionForm = ({ onSubmit, initialData }: TaskDefinitionFormProps) 
   const [description, setDescription] = useState("");
   const [presenter, setPresenter] = useState("");
   const [affiliation, setAffiliation] = useState("");
-  const [kpiTechInput, setKpiTechInput] = useState("");
-  const [kpiConceptInput, setKpiConceptInput] = useState("");
+  const [kpiTech, setKpiTech] = useState<string[]>([""]);
+  const [kpiConcept, setKpiConcept] = useState<string[]>([""]);
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
   
   // Load initial data if provided
@@ -28,8 +28,8 @@ const TaskDefinitionForm = ({ onSubmit, initialData }: TaskDefinitionFormProps) 
       setDescription(initialData.description || "");
       setPresenter(initialData.presenter || "");
       setAffiliation(initialData.affiliation || "");
-      setKpiTechInput(initialData.kpiTech ? initialData.kpiTech.join(", ") : "");
-      setKpiConceptInput(initialData.kpiConcept ? initialData.kpiConcept.join(", ") : "");
+      setKpiTech(initialData.kpiTech && initialData.kpiTech.length > 0 ? initialData.kpiTech : [""]);
+      setKpiConcept(initialData.kpiConcept && initialData.kpiConcept.length > 0 ? initialData.kpiConcept : [""]);
       setDate(initialData.date || new Date().toISOString().split("T")[0]);
     }
   }, [initialData]);
@@ -37,16 +37,9 @@ const TaskDefinitionForm = ({ onSubmit, initialData }: TaskDefinitionFormProps) 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
-    // Convert comma-separated KPI strings to arrays
-    const techKpis = kpiTechInput
-      .split(',')
-      .map(k => k.trim())
-      .filter(k => k);
-      
-    const conceptKpis = kpiConceptInput
-      .split(',')
-      .map(k => k.trim())
-      .filter(k => k);
+    // Filter out empty skills
+    const techKpis = kpiTech.filter(skill => skill.trim() !== "");
+    const conceptKpis = kpiConcept.filter(skill => skill.trim() !== "");
     
     onSubmit({
       name,
@@ -57,6 +50,42 @@ const TaskDefinitionForm = ({ onSubmit, initialData }: TaskDefinitionFormProps) 
       kpiConcept: conceptKpis,
       date
     });
+  };
+
+  const handleAddTechSkill = () => {
+    setKpiTech([...kpiTech, ""]);
+  };
+
+  const handleAddConceptSkill = () => {
+    setKpiConcept([...kpiConcept, ""]);
+  };
+
+  const handleTechSkillChange = (index: number, value: string) => {
+    const updatedSkills = [...kpiTech];
+    updatedSkills[index] = value;
+    setKpiTech(updatedSkills);
+  };
+
+  const handleConceptSkillChange = (index: number, value: string) => {
+    const updatedSkills = [...kpiConcept];
+    updatedSkills[index] = value;
+    setKpiConcept(updatedSkills);
+  };
+
+  const handleRemoveTechSkill = (index: number) => {
+    if (kpiTech.length > 1) {
+      const updatedSkills = [...kpiTech];
+      updatedSkills.splice(index, 1);
+      setKpiTech(updatedSkills);
+    }
+  };
+
+  const handleRemoveConceptSkill = (index: number) => {
+    if (kpiConcept.length > 1) {
+      const updatedSkills = [...kpiConcept];
+      updatedSkills.splice(index, 1);
+      setKpiConcept(updatedSkills);
+    }
   };
 
   return (
@@ -129,13 +158,23 @@ const TaskDefinitionForm = ({ onSubmit, initialData }: TaskDefinitionFormProps) 
           <div className="space-y-2">
             <Label>Technical Skills (KPIs)</Label>
 
-            {kpiTechInput.split(',').map((kpi, index) => (
-              <div key={`tech-${index}`} className="flex space-x-2">
+            {kpiTech.map((skill, index) => (
+              <div key={`tech-${index}`} className="flex space-x-2 mb-2">
                 <Input
                   placeholder={`Technical Skill ${index + 1}`}
-                  value={kpi}
-                  onChange={(e) => setKpiTechInput(e.target.value)}
+                  value={skill}
+                  onChange={(e) => handleTechSkillChange(index, e.target.value)}
                 />
+                {kpiTech.length > 1 && (
+                  <Button 
+                    type="button" 
+                    variant="outline" 
+                    size="icon"
+                    onClick={() => handleRemoveTechSkill(index)}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                )}
               </div>
             ))}
 
@@ -143,7 +182,7 @@ const TaskDefinitionForm = ({ onSubmit, initialData }: TaskDefinitionFormProps) 
               type="button"
               variant="outline"
               className="w-full"
-              onClick={() => setKpiTechInput(kpiTechInput + ",")}
+              onClick={handleAddTechSkill}
             >
               <Plus className="mr-1 h-4 w-4" />
               Add Technical Skill
@@ -153,13 +192,23 @@ const TaskDefinitionForm = ({ onSubmit, initialData }: TaskDefinitionFormProps) 
           <div className="space-y-2">
             <Label>Conceptual Skills (KPIs)</Label>
 
-            {kpiConceptInput.split(',').map((kpi, index) => (
-              <div key={`concept-${index}`} className="flex space-x-2">
+            {kpiConcept.map((skill, index) => (
+              <div key={`concept-${index}`} className="flex space-x-2 mb-2">
                 <Input
                   placeholder={`Conceptual Skill ${index + 1}`}
-                  value={kpi}
-                  onChange={(e) => setKpiConceptInput(e.target.value)}
+                  value={skill}
+                  onChange={(e) => handleConceptSkillChange(index, e.target.value)}
                 />
+                {kpiConcept.length > 1 && (
+                  <Button 
+                    type="button" 
+                    variant="outline" 
+                    size="icon"
+                    onClick={() => handleRemoveConceptSkill(index)}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                )}
               </div>
             ))}
 
@@ -167,7 +216,7 @@ const TaskDefinitionForm = ({ onSubmit, initialData }: TaskDefinitionFormProps) 
               type="button"
               variant="outline"
               className="w-full"
-              onClick={() => setKpiConceptInput(kpiConceptInput + ",")}
+              onClick={handleAddConceptSkill}
             >
               <Plus className="mr-1 h-4 w-4" />
               Add Conceptual Skill

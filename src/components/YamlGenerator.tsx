@@ -93,7 +93,21 @@ const YamlGenerator = ({
       const stepNumber = index + 1;
       yaml += `  - id: "step-${stepNumber}"\n`;
       yaml += `    title: "Step ${stepNumber}"\n`;
-      yaml += `    description: "${step.content.replace(/"/g, '\\"')}"\n`;
+      
+      // Properly format multi-line descriptions with block scalar style
+      const description = step.content
+        .replace(/\\/g, '\\\\')   // Escape backslashes
+        .replace(/"/g, '\\"');    // Escape double quotes
+      
+      if (description.includes('\n')) {
+        // Use block scalar style for multi-line content
+        yaml += `    description: |\n`;
+        description.split('\n').forEach(line => {
+          yaml += `      ${line}\n`;
+        });
+      } else {
+        yaml += `    description: "${description}"\n`;
+      }
 
       // Add some conditional logic for demonstration
       if (index < steps.length - 1) {
@@ -106,7 +120,19 @@ const YamlGenerator = ({
       if (step.comments && step.comments.length > 0) {
         yaml += `    notes:\n`;
         step.comments.forEach((comment) => {
-          yaml += `      - "${comment.replace(/"/g, '\\"')}"\n`;
+          const safeComment = comment
+            .replace(/\\/g, '\\\\')   // Escape backslashes
+            .replace(/"/g, '\\"');    // Escape double quotes
+          
+          if (safeComment.includes('\n')) {
+            // Use block scalar style for multi-line content
+            yaml += `      - |\n`;
+            safeComment.split('\n').forEach(line => {
+              yaml += `        ${line}\n`;
+            });
+          } else {
+            yaml += `      - "${safeComment}"\n`;
+          }
         });
       }
 
