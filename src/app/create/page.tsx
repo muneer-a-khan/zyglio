@@ -395,7 +395,7 @@ export default function CreateProcedure() {
             <Card>
               <CardContent className="pt-6">
                 <FlowchartViewer 
-                  steps={steps.map((step) => step.content)} 
+                  steps={yamlContent ? [yamlContent] : steps.map((step) => step.content)} 
                   initialMermaid={flowchartContent}
                   onChange={handleFlowchartChange}
                 />
