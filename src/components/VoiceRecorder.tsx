@@ -72,30 +72,21 @@ const VoiceRecorder = ({
   // Add a ref to track persistent transcript between recognition sessions
   const persistentTranscriptRef = useRef<string>("");
 
-  // Effect to monitor recording duration changes
-  useEffect(() => {
-    console.log("Recording duration updated:", recordingDuration);
-  }, [recordingDuration]);
-
   // Define a function to restart speech recognition
   const startSpeechRecognition = useCallback(() => {
-    console.log("Manual restart of speech recognition requested");
-    
     // Only restart if we're recording and not paused
     if (!isRecording || isPaused) {
-      console.log("Not restarting recognition - not in recording state");
       return;
     }
     
     // Check if already active
     if (isRecognitionActiveRef.current) {
-      console.log("Recognition is already active, stopping it first");
       try {
         if (recognitionRef.current) {
           recognitionRef.current.stop();
         }
       } catch (e) {
-        console.error("Error stopping recognition before restart:", e);
+        // Error handling if needed
       }
       // Wait a moment before starting a new instance
       setTimeout(() => {
@@ -108,7 +99,7 @@ const VoiceRecorder = ({
     
     initiateNewRecognitionInstance();
   }, [isRecording, isPaused]);
-  
+
   // Extract the recognition instance creation logic into a separate function
   const initiateNewRecognitionInstance = useCallback(() => {
     // Don't start if we're not in recording state
@@ -124,12 +115,10 @@ const VoiceRecorder = ({
         window.SpeechRecognition || window.webkitSpeechRecognition;
         
       if (!SpeechRecognitionAPI) {
-        console.error("Speech recognition not supported");
         setIsSupported(false);
         return;
       }
       
-      console.log("Creating new speech recognition instance");
       const recognition = new SpeechRecognitionAPI();
       recognition.continuous = true; // Switch back to continuous for smoother recognition
       recognition.interimResults = true;
@@ -137,7 +126,6 @@ const VoiceRecorder = ({
       
       // Get current transcript from persistent ref
       const startingTranscript = persistentTranscriptRef.current;
-      console.log("Starting new recognition with existing transcript:", startingTranscript);
       
       // Track if we got a final result
       let finalResultReceived = false;
@@ -167,12 +155,6 @@ const VoiceRecorder = ({
           
           // Add the new content
           newFullTranscript += fullSessionTranscript;
-          
-          console.log("Final result - updating full transcript:", {
-            previous: startingTranscript,
-            new: fullSessionTranscript,
-            result: newFullTranscript
-          });
           
           // Update both the state and ref
           setTranscript(newFullTranscript);
@@ -208,8 +190,6 @@ const VoiceRecorder = ({
       };
       
       recognition.onerror = (event: any) => {
-        console.error("Speech recognition error", event.error);
-        
         // Only show errors that aren't related to abort operations
         if (event.error !== 'aborted' && event.error !== 'no-speech') {
           // Special handling for network errors - we can continue recording
@@ -226,12 +206,10 @@ const VoiceRecorder = ({
       };
       
       recognition.onend = () => {
-        console.log("Speech recognition ended naturally");
         isRecognitionActiveRef.current = false;
         
         // If no final result was received, reset to the persistent transcript
         if (!finalResultReceived) {
-          console.log("No final result - restoring original transcript");
           setTranscript(persistentTranscriptRef.current);
           onTranscriptUpdate(persistentTranscriptRef.current);
         }
@@ -243,9 +221,7 @@ const VoiceRecorder = ({
       // Start it
       recognition.start();
       isRecognitionActiveRef.current = true;
-      console.log("Speech recognition started");
     } catch (e) {
-      console.error("Failed to create/start recognition:", e);
       isRecognitionActiveRef.current = false;
       // Show more helpful error message to the user
       setError("Failed to start speech recognition. Please try again or check your browser permissions.");
@@ -254,16 +230,13 @@ const VoiceRecorder = ({
   
   // Set up speech recognition when recording state changes
   useEffect(() => {
-    console.log("Recording state changed", { isRecording, isPaused });
-    
     // If not recording, clean up
     if (!isRecording) {
-      console.log("Not recording, cleaning up recognition");
       if (recognitionRef.current) {
         try {
           recognitionRef.current.stop();
         } catch (e) {
-          console.error("Error stopping recognition on state change:", e);
+          // Handle errors silently
         }
         isRecognitionActiveRef.current = false;
       }
@@ -272,12 +245,11 @@ const VoiceRecorder = ({
     
     // If paused, also clean up
     if (isPaused) {
-      console.log("Recording is paused, cleaning up recognition");
       if (recognitionRef.current) {
         try {
           recognitionRef.current.stop();
         } catch (e) {
-          console.error("Error stopping recognition when paused:", e);
+          // Handle errors silently
         }
         isRecognitionActiveRef.current = false;
       }
@@ -286,64 +258,23 @@ const VoiceRecorder = ({
     
     // Otherwise, start recognition (only if not already active)
     if (!isRecognitionActiveRef.current) {
-      console.log("Starting/restarting speech recognition due to state change");
       startSpeechRecognition();
     }
     
     // Clean up when unmounting or when state changes
     return () => {
-      console.log("Cleaning up recognition on effect cleanup");
       if (recognitionRef.current) {
         try {
           recognitionRef.current.stop();
         } catch (e) {
-          console.error("Error stopping recognition in cleanup:", e);
+          // Handle errors silently
         }
         isRecognitionActiveRef.current = false;
       }
     };
   }, [isRecording, isPaused, startSpeechRecognition]);
 
-  // Add a global click handler as a failsafe
-  useEffect(() => {
-    // Only add this when recording is active
-    if (!isRecording) return;
-
-    const handleGlobalClick = (e: MouseEvent) => {
-      // Check if click was on pause/resume button or its children
-      const pauseButton = document.getElementById('voice-pause-button');
-      const stopButton = document.getElementById('voice-stop-button');
-      
-      if (!pauseButton || !stopButton) return;
-      
-      // Check if the click target is within the pause button
-      if (pauseButton.contains(e.target as Node)) {
-        console.log("GLOBAL CLICK: Pause button clicked");
-        const newPauseState = !isPaused;
-        setIsPaused(newPauseState);
-        pauseRecording(newPauseState);
-      }
-      
-      // Check if the click target is within the stop button
-      if (stopButton.contains(e.target as Node)) {
-        console.log("GLOBAL CLICK: Stop button clicked");
-        setIsRecording(false);
-        setIsPaused(false);
-        stopRecording();
-      }
-    };
-    
-    // Add the global click listener
-    document.addEventListener('click', handleGlobalClick);
-    
-    // Clean up
-    return () => {
-      document.removeEventListener('click', handleGlobalClick);
-    };
-  }, [isRecording, isPaused]);
-
   const startRecording = async () => {
-    console.log("START RECORDING CALLED");
     setError(null);
     
     // Clear transcript and reset persistent ref when starting a new recording
@@ -356,7 +287,6 @@ const VoiceRecorder = ({
 
       // Start timer immediately - do this first to ensure timer is running
       setRecordingDuration(0);
-      console.log("SETTING UP TIMER");
       
       // Clear any existing interval first
       if (timerRef.current) {
@@ -368,13 +298,11 @@ const VoiceRecorder = ({
       const startTime = Date.now();
       timerRef.current = setInterval(() => {
         const elapsedSeconds = Math.floor((Date.now() - startTime) / 1000);
-        console.log("TIMER TICK", elapsedSeconds);
         setRecordingDuration(elapsedSeconds);
       }, 1000);
       
       // Recognition will be started by the useEffect watching isRecording
     } catch (err) {
-      console.error("Error accessing microphone:", err);
       setError(
         "Error accessing microphone. Please ensure your microphone is connected and you have granted permission to use it."
       );
@@ -385,20 +313,9 @@ const VoiceRecorder = ({
   };
 
   const pauseRecording = (pausing: boolean) => {
-    // Simplified function with clear logging
-    console.log("PAUSE/RESUME RECORDING CALLED", { 
-      currentPauseState: isPaused, 
-      newPauseState: pausing, 
-      action: pausing ? "PAUSING" : "RESUMING" 
-    });
-    
     if (!pausing) {
       // RESUMING
-      console.log("RESUMING RECORDING");
-      
       // Resume timer
-      console.log("RESUMING TIMER");
-      
       // Clear any existing interval first
       if (timerRef.current) {
         clearInterval(timerRef.current);
@@ -411,35 +328,24 @@ const VoiceRecorder = ({
       
       timerRef.current = setInterval(() => {
         const elapsedSeconds = Math.floor((Date.now() - resumeTime) / 1000);
-        console.log("TIMER TICK (RESUME)", elapsedSeconds);
         setRecordingDuration(elapsedSeconds);
       }, 1000);
-      
-      // Log current transcript for debugging
-      console.log("Current transcript on resume:", transcript);
       
       // Start speech recognition by changing the state - the useEffect will handle it
     } else {
       // PAUSING
-      console.log("PAUSING RECORDING");
-      
-      // Log current transcript for debugging
-      console.log("Current transcript on pause:", transcript);
-      
       // Stop speech recognition completely when pausing
       if (recognitionRef.current) {
         try {
-          console.log("Stopping recognition for pause");
           recognitionRef.current.stop();
           recognitionRef.current = null; // Clear the reference to prevent automatic restarts
         } catch (e) {
-          console.error("Error pausing recognition:", e);
+          // Handle errors silently
         }
         isRecognitionActiveRef.current = false;
       }
 
       // Pause timer
-      console.log("PAUSING TIMER");
       if (timerRef.current) {
         clearInterval(timerRef.current);
         timerRef.current = null;
@@ -448,16 +354,12 @@ const VoiceRecorder = ({
   };
 
   const stopRecording = () => {
-    // Simplified function with more logging
-    console.log("STOP RECORDING CALLED");
-    
     // Stop recognition first and clear the reference
     if (recognitionRef.current) {
       try {
-        console.log("Stopping recognition");
         recognitionRef.current.stop();
       } catch (e) {
-        console.error("Error stopping recognition:", e);
+        // Handle errors silently
       }
       // Immediately mark as inactive and clear reference
       isRecognitionActiveRef.current = false;
@@ -467,24 +369,20 @@ const VoiceRecorder = ({
     // Stop media tracks
     if (mediaRecorderRef.current) {
       try {
-        console.log("Stopping media tracks");
         mediaRecorderRef.current.stream
           .getTracks()
           .forEach((track) => track.stop());
         mediaRecorderRef.current = null;
       } catch (e) {
-        console.error("Error stopping media tracks:", e);
+        // Handle errors silently
       }
     }
 
     // Stop timer
-    console.log("STOPPING TIMER");
     if (timerRef.current) {
       clearInterval(timerRef.current);
       timerRef.current = null;
     }
-    
-    console.log("Recording stopped completely");
   };
 
   const formatTime = (seconds: number): string => {
@@ -497,8 +395,6 @@ const VoiceRecorder = ({
 
   // Handle start button click
   const handleStartClick = () => {
-    console.log("START BUTTON CLICKED - HANDLER");
-    
     // Set state immediately before calling async function
     setIsRecording(true);
     setIsPaused(false);
@@ -507,32 +403,6 @@ const VoiceRecorder = ({
     startRecording();
     
     // The useEffect watching isRecording will start speech recognition once state is updated
-  };
-
-  // These handlers are no longer used - we're using inline ones
-  // But keeping them just in case we need to revert
-  const handlePauseResumeClick = () => {
-    console.log("PAUSE/RESUME BUTTON CLICKED - HANDLER");
-    // Toggle pause state immediately
-    const newPauseState = !isPaused;
-    setIsPaused(newPauseState);
-    
-    if (newPauseState) {
-      // Pausing
-      pauseRecording(true);
-    } else {
-      // Resuming
-      pauseRecording(false);
-    }
-  };
-
-  // Handle stop button click
-  const handleStopClick = () => {
-    console.log("STOP BUTTON CLICKED - HANDLER");
-    // Set state immediately
-    setIsRecording(false);
-    setIsPaused(false);
-    stopRecording();
   };
 
   return (
@@ -601,7 +471,6 @@ const VoiceRecorder = ({
               id="voice-pause-button"
               type="button"
               onClick={() => {
-                console.log("CLICKED PAUSE/RESUME");
                 const newPauseState = !isPaused;
                 
                 // Change state first
@@ -636,8 +505,6 @@ const VoiceRecorder = ({
               id="voice-stop-button"
               type="button"
               onClick={() => {
-                console.log("CLICKED STOP");
-                
                 // First change states
                 setIsRecording(false);
                 setIsPaused(false);
@@ -660,37 +527,6 @@ const VoiceRecorder = ({
           </div>
         )}
       </div>
-
-      {/* Add debugging information */}
-      {process.env.NODE_ENV !== 'production' && (
-        <div className="w-full mt-2 border border-gray-300 rounded-md p-3 bg-gray-50 text-xs">
-          <h3 className="font-bold mb-1">Debug Info:</h3>
-          <ul>
-            <li>isRecording: {isRecording ? 'true' : 'false'}</li>
-            <li>isPaused: {isPaused ? 'true' : 'false'}</li>
-            <li>recordingDuration: {recordingDuration}</li>
-            <li>timerRef: {timerRef.current ? 'Active' : 'Inactive'}</li>
-            <li>recognitionRef: {recognitionRef.current ? 'Available' : 'Unavailable'}</li>
-            <li>isSupported: {isSupported ? 'true' : 'false'}</li>
-          </ul>
-          <div className="mt-2">
-            <button 
-              type="button" 
-              className="bg-gray-200 hover:bg-gray-300 text-xs p-1 rounded"
-              onClick={() => console.log({
-                isRecording,
-                isPaused,
-                recordingDuration,
-                timerRef: timerRef.current,
-                recognitionRef: recognitionRef.current,
-                error
-              })}
-            >
-              Log State to Console
-            </button>
-          </div>
-        </div>
-      )}
 
       {transcript && (
         <div className="w-full mt-2 bg-gray-50 border rounded-md p-3">
