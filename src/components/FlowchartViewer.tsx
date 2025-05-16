@@ -1,202 +1,139 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Download, Edit, ZoomIn, ZoomOut, RefreshCw, ArrowLeftRight } from "lucide-react";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { RefreshCw } from "lucide-react";
 import { toast } from "sonner";
-import { Textarea } from "@/components/ui/textarea";
-import mermaid from "mermaid";
-import yaml from 'js-yaml';
-import { convertYamlToMermaidDSL } from "@/lib/YamlToDSL";
 import ReactFlowChart from "./ReactFlowChart";
+import yaml from 'js-yaml';
 
 export interface FlowchartViewerProps {
   steps: string[];
-  initialMermaid?: string;
   onChange?: (content: string) => void;
 }
 
-const FlowchartViewer = ({ steps, initialMermaid = "", onChange }: FlowchartViewerProps) => {
-  const [activeTab, setActiveTab] = useState("visual");
-  const [renderEngine, setRenderEngine] = useState<"mermaid" | "reactflow">("mermaid");
-  const [isRendering, setIsRendering] = useState(false);
-  const [mermaidCode, setMermaidCode] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const flowchartRef = useRef<HTMLDivElement>(null);
-  const [yamlContent, setYamlContent] = useState<string>("");
-
-  // Extract YAML content if available
-  useEffect(() => {
-    if (steps.length === 1 && steps[0].includes('steps:')) {
-      setYamlContent(steps[0]);
-    } else {
-      setYamlContent("");
-    }
-  }, [steps]);
-
-  // Initialize mermaid library
-  useEffect(() => {
-    mermaid.initialize({
-      startOnLoad: true,
-      securityLevel: 'loose',
-      theme: 'default',
-      logLevel: 3, // Reduce log spam
-      fontFamily: 'sans-serif',
-      flowchart: {
-        htmlLabels: true,
-        curve: 'basis'
-      }
-    });
-  }, []);
-  
-  // Load initial mermaid code if provided
-  useEffect(() => {
-    if (initialMermaid) {
-      setMermaidCode(initialMermaid);
-    } else {
-      // Generate mermaid code from steps
-      generateFlowchart();
-    }
-  }, [initialMermaid, steps]);
-  
-  // Render the flowchart whenever the code changes
-  useEffect(() => {
-    if (renderEngine !== "mermaid") return;
-    
-    if (flowchartRef.current && mermaidCode) {
-      try {
-        setError(null);
-        const element = flowchartRef.current;
-        // Clear previous content
-        element.innerHTML = '';
-        // Create an element for mermaid to render into
-        const renderDiv = document.createElement('div');
-        renderDiv.id = 'flowchart';
-        element.appendChild(renderDiv);
-        
-        // Use mermaid to render the flowchart
-        mermaid.render('flowchart', mermaidCode).then(({ svg }) => {
-          if (flowchartRef.current) {
-            renderDiv.innerHTML = svg;
+// Helper function to extract raw step descriptions from a string
+const extractRawStepsFromString = (inputString: string): string[] => {
+  if (!inputString || inputString.trim() === "") {
+    return [];
+  }
+  try {
+    const doc = yaml.load(inputString) as any;
+    let extracted: string[] = [];
+    if (doc && typeof doc === 'object') {
+      if (doc.stages && Array.isArray(doc.stages)) {
+        extracted = doc.stages.map((stage: any) => {
+          if (typeof stage === 'string') return stage.split(':')[0].trim(); 
+          if (typeof stage === 'object' && stage !== null) {
+            const firstKey = Object.keys(stage)[0];
+            if (firstKey) return String(stage[firstKey]).split(':')[0].trim();
           }
-        }).catch(err => {
-          setError(err.message || "Error rendering flowchart");
-          console.error('Error rendering mermaid flowchart:', err);
+          return String(stage).split(':')[0].trim();
         });
-      } catch (error: any) {
-        setError(error.message || "Error rendering flowchart");
-        console.error('Error rendering mermaid flowchart:', error);
+      } else if (doc.steps && Array.isArray(doc.steps)) { // For basic "steps:" yaml
+        extracted = doc.steps.map((step: any) => String(step.title || step.id || 'Unnamed Step'));
       }
+      // Filter out any empty strings that might result from parsing
+      const filteredExtracted = extracted.filter(s => s && s.trim() !== '');
+      if (filteredExtracted.length > 0) return filteredExtracted;
+    }
+  } catch (e) {
+    // Not valid YAML or not the structure we're looking for, fall through
+  }
+  // Default to the whole string as one step if it's not empty
+  const trimmedInput = inputString.trim();
+  return trimmedInput ? [trimmedInput] : [];
+};
+
+const FlowchartViewer = ({ steps: stepsProp, onChange }: FlowchartViewerProps) => {
+  const [isGeneratingAI, setIsGeneratingAI] = useState(false);
+  const [yamlContent, setYamlContent] = useState<string>("");
+  const [error, setError] = useState<string | null>(null);
+
+  const generateAIYaml = useCallback(async (currentInputSource: string[]) => {
+    if (!currentInputSource || currentInputSource.length === 0 || currentInputSource.every(s => s.trim() === "")) {
+      setYamlContent("");
+      if (onChange) onChange("");
+      toast.info("No steps provided for AI generation.");
+      return;
+    }
+
+    let rawStepsForAI: string[];
+
+    if (currentInputSource.length === 1) {
+      rawStepsForAI = extractRawStepsFromString(currentInputSource[0]);
+    } else {
+      rawStepsForAI = currentInputSource.map(s => s.trim()).filter(s => s !== "");
+    }
+
+    if (rawStepsForAI.length === 0) {
+      toast.error("Could not extract meaningful steps for AI generation.");
+      // Optionally, use a fallback or keep existing YAML
+      // For now, we do nothing to prevent overwriting valid YAML with an error state here
+      return;
     }
     
-    // Notify parent component about the code change
-    if (onChange) {
-      onChange(mermaidCode);
-    }
-  }, [mermaidCode, onChange, renderEngine]);
-  
-  // Generate a simple fallback flowchart
-  const generateFallbackFlowchart = () => {
-    return "flowchart TD\n" +
-      "  start[\"Start\"] --> end[\"End\"]\n" +
-      "  style start fill:#f9f9f9,stroke:#999999\n" +
-      "  style end fill:#f9f9f9,stroke:#999999";
-  };
-
-  const generateFlowchart = () => {
-    setIsRendering(true);
+    setIsGeneratingAI(true);
     setError(null);
     
     try {
-      if (steps.length === 0) {
-        setMermaidCode(generateFallbackFlowchart());
-        setIsRendering(false);
-        return;
-      }
-      
-      // First, check if the first step might be YAML content
-      if (steps.length === 1 && steps[0].includes('steps:')) {
-        try {
-          // Use our dedicated utility to convert YAML to Mermaid DSL
-          const { dsl, error } = convertYamlToMermaidDSL(steps[0]);
-          
-          if (error) {
-            setError(`YAML conversion issue: ${error}`);
-          }
-          
-          setMermaidCode(dsl);
-          setIsRendering(false);
-          return;
-        } catch (yamlError) {
-          console.error('Error parsing YAML:', yamlError);
-          setError('Failed to parse YAML structure. Using default flowchart format.');
-          // Continue with standard format as fallback
-        }
-      }
-      
-      // If not YAML or YAML parsing failed, fall back to simple steps
-      let code = "flowchart TD\n";
-      
-      steps.forEach((step, index) => {
-        const currentId = `step${index + 1}`;
-        const nextId = `step${index + 2}`;
-        
-        // Add the current step node with simplified text
-        code += `  ${currentId}["Step ${index + 1}"]\n`;
-        
-        // Add connection to the next step if it exists
-        if (index < steps.length - 1) {
-          code += `  ${currentId} --> ${nextId}\n`;
-        }
+      const response = await fetch('/api/yaml', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ steps: rawStepsForAI }),
       });
       
-      setMermaidCode(code);
-    } catch (error: any) {
-      setError(error.message || "Error generating flowchart");
-      console.error('Error generating flowchart:', error);
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: `API error: ${response.status}` }));
+        throw new Error(errorData.error || `API error: ${response.status}`);
+      }
       
-      // Create a minimal valid flowchart as fallback
-      setMermaidCode(generateFallbackFlowchart());
+      const result = await response.json();
+      
+      if (result.error) {
+        console.warn('AI generation warning:', result.error);
+        toast.warning("AI generation had issues. Displaying potentially partial or fallback YAML.");
+        // The server might return a fallback YAML in result.yaml even if there's an error message
+      }
+      
+      setYamlContent(result.yaml || ""); // Ensure yamlContent is not undefined
+      
+      if (onChange) {
+        onChange(result.yaml || "");
+      }
+      
+      if (!result.error) {
+        toast.success("AI-optimized procedure flowchart created/updated");
+      }
+    } catch (error: any) {
+      setError(error.message || "Error generating AI flowchart");
+      console.error('Error generating AI flowchart:', error);
+      toast.error(`Failed to generate AI flowchart: ${error.message}`);
     } finally {
-      setIsRendering(false);
+      setIsGeneratingAI(false);
     }
-  };
-  
-  const handleCodeChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setMermaidCode(e.target.value);
-  };
-  
-  const copyToClipboard = () => {
-    navigator.clipboard.writeText(mermaidCode)
-      .then(() => toast.success("Flowchart code copied to clipboard"))
-      .catch(() => toast.error("Failed to copy code"));
-  };
-  
-  const exportAsSvg = () => {
-    if (flowchartRef.current) {
-      const svgElement = flowchartRef.current.querySelector('svg');
-      if (svgElement) {
-        const svgData = new XMLSerializer().serializeToString(svgElement);
-        const blob = new Blob([svgData], { type: 'image/svg+xml' });
-        const url = URL.createObjectURL(blob);
-        
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = 'procedure_flowchart.svg';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(url);
-        
-        toast.success("Flowchart exported as SVG");
+  }, [onChange]);
+
+  useEffect(() => {
+    const isInputLikelyFullAiYaml = 
+      stepsProp.length === 1 &&
+      stepsProp[0] && // ensure stepsProp[0] exists
+      stepsProp[0].includes('procedure_name:') &&
+      (stepsProp[0].includes('stages:') || stepsProp[0].includes('steps:'));
+
+    if (isInputLikelyFullAiYaml) {
+      setYamlContent(stepsProp[0]);
+      if (onChange) {
+        onChange(stepsProp[0]);
+      }
+    } else if (stepsProp && stepsProp.length > 0 && stepsProp.some(s => s.trim() !== "")) {
+      generateAIYaml(stepsProp);
+    } else {
+      setYamlContent("");
+      if (onChange) {
+        onChange("");
       }
     }
-  };
-
-  const toggleRenderEngine = () => {
-    setRenderEngine(prev => prev === "mermaid" ? "reactflow" : "mermaid");
-    setError(null);
-  };
+  }, [stepsProp, onChange, generateAIYaml]);
 
   return (
     <Card>
@@ -206,91 +143,30 @@ const FlowchartViewer = ({ steps, initialMermaid = "", onChange }: FlowchartView
           <Button
             variant="outline"
             size="sm"
-            onClick={toggleRenderEngine}
-            title={`Switch to ${renderEngine === "mermaid" ? "React Flow" : "Mermaid"} renderer`}
-            className="mr-4"
+            onClick={() => generateAIYaml(stepsProp)} 
+            disabled={isGeneratingAI || !stepsProp || stepsProp.length === 0 || stepsProp.every(s => s.trim() === "")}
+            title="Regenerate flowchart with AI"
           >
-            <ArrowLeftRight className="mr-1 h-4 w-4" />
-            {renderEngine === "mermaid" ? "Try React Flow" : "Try Mermaid"}
+            <RefreshCw
+              className={`mr-1 h-4 w-4 ${isGeneratingAI ? "animate-spin" : ""}`}
+            /> Refresh
           </Button>
-          
-          {renderEngine === "mermaid" && (
-            <>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={exportAsSvg}
-                disabled={steps.length === 0 || !!error}
-              >
-                <Download className="mr-1 h-4 w-4" /> Export
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={generateFlowchart}
-                disabled={isRendering}
-              >
-                <RefreshCw
-                  className={`mr-1 h-4 w-4 ${isRendering ? "animate-spin" : ""}`}
-                /> Refresh
-              </Button>
-            </>
-          )}
         </div>
       </CardHeader>
       <CardContent>
-        <Tabs
-          defaultValue="visual"
-          value={activeTab}
-          onValueChange={setActiveTab}
-        >
-          <TabsList className="mb-4">
-            <TabsTrigger value="visual">Visual</TabsTrigger>
-            {renderEngine === "mermaid" && (
-              <TabsTrigger value="code">Code</TabsTrigger>
-            )}
-          </TabsList>
-
-          <TabsContent value="visual" className="h-[600px] relative">
-            {error && (
-              <div className="bg-red-50 p-3 mb-4 text-red-600 text-sm rounded border border-red-200">
-                <p className="font-semibold">Error rendering flowchart:</p>
-                <p>{error}</p>
-              </div>
-            )}
-            
-            {renderEngine === "mermaid" ? (
-              <div 
-                ref={flowchartRef} 
-                className="w-full overflow-auto h-full flex items-center justify-center"
-              />
-            ) : (
-              <div className="w-full h-full">
-                <ReactFlowChart 
-                  yamlContent={yamlContent || ""}
-                  className="w-full h-full"
-                />
-              </div>
-            )}
-          </TabsContent>
-
-          {renderEngine === "mermaid" && (
-            <TabsContent value="code">
-              <Textarea
-                value={mermaidCode}
-                onChange={handleCodeChange}
-                placeholder="Enter mermaid flowchart code here..."
-                className="font-mono min-h-[300px]"
-              />
-              
-              <div className="flex justify-end mt-4">
-                <Button variant="outline" onClick={copyToClipboard}>
-                  Copy to Clipboard
-                </Button>
-              </div>
-            </TabsContent>
-          )}
-        </Tabs>
+        {error && (
+          <div className="bg-red-50 p-3 mb-4 text-red-600 text-sm rounded border border-red-200">
+            <p className="font-semibold">Error with AI Flowchart Generation:</p>
+            <pre className="whitespace-pre-wrap text-xs">{error}</pre>
+          </div>
+        )}
+        
+        <div className="h-[600px]">
+          <ReactFlowChart 
+            yamlContent={yamlContent || ""}
+            className="w-full h-full"
+          />
+        </div>
       </CardContent>
     </Card>
   );

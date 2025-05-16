@@ -20,20 +20,27 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { Step } from "@/lib/ProcedureService";
 import { v4 as uuidv4 } from 'uuid';
+import { generateStepsFromTranscript, generateYamlFromSteps } from "@/lib/deepseek";
+import * as yaml from 'js-yaml';
 
 export interface TranscriptEditorProps {
-  transcript: string;
-  onChange: (text: string) => void;
+  initialTranscript: string;
+  onTranscriptChange: (text: string) => void;
   onStepsChange?: (steps: Step[]) => void;
   steps?: Step[];
+  onYamlGenerated?: (yaml: string) => void;
+  procedureName: string;
 }
 
 const TranscriptEditor = ({ 
-  transcript, 
-  onChange, 
+  initialTranscript,
+  onTranscriptChange,
   onStepsChange, 
-  steps = [] 
+  steps = [],
+  onYamlGenerated,
+  procedureName,
 }: TranscriptEditorProps) => {
+  const [currentTranscript, setCurrentTranscript] = useState(initialTranscript);
   const [procedureSteps, setProcedureSteps] = useState<Step[]>(steps);
   const [editingStepId, setEditingStepId] = useState<string | null>(null);
   const [isGeneratingSteps, setIsGeneratingSteps] = useState(false);
@@ -47,53 +54,64 @@ const TranscriptEditor = ({
     }
   }, [steps]);
 
-  const handleTranscriptChange = (
+  useEffect(() => {
+    setCurrentTranscript(initialTranscript);
+  }, [initialTranscript]);
+
+  const handleTranscriptTextAreaChange = (
     e: React.ChangeEvent<HTMLTextAreaElement>
   ) => {
     const newValue = e.target.value;
-    onChange(newValue);
+    setCurrentTranscript(newValue);
+    onTranscriptChange(newValue);
   };
 
-  const handleAddStep = () => {
-    if (!transcript.trim()) return;
+  const handleAddStepManual = () => {
+    if (!currentTranscript.trim()) {
+      toast.info("Transcript is empty. Cannot create step.");
+      return;
+    }
     
     const newStep: Step = {
       id: uuidv4(),
-      content: transcript,
+      content: currentTranscript.trim(),
       comments: []
     };
     
-    const newSteps = [...procedureSteps, newStep];
-    setProcedureSteps(newSteps);
+    const newStepsArray = [...procedureSteps, newStep];
+    setProcedureSteps(newStepsArray);
     
     if (onStepsChange) {
-      onStepsChange(newSteps);
+      onStepsChange(newStepsArray);
     }
     
-    onChange("");
-    toast.success("Step created successfully");
+    setCurrentTranscript("");
+    onTranscriptChange("");
+    toast.success("Manual step created successfully");
   };
 
-  const handleUpdateStep = (id: string, content: string) => {
-    const newSteps = procedureSteps.map(step =>
-      step.id === id ? { ...step, content } : step
+  const handleUpdateStepContent = (id: string, newContent: string) => {
+    const updatedSteps = procedureSteps.map(step =>
+      step.id === id ? { ...step, content: newContent } : step
     );
-    
-    setProcedureSteps(newSteps);
-    
+    setProcedureSteps(updatedSteps);
     if (onStepsChange) {
-      onStepsChange(newSteps);
+      onStepsChange(updatedSteps);
     }
-    
+  };
+  
+  const handleFinalizeUpdateStep = (id: string, finalContent: string) => {
+    handleUpdateStepContent(id, finalContent);
     setEditingStepId(null);
+    toast.success("Step updated");
   };
 
   const handleRemoveStep = (id: string) => {
-    const newSteps = procedureSteps.filter(step => step.id !== id);
-    setProcedureSteps(newSteps);
+    const newStepsArray = procedureSteps.filter(step => step.id !== id);
+    setProcedureSteps(newStepsArray);
     
     if (onStepsChange) {
-      onStepsChange(newSteps);
+      onStepsChange(newStepsArray);
     }
     
     if (activeStepId === id) {
@@ -103,85 +121,125 @@ const TranscriptEditor = ({
     toast.success("Step deleted");
   };
 
-  const handleMoveStepUp = (index: number) => {
-    if (index === 0) return;
+  const handleMoveStep = (index: number, direction: 'up' | 'down') => {
+    if (direction === 'up' && index === 0) return;
+    if (direction === 'down' && index === procedureSteps.length - 1) return;
+
+    const newStepsArray = [...procedureSteps];
+    const itemToMove = newStepsArray[index];
+    newStepsArray.splice(index, 1);
+    const newIndex = direction === 'up' ? index - 1 : index + 1;
+    newStepsArray.splice(newIndex, 0, itemToMove);
     
-    const newSteps = [...procedureSteps];
-    const temp = newSteps[index];
-    newSteps[index] = newSteps[index - 1];
-    newSteps[index - 1] = temp;
-    
-    setProcedureSteps(newSteps);
-    
+    setProcedureSteps(newStepsArray);
     if (onStepsChange) {
-      onStepsChange(newSteps);
+      onStepsChange(newStepsArray);
     }
   };
 
-  const handleMoveStepDown = (index: number) => {
-    if (index === procedureSteps.length - 1) return;
-    
-    const newSteps = [...procedureSteps];
-    const temp = newSteps[index];
-    newSteps[index] = newSteps[index + 1];
-    newSteps[index + 1] = temp;
-    
-    setProcedureSteps(newSteps);
-    
-    if (onStepsChange) {
-      onStepsChange(newSteps);
+  const generateAndProcessStepsWithAI = async () => {
+    if (!currentTranscript.trim()) {
+      toast.info("Please provide a transcript to generate steps.");
+      return;
     }
-  };
-
-  const generateStepsWithAI = () => {
-    if (!transcript.trim()) return;
 
     setIsGeneratingSteps(true);
+    toast.info("Generating steps from transcript...");
 
-    setTimeout(() => {
-      const sentences = transcript
-        .split(/[.!?]+/)
-        .filter((sentence) => sentence.trim().length > 5)
-        .map((sentence) => sentence.trim());
-
-      const newSteps = sentences.map((sentence) => ({
+    try {
+      let rawSteps: string[] = [];
+      try {
+        rawSteps = await generateStepsFromTranscript(currentTranscript);
+      } catch (apiError) {
+        console.error('DeepSeek API error during step generation:', apiError);
+        toast.error('Step Generation API error. Using fallback sentence splitting.');
+        rawSteps = currentTranscript
+          .split(/[.!?]+/)
+          .map(sentence => sentence.trim())
+          .filter(sentence => sentence.length > 10)
+          .map((sentence, index) => `Step ${index + 1}: ${sentence}`);
+      }
+      
+      if (rawSteps.length === 0) {
+        toast.error('Could not generate any steps from the transcript.');
+        setIsGeneratingSteps(false);
+        return;
+      }
+      
+      const newStepObjects: Step[] = rawSteps.map(stepText => ({
         id: uuidv4(),
-        content: sentence,
-        comments: [],
+        content: stepText,
+        comments: []
       }));
 
-      if (newSteps.length > 0) {
-        const updatedSteps = [...procedureSteps, ...newSteps];
-        setProcedureSteps(updatedSteps);
-        onChange("");
-        toast.success(`Created ${newSteps.length} steps from transcript`);
-        
-        if (onStepsChange) {
-          onStepsChange(updatedSteps);
-        }
-      } else {
-        toast.error("Could not generate any meaningful steps from transcript");
+      const updatedStepsArray = [...procedureSteps, ...newStepObjects];
+      setProcedureSteps(updatedStepsArray);
+      if (onStepsChange) {
+        onStepsChange(updatedStepsArray);
       }
+      toast.success(`${newStepObjects.length} steps generated and added.`);
+      setCurrentTranscript("");
+      onTranscriptChange("");
 
+      await generateAndPassYaml(updatedStepsArray, procedureName);
+
+    } catch (error) {
+      console.error('Error in AI step generation process:', error);
+      toast.error('Failed to process AI-generated steps.');
+    } finally {
       setIsGeneratingSteps(false);
-    }, 2000);
+    }
+  };
+
+  const generateAndPassYaml = async (currentSteps: Step[], nameOfProcedure: string) => {
+    if (currentSteps.length === 0) {
+      toast.info("No steps available to generate YAML.");
+      if (onYamlGenerated) onYamlGenerated("");
+      return;
+    }
+    if (!onYamlGenerated) {
+      console.warn("onYamlGenerated prop is not provided to TranscriptEditor.");
+      return;
+    }
+    if (!nameOfProcedure) {
+      toast.error("Procedure name is not available. Cannot generate YAML.");
+      return;
+    }
+
+    toast.info("Generating YAML from current steps...");
+    try {
+      const yamlString = await generateYamlFromSteps(currentSteps, nameOfProcedure);
+      if (yamlString) {
+        onYamlGenerated(yamlString);
+        toast.success("YAML generated successfully from current steps.");
+      } else {
+        toast.error("YAML generation resulted in empty content.");
+        if (onYamlGenerated) onYamlGenerated("");
+      }
+    } catch (yamlError) {
+      console.error('DeepSeek API error during YAML generation:', yamlError);
+      toast.error('YAML Generation API error.');
+      if (onYamlGenerated) onYamlGenerated("");
+    }
   };
 
   const addQuestionsWithAI = () => {
-    if (procedureSteps.length === 0) return;
-
+    if (procedureSteps.length === 0) {
+      toast.info("No steps to add questions to.");
+      return;
+    }
     setIsAddingQuestions(true);
+    toast.info("Adding AI questions to steps (mock implementation)...");
 
     setTimeout(() => {
-      const updatedSteps = procedureSteps.map((step) => {
+      const updatedStepsWithQuestions = procedureSteps.map((step) => {
         if (step.comments.length === 0) {
           const questionTypes = [
-            "What is the purpose of this step?",
-            "What could go wrong at this step?",
-            "How do you know when this step is completed correctly?",
-            "What is an alternative approach for this step?",
+            "What is the primary objective of this specific step?",
+            "What are potential risks or challenges at this stage?",
+            "How can one verify successful completion of this step?",
+            "Are there alternative methods or tools for this step?",
           ];
-          
           return {
             ...step,
             comments: [
@@ -191,51 +249,52 @@ const TranscriptEditor = ({
         }
         return step;
       });
-
-      setProcedureSteps(updatedSteps);
-      toast.success("Added questions to steps");
-      setIsAddingQuestions(false);
-      
+      setProcedureSteps(updatedStepsWithQuestions);
       if (onStepsChange) {
-        onStepsChange(updatedSteps);
+        onStepsChange(updatedStepsWithQuestions);
       }
-    }, 2000);
+      toast.success("Mock questions added to steps.");
+      setIsAddingQuestions(false);
+    }, 1500);
   };
+
+  const handleMoveStepUp = (index: number) => handleMoveStep(index, 'up');
+  const handleMoveStepDown = (index: number) => handleMoveStep(index, 'down');
 
   return (
     <div className="space-y-6">
       <div className="bg-white rounded-lg shadow p-4 border">
         <h3 className="text-lg font-medium mb-2">Current Transcript</h3>
         <Textarea
-          value={transcript}
-          onChange={handleTranscriptChange}
+          value={currentTranscript}
+          onChange={handleTranscriptTextAreaChange}
           className="min-h-[100px] bg-gray-50"
           placeholder="Enter or paste your procedure transcript here..."
         />
         <div className="mt-2 flex justify-between flex-wrap gap-2">
           <Button
-            onClick={handleAddStep}
-            disabled={!transcript.trim()}
+            onClick={handleAddStepManual}
+            disabled={!currentTranscript.trim()}
             size="sm"
             className="bg-blue-600 hover:bg-blue-700"
           >
-            <Plus className="mr-1 h-4 w-4" /> Create Step
+            <Plus className="mr-1 h-4 w-4" /> Create Step from Transcript
           </Button>
 
           <div className="flex gap-2">
             <Button
-              onClick={generateStepsWithAI}
-              disabled={!transcript.trim() || isGeneratingSteps}
+              onClick={generateAndProcessStepsWithAI}
+              disabled={!currentTranscript.trim() || isGeneratingSteps}
               variant="outline"
               size="sm"
             >
               {isGeneratingSteps ? (
                 <>
-                  <div className="spinner mr-1" /> Processing...
+                  <div className="spinner mr-1" /> Processing Transcript...
                 </>
               ) : (
                 <>
-                  <div className="mr-1">✨</div> Auto-Generate Steps
+                  <div className="mr-1">✨</div> Auto-Generate Steps & YAML
                 </>
               )}
             </Button>
@@ -248,11 +307,11 @@ const TranscriptEditor = ({
             >
               {isAddingQuestions ? (
                 <>
-                  <div className="spinner mr-1" /> Processing...
+                  <div className="spinner mr-1" /> Adding Questions...
                 </>
               ) : (
                 <>
-                  <div className="mr-1">❓</div> Add Questions
+                  <div className="mr-1">❓</div> Add AI Questions
                 </>
               )}
             </Button>
@@ -275,7 +334,12 @@ const TranscriptEditor = ({
                 )}
               >
                 <CardHeader className="p-3 pb-0 flex flex-row items-start justify-between">
-                  <CardTitle className="text-base">Step {index + 1}</CardTitle>
+                  <CardTitle 
+                    className="text-base cursor-pointer hover:text-blue-600"
+                    onClick={() => editingStepId === step.id ? setEditingStepId(null) : setEditingStepId(step.id)}
+                  >
+                    Step {index + 1}{editingStepId === step.id ? " (Editing)" : ""}
+                  </CardTitle>
                   <div className="flex gap-1">
                     <Button
                       variant="ghost"
@@ -283,6 +347,7 @@ const TranscriptEditor = ({
                       className="h-8 w-8"
                       onClick={() => handleMoveStepUp(index)}
                       disabled={index === 0}
+                      title="Move step up"
                     >
                       <ArrowUp className="h-4 w-4" />
                     </Button>
@@ -292,14 +357,16 @@ const TranscriptEditor = ({
                       className="h-8 w-8"
                       onClick={() => handleMoveStepDown(index)}
                       disabled={index === procedureSteps.length - 1}
+                      title="Move step down"
                     >
                       <ArrowDown className="h-4 w-4" />
                     </Button>
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="h-8 w-8 text-red-500"
+                      className="h-8 w-8 text-red-500 hover:text-red-600"
                       onClick={() => handleRemoveStep(step.id)}
+                      title="Remove step"
                     >
                       <Trash className="h-4 w-4" />
                     </Button>
@@ -307,96 +374,68 @@ const TranscriptEditor = ({
                 </CardHeader>
                 <CardContent className="p-3">
                   {editingStepId === step.id ? (
-                    <div className="space-y-4">
+                    <div className="space-y-2">
                       <Textarea
                         value={step.content}
-                        onChange={(e) => handleUpdateStep(step.id, e.target.value)}
-                        className="min-h-[80px] mb-3"
+                        onChange={(e) => handleUpdateStepContent(step.id, e.target.value)}
+                        className="min-h-[80px] mb-2"
+                        autoFocus
                       />
                       <div className="flex justify-end space-x-2">
                         <Button 
                           variant="outline" 
+                          size="sm"
                           onClick={() => setEditingStepId(null)}
                         >
                           Cancel
                         </Button>
                         <Button 
-                          onClick={() => handleUpdateStep(step.id, step.content)}
+                          size="sm"
+                          onClick={() => handleFinalizeUpdateStep(step.id, step.content)}
                           className="bg-blue-600 hover:bg-blue-700"
                         >
-                          Save Changes
+                          Save Step
                         </Button>
                       </div>
                     </div>
                   ) : (
                     <div>
                       <div className="flex justify-between items-start">
-                        <div className="flex items-center">
-                          <div className="bg-blue-100 text-blue-800 font-medium rounded-full w-8 h-8 flex items-center justify-center mr-3">
-                            {index + 1}
-                          </div>
-                          <div className="text-lg font-medium">Step {index + 1}</div>
-                        </div>
-                        <div className="flex space-x-2">
-                          <Button 
+                        <p 
+                          className="text-gray-700 whitespace-pre-wrap cursor-pointer hover:bg-gray-50 p-1 rounded"
+                          onClick={() => setEditingStepId(step.id)}
+                        >
+                          {step.content}
+                        </p>
+                        <Button 
                             variant="outline" 
                             size="sm"
+                            className="ml-2"
                             onClick={() => setEditingStepId(step.id)}
                           >
                             <Pencil className="h-4 w-4 mr-1" />
                             Edit
                           </Button>
-                          <Button 
-                            variant="outline" 
-                            size="sm"
-                            onClick={() => handleRemoveStep(step.id)}
-                            className="text-red-500 hover:text-red-600 hover:bg-red-50"
-                          >
-                            <Trash2 className="h-4 w-4 mr-1" />
-                            Remove
-                          </Button>
-                        </div>
-                      </div>
-                      <div className="mt-3 pl-11">
-                        <p className="text-gray-700 whitespace-pre-wrap">{step.content}</p>
-                      </div>
-                      <div className="flex justify-end space-x-2 mt-4">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleMoveStepUp(index)}
-                          disabled={index === 0}
-                        >
-                          Move Up
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleMoveStepDown(index)}
-                          disabled={index === procedureSteps.length - 1}
-                        >
-                          Move Down
-                        </Button>
                       </div>
                     </div>
                   )}
 
                   {step.comments.length > 0 && (
-                    <div className="mt-3 pl-11">
-                      <h4 className="text-sm font-medium">Comments/Questions:</h4>
-                      <div className="space-y-2">
+                    <div className="mt-3 pl-0">
+                      <h4 className="text-sm font-medium text-gray-600">Comments/Questions:</h4>
+                      <div className="space-y-1 mt-1">
                         {step.comments.map((comment, commentIndex) => (
                           <div
                             key={`comment-${step.id}-${commentIndex}`}
-                            className="flex justify-between items-start text-sm p-2 bg-gray-50 rounded-md"
+                            className="flex justify-between items-start text-sm p-2 bg-gray-50 rounded-md border"
                           >
-                            <p>{comment}</p>
+                            <p className="text-gray-700 flex-grow">{comment}</p>
                             <Button
                               variant="ghost"
                               size="icon"
-                              className="h-6 w-6"
+                              className="h-6 w-6 ml-2 text-red-400 hover:text-red-600 flex-shrink-0"
                               onClick={() => {
-                                const updatedSteps = procedureSteps.map((s) =>
+                                const updatedStepsWithCommentRemoved = procedureSteps.map((s) =>
                                   s.id === step.id
                                     ? {
                                         ...s,
@@ -404,11 +443,12 @@ const TranscriptEditor = ({
                                       }
                                     : s
                                 );
-                                setProcedureSteps(updatedSteps);
+                                setProcedureSteps(updatedStepsWithCommentRemoved);
                                 if (onStepsChange) {
-                                  onStepsChange(updatedSteps);
+                                  onStepsChange(updatedStepsWithCommentRemoved);
                                 }
                               }}
+                              title="Remove comment"
                             >
                               <Trash className="h-3 w-3" />
                             </Button>
@@ -421,19 +461,17 @@ const TranscriptEditor = ({
                   <div className="mt-3">
                     <div className="flex gap-2">
                       <Input
-                        placeholder="Add a comment or question..."
+                        placeholder="Add a comment or question for this step..."
                         value={activeStepId === step.id ? newComment : ""}
                         onChange={(e) => {
                           setActiveStepId(step.id);
                           setNewComment(e.target.value);
                         }}
+                        onFocus={() => setActiveStepId(step.id)}
                         onKeyDown={(e) => {
-                          if (e.key === "Enter" && activeStepId === step.id) {
+                          if (e.key === "Enter" && activeStepId === step.id && newComment.trim()) {
                             e.preventDefault();
-                            
-                            if (!newComment.trim()) return;
-                            
-                            const updatedSteps = procedureSteps.map((s) =>
+                            const updatedStepsWithNewComment = procedureSteps.map((s) =>
                               s.id === step.id
                                 ? {
                                     ...s,
@@ -441,21 +479,21 @@ const TranscriptEditor = ({
                                   }
                                 : s
                             );
-                            setProcedureSteps(updatedSteps);
+                            setProcedureSteps(updatedStepsWithNewComment);
                             if (onStepsChange) {
-                              onStepsChange(updatedSteps);
+                              onStepsChange(updatedStepsWithNewComment);
                             }
                             setNewComment("");
                           }
                         }}
+                        className="flex-grow"
                       />
                       <Button
                         variant="outline"
                         size="sm"
                         onClick={() => {
-                          if (!newComment.trim()) return;
-                          
-                          const updatedSteps = procedureSteps.map((s) =>
+                          if (!newComment.trim() || activeStepId !== step.id) return;
+                          const updatedStepsWithNewComment = procedureSteps.map((s) =>
                             s.id === step.id
                               ? {
                                   ...s,
@@ -463,13 +501,14 @@ const TranscriptEditor = ({
                                 }
                               : s
                           );
-                          setProcedureSteps(updatedSteps);
+                          setProcedureSteps(updatedStepsWithNewComment);
                           if (onStepsChange) {
-                            onStepsChange(updatedSteps);
+                            onStepsChange(updatedStepsWithNewComment);
                           }
                           setNewComment("");
                         }}
                         disabled={!newComment.trim() || activeStepId !== step.id}
+                        className="flex-shrink-0"
                       >
                         <MessageCircle className="mr-1 h-4 w-4" /> Add
                       </Button>
