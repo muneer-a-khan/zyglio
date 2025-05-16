@@ -15,9 +15,14 @@ interface YamlStep {
 }
 
 interface YamlProcedure {
-  name: string;
+  name?: string;
+  procedure_name?: string; 
   version?: string;
   created_date?: string;
+  purpose?: string;
+  stages?: string[];
+  considerations?: Record<string, any>;
+  goals?: string[];
   steps: YamlStep[];
 }
 
@@ -65,10 +70,22 @@ export function convertYamlToReactFlow(yamlContent: string): {
     }
     
     if (!parsedYaml.steps || !Array.isArray(parsedYaml.steps)) {
-      return { 
-        elements: createDefaultFlow(),
-        error: "Invalid YAML structure: missing 'steps' array"
-      };
+      // Try to convert stages to steps if available
+      if (parsedYaml.stages && Array.isArray(parsedYaml.stages)) {
+        parsedYaml.steps = parsedYaml.stages.map((stage, index) => {
+          return {
+            id: `step${index + 1}`,
+            title: stage,
+            next: index < parsedYaml.stages!.length - 1 ? `step${index + 2}` : undefined,
+            is_terminal: index === parsedYaml.stages!.length - 1
+          };
+        });
+      } else {
+        return { 
+          elements: createDefaultFlow(),
+          error: "Invalid YAML structure: missing 'steps' or 'stages' array"
+        };
+      }
     }
     
     // Validate each step has at least an id
@@ -103,10 +120,42 @@ function processYamlData(yamlData: YamlProcedure): ReactFlowElements {
   const edges: ReactFlowEdge[] = [];
   const nodePositions = new Map<string, { x: number, y: number }>();
   
+  // We're going to reverse the level calculation logic to put the first step at the top
+  
+  // First, find the terminal nodes (those without next steps)
+  const terminalNodes = yamlData.steps.filter(step => 
+    step.is_terminal || 
+    !step.next || 
+    !yamlData.steps.some(s => s.id === step.next)
+  );
+  
+  // Create a reverse map to find predecessors
+  const predecessors = new Map<string, string[]>();
+  yamlData.steps.forEach(step => {
+    if (step.next) {
+      if (!predecessors.has(step.next)) {
+        predecessors.set(step.next, []);
+      }
+      predecessors.get(step.next)!.push(step.id);
+    }
+    
+    // Also track decision options
+    if (step.decision_point && step.options) {
+      step.options.forEach(option => {
+        if (option.next) {
+          if (!predecessors.has(option.next)) {
+            predecessors.set(option.next, []);
+          }
+          predecessors.get(option.next)!.push(step.id);
+        }
+      });
+    }
+  });
+  
   // Create a map to track each step's level in the flow
   const nodeLevels = new Map<string, number>();
   
-  // Calculate node level to determine vertical position
+  // Calculate node level from the bottom up
   const getNodeLevel = (stepId: string, visited = new Set<string>()): number => {
     // Prevent infinite loops from circular dependencies
     if (visited.has(stepId)) return 0;
@@ -116,34 +165,25 @@ function processYamlData(yamlData: YamlProcedure): ReactFlowElements {
     const step = yamlData.steps.find(s => s.id === stepId);
     if (!step) return 0;
     
-    // Terminal nodes are always at the bottom
-    if (step.is_terminal) return yamlData.steps.length;
-    
     // If we already calculated this node's level, return it
     if (nodeLevels.has(stepId)) return nodeLevels.get(stepId)!;
     
-    // Calculate level based on next steps
-    let maxChildLevel = 0;
-    
-    // Check standard next connection
-    if (step.next) {
-      const childLevel = getNodeLevel(step.next, new Set(visited)) + 1;
-      maxChildLevel = Math.max(maxChildLevel, childLevel);
+    // For the reversed flow, nodes with no predecessors are at the top (level 0)
+    const preds = predecessors.get(stepId) || [];
+    if (preds.length === 0) {
+      nodeLevels.set(stepId, 0);
+      return 0;
     }
     
-    // Check decision options
-    if (step.decision_point && step.options) {
-      for (const option of step.options) {
-        if (option.next && option.next !== step.next) {
-          const childLevel = getNodeLevel(option.next, new Set(visited)) + 1;
-          maxChildLevel = Math.max(maxChildLevel, childLevel);
-        }
-      }
+    // Calculate level based on predecessors - take the max level of predecessors + 1
+    let level = 0;
+    for (const pred of preds) {
+      const predLevel = getNodeLevel(pred, new Set(visited));
+      level = Math.max(level, predLevel + 1);
     }
     
-    // Store and return the level
-    nodeLevels.set(stepId, maxChildLevel);
-    return maxChildLevel;
+    nodeLevels.set(stepId, level);
+    return level;
   };
   
   // Calculate levels for all nodes
@@ -153,9 +193,22 @@ function processYamlData(yamlData: YamlProcedure): ReactFlowElements {
     }
   });
   
+  // Find max level and invert the levels to place first step at the top
+  let maxLevel = 0;
+  nodeLevels.forEach(level => {
+    maxLevel = Math.max(maxLevel, level);
+  });
+  
+  // Create new levels with top-down ordering
+  const adjustedLevels = new Map<string, number>();
+  nodeLevels.forEach((level, nodeId) => {
+    // Invert the level
+    adjustedLevels.set(nodeId, maxLevel - level);
+  });
+  
   // Organize nodes by levels
   const nodesByLevel = new Map<number, string[]>();
-  nodeLevels.forEach((level, nodeId) => {
+  adjustedLevels.forEach((level, nodeId) => {
     if (!nodesByLevel.has(level)) {
       nodesByLevel.set(level, []);
     }
