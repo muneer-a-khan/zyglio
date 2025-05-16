@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -18,6 +18,7 @@ import YamlGenerator from "@/components/YamlGenerator";
 import SimulationBuilder from "@/components/SimulationBuilder";
 import { procedureService, TaskDefinition, Step, MediaItem, SimulationSettings } from "@/lib/ProcedureService";
 import { v4 as uuidv4 } from 'uuid';
+import { generateYamlFromSteps as generateYamlFromStepsViaAPI } from "@/lib/deepseek";
 
 export default function CreateProcedure() {
   const { data: session, status } = useSession();
@@ -33,6 +34,7 @@ export default function CreateProcedure() {
   const [flowchartContent, setFlowchartContent] = useState("");
   const [simulationSettings, setSimulationSettings] = useState<SimulationSettings | null>(null);
   const [loading, setLoading] = useState(false);
+  const [isGeneratingYaml, setIsGeneratingYaml] = useState(false);
 
   // Redirect to sign-in if not authenticated
   useEffect(() => {
@@ -111,15 +113,16 @@ export default function CreateProcedure() {
     }
   };
   
-  const handleYamlGenerated = async (yaml: string) => {
+  const handleYamlGenerated = useCallback(async (yaml: string) => {
     setYamlContent(yaml);
     try {
       // Save YAML content to database
       await procedureService.saveYamlContent(yaml);
     } catch (error) {
       console.error("Error saving YAML content:", error);
+      toast.error("Failed to save YAML content.");
     }
-  };
+  }, []);
   
   const handleFlowchartChange = async (content: string) => {
     setFlowchartContent(content);
@@ -180,6 +183,36 @@ export default function CreateProcedure() {
     else if (activeTab === "simulation") handleTabChange("flowchart");
   };
   
+  const handleRegenerateYamlFromStepsViaApi = useCallback(async (currentSteps: Step[], currentProcedureName: string | undefined): Promise<string | null> => {
+    if (!currentProcedureName) {
+      toast.error("Procedure name is not defined. Cannot generate YAML.");
+      return null;
+    }
+    if (currentSteps.length === 0) {
+      toast.info("No steps available to generate YAML.");
+      return "";
+    }
+
+    setIsGeneratingYaml(true);
+    let newYaml = null;
+    try {
+      newYaml = await generateYamlFromStepsViaAPI(currentSteps, currentProcedureName);
+      if (newYaml) {
+        setYamlContent(newYaml);
+        await procedureService.saveYamlContent(newYaml);
+      } else {
+        toast.error("Failed to generate YAML from steps. The API returned no content.");
+      }
+    } catch (error) {
+      console.error("Error regenerating YAML from steps via API:", error);
+      toast.error(`Failed to regenerate YAML: ${error instanceof Error ? error.message : "Unknown API error"}`);
+      newYaml = null;
+    } finally {
+      setIsGeneratingYaml(false);
+    }
+    return newYaml;
+  }, [generateYamlFromStepsViaAPI]);
+
   const handlePublish = async () => {
     try {
       const success = await procedureService.publishProcedure();
@@ -343,11 +376,11 @@ export default function CreateProcedure() {
                     Transcript Editor
                   </h2>
                   <TranscriptEditor
-                    transcript={transcript}
-                    onChange={handleTranscriptChange}
+                    initialTranscript={transcript}
+                    onTranscriptChange={handleTranscriptChange}
                     onStepsChange={handleStepsChange}
+                    procedureName={taskDefinition?.procedure_name || "Procedure"}
                     onYamlGenerated={handleYamlGenerated}
-                    steps={steps}
                   />
                 </CardContent>
               </Card>
@@ -371,9 +404,11 @@ export default function CreateProcedure() {
               <CardContent className="pt-6">
                 <YamlGenerator
                   steps={steps}
-                  procedureName={taskDefinition?.name || "Procedure"}
+                  procedureName={taskDefinition?.procedure_name || "Sample Procedure"}
                   initialYaml={yamlContent}
                   onChange={handleYamlGenerated}
+                  onRegenerateYaml={handleRegenerateYamlFromStepsViaApi}
+                  isLoadingExternal={isGeneratingYaml}
                 />
               </CardContent>
             </Card>

@@ -24,20 +24,23 @@ import { generateStepsFromTranscript, generateYamlFromSteps } from "@/lib/deepse
 import * as yaml from 'js-yaml';
 
 export interface TranscriptEditorProps {
-  transcript: string;
-  onChange: (text: string) => void;
+  initialTranscript: string;
+  onTranscriptChange: (text: string) => void;
   onStepsChange?: (steps: Step[]) => void;
   steps?: Step[];
   onYamlGenerated?: (yaml: string) => void;
+  procedureName: string;
 }
 
 const TranscriptEditor = ({ 
-  transcript, 
-  onChange, 
+  initialTranscript,
+  onTranscriptChange,
   onStepsChange, 
   steps = [],
   onYamlGenerated,
+  procedureName,
 }: TranscriptEditorProps) => {
+  const [currentTranscript, setCurrentTranscript] = useState(initialTranscript);
   const [procedureSteps, setProcedureSteps] = useState<Step[]>(steps);
   const [editingStepId, setEditingStepId] = useState<string | null>(null);
   const [isGeneratingSteps, setIsGeneratingSteps] = useState(false);
@@ -51,22 +54,27 @@ const TranscriptEditor = ({
     }
   }, [steps]);
 
-  const handleTranscriptChange = (
+  useEffect(() => {
+    setCurrentTranscript(initialTranscript);
+  }, [initialTranscript]);
+
+  const handleTranscriptTextAreaChange = (
     e: React.ChangeEvent<HTMLTextAreaElement>
   ) => {
     const newValue = e.target.value;
-    onChange(newValue);
+    setCurrentTranscript(newValue);
+    onTranscriptChange(newValue);
   };
 
   const handleAddStepManual = () => {
-    if (!transcript.trim()) {
+    if (!currentTranscript.trim()) {
       toast.info("Transcript is empty. Cannot create step.");
       return;
     }
     
     const newStep: Step = {
       id: uuidv4(),
-      content: transcript.trim(),
+      content: currentTranscript.trim(),
       comments: []
     };
     
@@ -77,7 +85,8 @@ const TranscriptEditor = ({
       onStepsChange(newStepsArray);
     }
     
-    onChange("");
+    setCurrentTranscript("");
+    onTranscriptChange("");
     toast.success("Manual step created successfully");
   };
 
@@ -129,7 +138,7 @@ const TranscriptEditor = ({
   };
 
   const generateAndProcessStepsWithAI = async () => {
-    if (!transcript.trim()) {
+    if (!currentTranscript.trim()) {
       toast.info("Please provide a transcript to generate steps.");
       return;
     }
@@ -140,11 +149,11 @@ const TranscriptEditor = ({
     try {
       let rawSteps: string[] = [];
       try {
-        rawSteps = await generateStepsFromTranscript(transcript);
+        rawSteps = await generateStepsFromTranscript(currentTranscript);
       } catch (apiError) {
         console.error('DeepSeek API error during step generation:', apiError);
         toast.error('Step Generation API error. Using fallback sentence splitting.');
-        rawSteps = transcript
+        rawSteps = currentTranscript
           .split(/[.!?]+/)
           .map(sentence => sentence.trim())
           .filter(sentence => sentence.length > 10)
@@ -169,9 +178,10 @@ const TranscriptEditor = ({
         onStepsChange(updatedStepsArray);
       }
       toast.success(`${newStepObjects.length} steps generated and added.`);
-      onChange("");
+      setCurrentTranscript("");
+      onTranscriptChange("");
 
-      await generateAndPassYaml(updatedStepsArray.map(s => s.content));
+      await generateAndPassYaml(updatedStepsArray, procedureName);
 
     } catch (error) {
       console.error('Error in AI step generation process:', error);
@@ -181,21 +191,35 @@ const TranscriptEditor = ({
     }
   };
 
-  const generateAndPassYaml = async (currentStepsContent: string[]) => {
-    if (currentStepsContent.length === 0) {
+  const generateAndPassYaml = async (currentSteps: Step[], nameOfProcedure: string) => {
+    if (currentSteps.length === 0) {
       toast.info("No steps available to generate YAML.");
+      if (onYamlGenerated) onYamlGenerated("");
       return;
     }
-    if (!onYamlGenerated) return;
+    if (!onYamlGenerated) {
+      console.warn("onYamlGenerated prop is not provided to TranscriptEditor.");
+      return;
+    }
+    if (!nameOfProcedure) {
+      toast.error("Procedure name is not available. Cannot generate YAML.");
+      return;
+    }
 
     toast.info("Generating YAML from current steps...");
     try {
-      const yamlString = await generateYamlFromSteps(currentStepsContent);
-      onYamlGenerated(yamlString);
-      toast.success("YAML generated successfully from current steps.");
+      const yamlString = await generateYamlFromSteps(currentSteps, nameOfProcedure);
+      if (yamlString) {
+        onYamlGenerated(yamlString);
+        toast.success("YAML generated successfully from current steps.");
+      } else {
+        toast.error("YAML generation resulted in empty content.");
+        if (onYamlGenerated) onYamlGenerated("");
+      }
     } catch (yamlError) {
       console.error('DeepSeek API error during YAML generation:', yamlError);
       toast.error('YAML Generation API error.');
+      if (onYamlGenerated) onYamlGenerated("");
     }
   };
 
@@ -242,15 +266,15 @@ const TranscriptEditor = ({
       <div className="bg-white rounded-lg shadow p-4 border">
         <h3 className="text-lg font-medium mb-2">Current Transcript</h3>
         <Textarea
-          value={transcript}
-          onChange={handleTranscriptChange}
+          value={currentTranscript}
+          onChange={handleTranscriptTextAreaChange}
           className="min-h-[100px] bg-gray-50"
           placeholder="Enter or paste your procedure transcript here..."
         />
         <div className="mt-2 flex justify-between flex-wrap gap-2">
           <Button
             onClick={handleAddStepManual}
-            disabled={!transcript.trim()}
+            disabled={!currentTranscript.trim()}
             size="sm"
             className="bg-blue-600 hover:bg-blue-700"
           >
@@ -260,7 +284,7 @@ const TranscriptEditor = ({
           <div className="flex gap-2">
             <Button
               onClick={generateAndProcessStepsWithAI}
-              disabled={!transcript.trim() || isGeneratingSteps}
+              disabled={!currentTranscript.trim() || isGeneratingSteps}
               variant="outline"
               size="sm"
             >

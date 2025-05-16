@@ -23,52 +23,57 @@ interface YamlGeneratorProps {
   procedureName: string;
   initialYaml?: string;
   onChange?: (yaml: string) => void;
+  onRegenerateYaml: (currentSteps: Step[], procedureName: string) => Promise<string | null>;
+  isLoadingExternal?: boolean;
 }
 
 const YamlGenerator = ({
   steps,
   procedureName = "Sample Procedure",
   initialYaml = "",
-  onChange
+  onChange,
+  onRegenerateYaml,
+  isLoadingExternal
 }: YamlGeneratorProps) => {
   const [yamlOutput, setYamlOutput] = useState<string>(initialYaml);
-  const [isGenerating, setIsGenerating] = useState(false);
+  const [isLocallyGenerating, setIsLocallyGenerating] = useState(false);
   const [activeTab, setActiveTab] = useState("preview");
   const [copySuccess, setCopySuccess] = useState(false);
 
-  // Load initial YAML if provided
   useEffect(() => {
     if (initialYaml) {
       setYamlOutput(initialYaml);
-    } else if (steps.length > 0) {
-      generateYaml();
+    } else if (steps.length > 0 && !initialYaml && activeTab === "preview") {
     }
   }, [initialYaml]);
 
-  // Generate YAML when steps or procedureName change
   useEffect(() => {
-    if (steps.length > 0 && !initialYaml) {
-      generateYaml();
+    if (steps.length > 0 && yamlOutput === "" && !isLocallyGenerating && !isLoadingExternal && activeTab === "preview") {
     }
-  }, [steps, procedureName]);
+  }, [steps, procedureName, yamlOutput, isLocallyGenerating, isLoadingExternal, activeTab]);
 
-  const generateYaml = () => {
-    setIsGenerating(true);
+  const generateYaml = async () => {
+    if (!onRegenerateYaml) {
+      toast.error("Regeneration function not provided.");
+      return;
+    }
+    setIsLocallyGenerating(true);
 
-    setTimeout(() => {
-      try {
-        const yaml = generateYamlFromSteps(steps, procedureName);
-        setYamlOutput(yaml);
+    try {
+      const newYaml = await onRegenerateYaml(steps, procedureName);
+      if (newYaml) {
+        setYamlOutput(newYaml);
         if (onChange) {
-          onChange(yaml);
+          onChange(newYaml);
         }
-        setIsGenerating(false);
-      } catch (error) {
-        console.error("Error generating YAML:", error);
-        toast.error("Failed to generate YAML schema");
-        setIsGenerating(false);
+        toast.success("YAML regenerated successfully.");
+      } else {
       }
-    }, 1000);
+    } catch (error) {
+      console.error("Error regenerating YAML:", error);
+    } finally {
+      setIsLocallyGenerating(false);
+    }
   };
 
   const handleYamlChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -77,86 +82,6 @@ const YamlGenerator = ({
     if (onChange) {
       onChange(newValue);
     }
-  };
-
-  const generateYamlFromSteps = (steps: Step[], name: string): string => {
-    // This is a simplified YAML generation function
-    // In a real application, this would be more complex and robust
-
-    let yaml = `# Procedure Definition\nname: "${name}"\nversion: "1.0"\ncreated_date: "${
-      new Date().toISOString().split("T")[0]
-    }"\n\n`;
-
-    yaml += "steps:\n";
-
-    steps.forEach((step, index) => {
-      const stepNumber = index + 1;
-      yaml += `  - id: "step-${stepNumber}"\n`;
-      yaml += `    title: "Step ${stepNumber}"\n`;
-      
-      // Properly format multi-line descriptions with block scalar style
-      const description = step.content
-        .replace(/\\/g, '\\\\')   // Escape backslashes
-        .replace(/"/g, '\\"');    // Escape double quotes
-      
-      if (description.includes('\n')) {
-        // Use block scalar style for multi-line content
-        yaml += `    description: |\n`;
-        description.split('\n').forEach(line => {
-          yaml += `      ${line}\n`;
-        });
-      } else {
-        yaml += `    description: "${description}"\n`;
-      }
-
-      // Add some conditional logic for demonstration
-      if (index < steps.length - 1) {
-        yaml += `    next: "step-${stepNumber + 1}"\n`;
-      } else {
-        yaml += `    next: "end"\n`;
-      }
-
-      // Add any comments as notes
-      if (step.comments && step.comments.length > 0) {
-        yaml += `    notes:\n`;
-        step.comments.forEach((comment) => {
-          const safeComment = comment
-            .replace(/\\/g, '\\\\')   // Escape backslashes
-            .replace(/"/g, '\\"');    // Escape double quotes
-          
-          if (safeComment.includes('\n')) {
-            // Use block scalar style for multi-line content
-            yaml += `      - |\n`;
-            safeComment.split('\n').forEach(line => {
-              yaml += `        ${line}\n`;
-            });
-          } else {
-            yaml += `      - "${safeComment}"\n`;
-          }
-        });
-      }
-
-      // Add some sample decision points for demonstration
-      if (index === Math.floor(steps.length / 2) && steps.length > 2) {
-        yaml += `    decision_point: true\n`;
-        yaml += `    options:\n`;
-        yaml += `      - choice: "Continue standard procedure"\n`;
-        yaml += `        next: "step-${stepNumber + 1}"\n`;
-        yaml += `      - choice: "Optional alternate path"\n`;
-        yaml += `        next: "step-${stepNumber + 2}"\n`;
-        yaml += `        condition: "if special circumstances present"\n`;
-      }
-
-      yaml += "\n";
-    });
-
-    // Add end state
-    yaml += `  - id: "end"\n`;
-    yaml += `    title: "Procedure Complete"\n`;
-    yaml += `    description: "The procedure has been completed successfully."\n`;
-    yaml += `    is_terminal: true\n`;
-
-    return yaml;
   };
 
   const copyToClipboard = () => {
@@ -214,12 +139,14 @@ const YamlGenerator = ({
             variant="outline"
             size="sm"
             onClick={generateYaml}
-            disabled={isGenerating || steps.length === 0}
+            disabled={isLoadingExternal || isLocallyGenerating || steps.length === 0}
           >
             <RefreshCw
-              className={`mr-1 h-4 w-4 ${isGenerating ? "animate-spin" : ""}`}
+              className={`mr-1 h-4 w-4 ${
+                isLoadingExternal || isLocallyGenerating ? "animate-spin" : ""
+              }`}
             />
-            {isGenerating ? "Generating..." : "Regenerate"}
+            {isLoadingExternal || isLocallyGenerating ? "Generating..." : "Regenerate"}
           </Button>
         </div>
       </CardHeader>

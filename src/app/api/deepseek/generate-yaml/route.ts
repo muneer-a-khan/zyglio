@@ -2,6 +2,14 @@ import { NextResponse } from 'next/server';
 import OpenAI from 'openai'; // Using OpenAI SDK for DeepSeek
 import * as yaml from 'js-yaml';
 
+// Define Step interface for clarity if not already centrally available
+// This should match the structure sent from the client
+interface Step {
+  id: string;
+  content: string; // e.g., "Step Title: Step description."
+  comments: string[];
+}
+
 const apiKey = process.env.DEEPSEEK_API_KEY;
 if (!apiKey) {
   console.error('DEEPSEEK_API_KEY is not defined in environment variables.');
@@ -15,7 +23,14 @@ const deepseek = new OpenAI({
 export async function POST(request: Request) {
   try {
     console.log('DeepSeek generate-yaml API route called.');
-    const { steps } = await request.json(); // Expecting steps array now
+    const { steps, procedureName } = await request.json(); // Expecting steps array and procedureName
+
+    if (!procedureName || typeof procedureName !== 'string' || procedureName.trim() === '') {
+      return NextResponse.json(
+        { error: 'procedureName is required and must be a non-empty string' },
+        { status: 400 }
+      );
+    }
 
     if (!steps || !Array.isArray(steps) || steps.length === 0) {
       return NextResponse.json(
@@ -24,7 +39,17 @@ export async function POST(request: Request) {
       );
     }
 
-    const sampleYaml = `procedure_name: Example Procedure Name
+    // Validate structure of each step minimally (e.g., has content)
+    for (const step of steps) {
+      if (typeof step !== 'object' || step === null || typeof step.content !== 'string' || step.content.trim() === '') {
+        return NextResponse.json(
+          { error: 'Each step in the steps array must be an object with a non-empty content string.' },
+          { status: 400 }
+        );
+      }
+    }
+
+    const sampleYaml = `procedure_name: ${procedureName} # THIS WILL BE REPLACED BY THE PROVIDED procedureName
 purpose: A concise statement explaining the overall objective of the procedure.
 stages:
     - Step Title 1: Detailed description of the first action or phase.
@@ -32,43 +57,74 @@ stages:
 considerations:
     - pre-operative:
         - Detail 1: Specific check or preparation before starting.
-        - Detail 2: Another pre-start check or preparation.
     - intra-operative:
         - Detail 1: Important factor to monitor or manage during the procedure.
-        - Detail 2: Another key point for during the procedure.
     - post-operative:
         - Detail 1: Follow-up action or observation after completion.
-        - Detail 2: Another post-completion task.
 goals:
     - Goal 1: A specific, measurable outcome of the procedure.
-    - Goal 2: Another key objective to be achieved.`;
+    # Optional sections based on inference
+# complications:
+#     - Potential issue 1
+# conditionals:
+#     - if X then Y: description`;
 
-    const formattedSteps = steps.join('\n');
+    // Extract just the content for the prompt, as the AI will format it into "Title: Description"
+    const formattedStepsForPrompt = steps.map((step: Step, index: number) => {
+      // The step.content is expected to be in "Title: Description" format already from step generation AI
+      // Or, if not, the AI for YAML generation needs to infer Title and Description from step.content
+      return `${index + 1}. ${step.content}`;
+    }).join('\n');
 
-    const prompt = `Given the following list of procedure steps, generate a comprehensive YAML document. The YAML must strictly adhere to the provided format. 
+    const prompt = `Given the procedure name "${procedureName}" and the following list of procedure steps, generate a comprehensive YAML document. The YAML must strictly adhere to the provided format template.
 
-Format Template:
-${sampleYaml}
+Format Template (use this structure):
+\`\`\`yaml
+procedure_name: "${procedureName}" # Use this exact procedure name
+purpose: A concise statement explaining the overall objective of the procedure.
+stages:
+    # Each item from 'Procedure Steps to incorporate' below should be a distinct item here, formatted as "- Title: Description".
+    # Example: - Collect all necessary tools: Ensure all tools are sterile and accounted for.
+considerations:
+    pre-operative:
+        - # Detail 1
+    intra-operative:
+        - # Detail 1
+    post-operative:
+        - # Detail 1
+goals:
+    - # Goal 1
+complications: # (Optional: Include if inferable from steps)
+    - # Potential issue 1
+conditionals: # (Optional: Include if inferable from steps)
+    - # if X then Y: description
+\`\`\`
 
-Procedure Steps to incorporate into the YAML:
-${formattedSteps}
+Procedure Name:
+${procedureName}
 
-Instructions for YAML generation:
-1.  **procedure_name**: Create a concise and descriptive name for the entire procedure based on the provided steps.
-2.  **purpose**: Write a clear, brief statement explaining the overall objective of this procedure.
-3.  **stages**: List each provided step under this section. Each step from the input should be a distinct item in the YAML 'stages' list, formatted as "- Step Title: Step Description". Ensure the title and description are accurately reflected from the input steps.
+Procedure Steps to incorporate into the YAML (interpret each line as a step, typically in "Title: Description" format):
+${formattedStepsForPrompt}
+
+Detailed Instructions for YAML generation:
+1.  **procedure_name**: This field MUST be exactly: "${procedureName}". Do not change or generate this.
+2.  **purpose**: Write a clear, brief statement explaining the overall objective of this procedure, based on the provided steps and name.
+3.  **stages**: List each provided step from 'Procedure Steps to incorporate' under this section. 
+    *   Each step from the input should be a distinct item in the YAML 'stages' list.
+    *   The format for each stage item MUST be "- Title: Description". Parse or infer the Title and Description from each input step line.
+    *   Example: If an input step is "Perform incision: Make a 2cm incision at the marked site.", the YAML stage should be "- Perform incision: Make a 2cm incision at the marked site."
 4.  **considerations**: 
     *   Based on the nature of the steps, infer and detail relevant pre-operative, intra-operative, and post-operative considerations. 
-    *   If the steps do not clearly indicate all three (pre, intra, post), include only those that are relevant or can be reasonably inferred. If none are directly inferable, provide general examples appropriate for a technical/medical procedure.
-    *   Include at least two to three points for each applicable consideration subsection (pre-operative, intra-operative, post-operative).
-5.  **goals**: Define at least two to three primary goals that this procedure aims to achieve, based on the steps and their implied purpose.
-6.  **complications (optional)**: If the steps suggest potential complications or risks, list them under a 'complications' key. Each complication should be a list item.
-7.  **conditionals (optional)**: If the steps imply any decision points or conditional logic (e.g., "if X, then Y"), describe them under a 'conditionals' key.
+    *   If the steps do not clearly indicate all three (pre, intra, post), include only those that are relevant. If none are directly inferable, provide general examples appropriate for a technical/medical procedure. 
+    *   Provide at least one or two points for each applicable consideration subsection.
+5.  **goals**: Define at least two primary goals that this procedure aims to achieve, based on the steps and their implied purpose.
+6.  **complications (optional)**: If the steps or procedure nature suggest potential complications or risks, list them under a 'complications' key. Each complication should be a list item. If not applicable, this section can be omitted.
+7.  **conditionals (optional)**: If the steps imply any decision points or conditional logic (e.g., "if X, then Y"), describe them under a 'conditionals' key. If not applicable, this section can be omitted.
 
-Your response must be ONLY the YAML content, starting directly with "procedure_name:". Ensure perfect YAML syntax, including correct indentation (2 spaces for lists/nested items). Do not include any extra text, explanations, or markdown formatting outside the YAML itself.
+Your response must be ONLY the YAML content, starting directly with "procedure_name:". Ensure perfect YAML syntax, including correct indentation (typically 2 spaces for lists/nested items). Do not include any extra text, explanations, or markdown formatting (like \`\`\`yaml) outside the YAML itself.
 `;
 
-    console.log('Sending request to DeepSeek for YAML generation...');
+    console.log('Sending request to DeepSeek for YAML generation with procedureName:', procedureName);
     const completion = await deepseek.chat.completions.create({
       model: "deepseek-chat", // Use the appropriate DeepSeek model
       messages: [

@@ -2,6 +2,13 @@
 // You might need to install it: npm install deepseek-sdk
 // And adjust the import and client instantiation below.
 
+// Define Step interface for clarity, matching what components use
+interface Step {
+  id: string;
+  content: string;
+  comments: string[];
+}
+
 /**
  * Generate steps from transcript using DeepSeek API
  */
@@ -31,14 +38,14 @@ export async function generateStepsFromTranscript(transcript: string): Promise<s
 /**
  * Generate YAML from steps using DeepSeek API
  */
-export async function generateYamlFromSteps(steps: string[]): Promise<string> {
+export async function generateYamlFromSteps(steps: Step[], procedureName: string): Promise<string> {
   try {
     const response = await fetch('/api/deepseek/generate-yaml', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ steps }), // Pass steps to the new API route
+      body: JSON.stringify({ steps, procedureName }), // Pass full steps and procedureName
     });
 
     if (!response.ok) {
