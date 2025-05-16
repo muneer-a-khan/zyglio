@@ -295,13 +295,18 @@ class ProcedureService {
 
   /**
    * Saves YAML content for the procedure
+   * This is the method that seems to be called when navigating tabs.
    */
   async saveYaml(yamlContent: string): Promise<void> {
     try {
       if (!this.currentTaskId) {
-        throw new Error('No active task to save YAML for');
+        console.warn('No active task (currentTaskId) to save YAML for. This might be normal if procedure creation is not complete.');
+        // Depending on UX, you might not want to throw an error here if it's an intermediate save
+        // and the task ID isn't finalized yet.
+        return; 
       }
       
+      console.log(`ProcedureService: Attempting to save YAML for taskId: ${this.currentTaskId}`);
       const response = await fetch('/api/procedures/yaml', {
         method: 'POST',
         headers: {
@@ -309,16 +314,54 @@ class ProcedureService {
         },
         body: JSON.stringify({
           taskId: this.currentTaskId,
-          content: yamlContent,
+          yamlContent: yamlContent, // Ensure this key matches what the API route expects
         }),
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Failed to save YAML content');
+        const errorData = await response.json().catch(() => ({ message: "Failed to parse error response from /api/procedures/yaml"}));
+        console.error("ProcedureService: Failed to save YAML content. Status:", response.status, "Error data:", errorData);
+        throw new Error(errorData.message || 'Failed to save YAML content via ProcedureService');
       }
+      console.log("ProcedureService: YAML content saved successfully.");
     } catch (error) {
-      console.error('Error saving YAML content:', error);
+      console.error('ProcedureService: Error in saveYaml:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Saves the YAML content for the procedure
+   * This method is similar to saveYaml. Consolidating or ensuring they are distinct if intended.
+   * For now, making it identical to saveYaml for consistency as the API expects 'yamlContent'.
+   */
+  async saveYamlContent(yamlContent: string): Promise<void> {
+    try {
+      if (!this.currentTaskId) {
+        console.warn('No active task (currentTaskId) to save YAML content for.');
+        return; 
+      }
+      
+      console.log(`ProcedureService: Attempting to save YAML (via saveYamlContent) for taskId: ${this.currentTaskId}`);
+      const response = await fetch('/api/procedures/yaml', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          taskId: this.currentTaskId,
+          yamlContent: yamlContent, // Key matches API expectation
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ message: "Failed to parse error response from /api/procedures/yaml (called by saveYamlContent)"}));;
+        console.error("ProcedureService: Failed to save YAML (via saveYamlContent). Status:", response.status, "Error data:", errorData);
+        throw new Error(errorData.message || 'Failed to save YAML content (via saveYamlContent) via ProcedureService');
+      }
+      console.log("ProcedureService: YAML content saved successfully (via saveYamlContent).");
+    } catch (error) {
+      console.error('ProcedureService: Error in saveYamlContent:', error);
       throw error;
     }
   }
@@ -364,36 +407,6 @@ class ProcedureService {
       // await this.updateProcedure({ simulationSettings });
     } catch (error) {
       console.error('Error saving simulation settings:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Saves the YAML content for the procedure
-   */
-  async saveYamlContent(yamlContent: string): Promise<void> {
-    try {
-      if (!this.currentTaskId) {
-        throw new Error('No active task to save YAML content for');
-      }
-      
-      const response = await fetch('/api/procedures/yaml', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          taskId: this.currentTaskId,
-          yamlContent,
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Failed to save YAML content');
-      }
-    } catch (error) {
-      console.error('Error saving YAML content:', error);
       throw error;
     }
   }

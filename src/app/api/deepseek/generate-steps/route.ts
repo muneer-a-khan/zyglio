@@ -1,139 +1,98 @@
 import { NextResponse } from 'next/server';
-import axios from 'axios';
-import * as yaml from 'js-yaml';
+import OpenAI from 'openai'; // Using OpenAI SDK for DeepSeek
 
-// Check if API key is available
-const apiKey = process.env.DEEPSEEK_API_KEY || process.env.OPENAI_API_KEY;
+const apiKey = process.env.DEEPSEEK_API_KEY;
 if (!apiKey) {
-  console.error('DEEPSEEK_API_KEY is not defined in environment variables');
+  console.error('DEEPSEEK_API_KEY is not defined in environment variables.');
 }
 
-const DEEPSEEK_API_URL = 'https://api.deepseek.com/v1/chat/completions';
+const deepseek = new OpenAI({
+  baseURL: 'https://api.deepseek.com/v1', // Make sure this is the correct DeepSeek API base URL
+  apiKey: apiKey,
+});
 
 export async function POST(request: Request) {
   try {
-    console.log('Generate steps API route called with DeepSeek');
-    console.log('API key available:', !!apiKey);
-    
+    console.log('DeepSeek generate-steps API route called.');
+    console.log('DeepSeek API key available:', !!apiKey);
+
     const { transcript } = await request.json();
 
     if (!transcript) {
-      console.log('Transcript is empty');
       return NextResponse.json(
         { error: 'Transcript is required' },
         { status: 400 }
       );
     }
 
-    console.log('Transcript received, length:', transcript.length);
-
-    const prompt = `Please analyze this medical or technical procedure transcript and break it down into clear, sequential steps. Each step should be concise but descriptive, with a clear title followed by a brief explanation.
+    const prompt = `Analyze the following medical or technical procedure transcript and break it down into clear, sequential steps. Each step should be concise and descriptive.
 
 Transcript:
 ${transcript}
 
-Format each step as "Title: Description" where the title is a brief label for the step and the description explains what needs to be done.
+Format each step as "Title: Description". The title should be a brief label for the step, and the description should explain what needs to be done.
 
-For example:
-- Patient Positioning: Place the patient in supine position on the operating table
-- Sterilization: Apply antiseptic solution to the surgical site in circular motions
-- Initial Incision: Make a 5cm longitudinal incision along the marked line
+Example Format:
+Patient Positioning: Place the patient in the supine position on the operating table.
+Surgical Site Sterilization: Apply antiseptic solution to the designated surgical area using circular motions.
+Initial Incision: Make a 5cm longitudinal incision along the pre-marked line.
 
-Please provide only the steps, one per line, with no additional text or explanations.`;
+Provide ONLY the steps, one per line. Do not include any introductory text, concluding remarks, or markdown formatting like bullet points or dashes. Each line of your response should be a single step in the "Title: Description" format.
+`;
 
-    try {
-      console.log('Making DeepSeek API call...');
-      const response = await axios.post(
-        DEEPSEEK_API_URL,
+    console.log('Sending request to DeepSeek for step generation...');
+    const completion = await deepseek.chat.completions.create({
+      model: "deepseek-chat", // Use the appropriate DeepSeek model
+      messages: [
         {
-          model: "deepseek-chat",
-          messages: [
-            {
-              role: "system",
-              content: "You are a medical procedure documentation expert that breaks down procedures into clear, sequential steps."
-            },
-            {
-              role: "user",
-              content: prompt
-            }
-          ],
-          temperature: 0.7,
-          max_tokens: 1000
+          role: "system",
+          content: "You are an expert in medical and technical procedure documentation. Your task is to extract distinct steps from a transcript and format them as 'Title: Description'."
         },
         {
-          headers: {
-            'Authorization': `Bearer ${apiKey}`,
-            'Content-Type': 'application/json'
-          }
+          role: "user",
+          content: prompt
         }
-      );
-      
-      console.log('DeepSeek API call successful');
-      
-      const generatedSteps = response.data.choices[0].message.content || '';
-      console.log('Generated steps sample:', generatedSteps.substring(0, 100) + '...');
-      
-      // Split the response into individual steps and clean them up
-      const steps = generatedSteps
-        .split('\n')
-        .map(step => step.trim())
-        .filter(step => step && step.includes(':') && !step.startsWith('-'))
-        .map(step => {
-          // Remove any bullet points or dashes
-          return step.replace(/^[-•*]\s*/, '').trim();
-        });
+      ],
+      temperature: 0.5, // Adjust for desired creativity/determinism
+      max_tokens: 1500 // Adjust as needed
+    });
 
-      console.log('Processed steps count:', steps.length);
-      
-      if (steps.length === 0) {
-        console.error('No valid steps were generated from:', generatedSteps);
-        // Use a fallback mechanism - just split the transcript into sentences
-        const fallbackSteps = transcript
+    const generatedContent = completion.choices[0]?.message?.content || '';
+    console.log('Raw response from DeepSeek (steps):', generatedContent);
+
+    const steps = generatedContent
+      .split('\n')
+      .map(step => step.trim())
+      .filter(step => step && step.includes(':')) // Basic validation for "Title: Description"
+      .map(step => step.replace(/^[-•*]\s*/, '').trim()); // Remove list markers
+
+    if (steps.length === 0) {
+      console.error('No valid steps extracted from DeepSeek response:', generatedContent);
+      // Fallback if no steps are generated
+       const fallbackSteps = transcript
           .split(/[.!?]+/)
           .map(sentence => sentence.trim())
           .filter(sentence => sentence.length > 10)
           .map((sentence, index) => `Step ${index + 1}: ${sentence}`);
-          
+        
         if (fallbackSteps.length > 0) {
-          console.log('Using fallback steps mechanism, count:', fallbackSteps.length);
+          console.log('Using fallback steps mechanism for step generation, count:', fallbackSteps.length);
           return NextResponse.json({ steps: fallbackSteps });
         }
-        
-        return NextResponse.json(
-          { error: 'No valid steps were generated' },
-          { status: 500 }
-        );
-      }
-
-      return NextResponse.json({ steps });
-    } catch (deepseekError) {
-      console.error('DeepSeek API error:', deepseekError);
-      
-      // Use a fallback mechanism if DeepSeek fails
-      const fallbackSteps = transcript
-        .split(/[.!?]+/)
-        .map(sentence => sentence.trim())
-        .filter(sentence => sentence.length > 10)
-        .map((sentence, index) => `Step ${index + 1}: ${sentence}`);
-        
-      if (fallbackSteps.length > 0) {
-        console.log('Using fallback steps after DeepSeek error, count:', fallbackSteps.length);
-        return NextResponse.json({ steps: fallbackSteps });
-      }
-      
-      throw deepseekError; // Re-throw to be caught by outer catch
+      return NextResponse.json(
+        { error: 'No valid steps were generated by DeepSeek' },
+        { status: 500 }
+      );
     }
+
+    console.log('Successfully generated steps:', steps);
+    return NextResponse.json({ steps });
+
   } catch (error) {
-    console.error('Error generating steps:', error);
-    
-    // Get detailed error information
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    const errorStack = error instanceof Error ? error.stack : '';
-    
-    console.error('Error details:', { message: errorMessage, stack: errorStack });
-    
+    console.error('Error in DeepSeek generate-steps API:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown DeepSeek API error';
     return NextResponse.json(
-      { error: 'Failed to generate steps', details: errorMessage },
+      { error: 'Failed to generate steps with DeepSeek', details: errorMessage },
       { status: 500 }
     );
   }

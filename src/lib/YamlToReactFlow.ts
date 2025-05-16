@@ -51,6 +51,8 @@ interface ReactFlowElements {
   edges: ReactFlowEdge[];
 }
 
+const MAX_LABEL_LENGTH = 30; // Max characters for a node label before truncating
+
 /**
  * Validates and converts YAML content to ReactFlow nodes and edges
  */
@@ -286,15 +288,33 @@ function processYamlData(yamlData: YamlProcedure): ReactFlowElements {
 }
 
 /**
- * Sanitize text for safety
+ * Sanitizes text for display, removing potentially problematic characters and ensuring it's a string.
+ * @param text The input text (or other type) to sanitize.
+ * @returns A sanitized string.
  */
-function sanitizeText(text: string): string {
-  if (!text) return 'Unnamed';
-  
-  return text
-    .replace(/\n/g, ' ')         // Replace newlines with spaces
-    .substring(0, 50)            // Limit length
+function sanitizeText(text: any): string {
+  // Ensure the input is a string, convert if not (e.g. number, boolean)
+  const stringText = String(text === null || text === undefined ? '' : text);
+  // Replace characters that might break mermaid syntax or display, and trim
+  return stringText
+    .replace(/[`;#]/g, '') // Remove backticks, semicolons, hashes
+    .replace(/\(/g, '\\(')    // Escape parentheses for mermaid
+    .replace(/\)/g, '\\)')
+    .replace(/\n/g, ' <br> ') // Replace newlines with <br> for HTML-like labels in some flowcharts
     .trim();
+}
+
+/**
+ * Truncates text to a maximum length, adding ellipsis if truncated.
+ * @param text The text to truncate.
+ * @param maxLength The maximum length for the text.
+ * @returns The (potentially) truncated text.
+ */
+function truncateText(text: string, maxLength: number = MAX_LABEL_LENGTH): string {
+  if (text.length <= maxLength) {
+    return text;
+  }
+  return text.substring(0, maxLength - 3) + '...';
 }
 
 /**

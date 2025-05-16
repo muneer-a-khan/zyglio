@@ -17,12 +17,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, message: "Not authenticated" }, { status: 401 });
     }
 
-    const { taskId, content } = await req.json();
+    const { taskId, yamlContent } = await req.json();
     
-    if (!taskId || !content) {
+    if (!taskId || typeof yamlContent !== 'string') {
       return NextResponse.json({ 
         success: false, 
-        message: "Task ID and YAML content are required" 
+        message: "Task ID and YAML content (string) are required" 
       }, { status: 400 });
     }
     
@@ -46,34 +46,35 @@ export async function POST(req: NextRequest) {
       where: { taskId }
     });
     
-    let yamlOutput;
+    let savedOutput;
     if (existingYaml) {
-      yamlOutput = await prisma.yamlOutput.update({
+      savedOutput = await prisma.yamlOutput.update({
         where: { id: existingYaml.id },
-        data: { content }
+        data: { content: yamlContent }
       });
     } else {
-      yamlOutput = await prisma.yamlOutput.create({
+      savedOutput = await prisma.yamlOutput.create({
         data: {
           id: uuidv4(),
           taskId,
-          content
+          content: yamlContent
         }
       });
     }
     
-    const { error } = await supabase
+    const { error: supabaseError } = await supabase
       .from('procedures')
-      .update({ yaml_content: content })
+      .update({ yaml_content: yamlContent })
       .eq('id', taskId);
 
-    if (error) {
-      throw error;
+    if (supabaseError) {
+      console.error('Supabase error updating YAML content:', supabaseError);
+      throw supabaseError;
     }
     
     return NextResponse.json({
       success: true,
-      data: yamlOutput
+      data: savedOutput
     });
     
   } catch (error: any) {

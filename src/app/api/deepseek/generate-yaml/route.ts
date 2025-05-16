@@ -1,159 +1,129 @@
 import { NextResponse } from 'next/server';
-import axios from 'axios';
+import OpenAI from 'openai'; // Using OpenAI SDK for DeepSeek
 import * as yaml from 'js-yaml';
 
-// Check if API key is available
-const apiKey = process.env.DEEPSEEK_API_KEY || process.env.OPENAI_API_KEY;
+const apiKey = process.env.DEEPSEEK_API_KEY;
 if (!apiKey) {
-  console.error('DEEPSEEK_API_KEY is not defined in environment variables');
+  console.error('DEEPSEEK_API_KEY is not defined in environment variables.');
 }
 
-const DEEPSEEK_API_URL = 'https://api.deepseek.com/v1/chat/completions';
+const deepseek = new OpenAI({
+  baseURL: 'https://api.deepseek.com/v1', // Make sure this is the correct DeepSeek API base URL
+  apiKey: apiKey,
+});
 
 export async function POST(request: Request) {
   try {
-    console.log('Generate YAML API route called with DeepSeek');
-    console.log('API key available:', !!apiKey);
-    
-    const { transcript } = await request.json();
+    console.log('DeepSeek generate-yaml API route called.');
+    const { steps } = await request.json(); // Expecting steps array now
 
-    if (!transcript) {
-      console.log('Transcript is empty');
+    if (!steps || !Array.isArray(steps) || steps.length === 0) {
       return NextResponse.json(
-        { error: 'Transcript is required' },
+        { error: 'Steps array is required and must not be empty' },
         { status: 400 }
       );
     }
 
-    console.log('Transcript received, length:', transcript.length);
-
-    const sampleYaml = `procedure_name: Lumbar Spinal Fusion
-purpose: To stabilize the spine, reduce pain and nerve irritation, prevent further degeneration, protect nerves from compression, and restore spinal strength, improving patient quality of life.
+    const sampleYaml = `procedure_name: Example Procedure Name
+purpose: A concise statement explaining the overall objective of the procedure.
 stages:
-    - Incision: A midline or lateral incision is made over the affected vertebrae.
-    - Exposure: Muscles and tissues are retracted to access the spine.
-    - Disc Excision: The intervertebral disc is removed if necessary.
-    - Graft Placement: Autograft, allograft, or synthetic bone graft material is placed between the vertebrae.
-    - Stabilization: Vertebrae are secured with screws, rods, or cages to provide stability.
-    - Closure: The incision is sutured in layers and dressed.
+    - Step Title 1: Detailed description of the first action or phase.
+    - Step Title 2: Detailed description of the second action or phase.
 considerations:
     - pre-operative:
-        - Confirm the source of instability, deformity, or pain with imaging (MRI, CT, X-ray).
-        - Assess the patient's medical history and risks.
-        - General anesthesia is administered.
+        - Detail 1: Specific check or preparation before starting.
+        - Detail 2: Another pre-start check or preparation.
     - intra-operative:
-        - Minimize tissue damage during incision and muscle retraction.
-        - Avoid excessive bone removal during disc excision.
-        - Select the appropriate bone graft type.
-        - Position implants carefully.
-        - Verify proper screw placement with intraoperative imaging to avoid nerve or vessel injury.
-        - Ensure adequate decompression of spinal nerves.
-        - Control bleeding.
+        - Detail 1: Important factor to monitor or manage during the procedure.
+        - Detail 2: Another key point for during the procedure.
     - post-operative:
-        - Monitor for complications such as bleeding, infection, or nerve damage.
-        - Implement physical therapy and gradual activity resumption.
-        - Monitor bone healing with periodic imaging.
+        - Detail 1: Follow-up action or observation after completion.
+        - Detail 2: Another post-completion task.
 goals:
-    - Stabilize the spine.
-    - Alleviate chronic back or leg pain.
-    - Restore proper spinal alignment.
-    - Halt the worsening of adjacent spinal structures.
-    - Enhance mobility and quality of life.
-    - Relieve pressure on spinal nerves.
-    - Provide long-term structural support to the lower back.`;
+    - Goal 1: A specific, measurable outcome of the procedure.
+    - Goal 2: Another key objective to be achieved.`;
 
-    const prompt = `I need you to create a detailed YAML representation of a medical or technical procedure following this exact structure:
+    const formattedSteps = steps.join('\n');
 
+    const prompt = `Given the following list of procedure steps, generate a comprehensive YAML document. The YAML must strictly adhere to the provided format. 
+
+Format Template:
 ${sampleYaml}
 
-Here is the transcript or procedure steps that need to be formatted into this structure:
+Procedure Steps to incorporate into the YAML:
+${formattedSteps}
 
-${transcript}
+Instructions for YAML generation:
+1.  **procedure_name**: Create a concise and descriptive name for the entire procedure based on the provided steps.
+2.  **purpose**: Write a clear, brief statement explaining the overall objective of this procedure.
+3.  **stages**: List each provided step under this section. Each step from the input should be a distinct item in the YAML 'stages' list, formatted as "- Step Title: Step Description". Ensure the title and description are accurately reflected from the input steps.
+4.  **considerations**: 
+    *   Based on the nature of the steps, infer and detail relevant pre-operative, intra-operative, and post-operative considerations. 
+    *   If the steps do not clearly indicate all three (pre, intra, post), include only those that are relevant or can be reasonably inferred. If none are directly inferable, provide general examples appropriate for a technical/medical procedure.
+    *   Include at least two to three points for each applicable consideration subsection (pre-operative, intra-operative, post-operative).
+5.  **goals**: Define at least two to three primary goals that this procedure aims to achieve, based on the steps and their implied purpose.
+6.  **complications (optional)**: If the steps suggest potential complications or risks, list them under a 'complications' key. Each complication should be a list item.
+7.  **conditionals (optional)**: If the steps imply any decision points or conditional logic (e.g., "if X, then Y"), describe them under a 'conditionals' key.
 
-Please generate a well-structured YAML with:
-1. An appropriate procedure_name based on the content
-2. A detailed purpose statement
-3. The stages section should include each major step with a descriptive title followed by a colon and explanation
-4. Comprehensive pre-operative, intra-operative, and post-operative considerations
-5. Relevant goals
-6. Include at least one decision point or potential complication if appropriate for the procedure
+Your response must be ONLY the YAML content, starting directly with "procedure_name:". Ensure perfect YAML syntax, including correct indentation (2 spaces for lists/nested items). Do not include any extra text, explanations, or markdown formatting outside the YAML itself.
+`;
 
-Your response should be ONLY the YAML, with no additional text, explanations, or markdown. Start directly with "procedure_name:" and ensure proper YAML formatting with correct indentation.
-
-All YAML must follow this exact structure. Include stages, considerations, and goals sections in your response every time.`;
-
-    try {
-      console.log('Making DeepSeek API call for YAML generation...');
-      const response = await axios.post(
-        DEEPSEEK_API_URL,
+    console.log('Sending request to DeepSeek for YAML generation...');
+    const completion = await deepseek.chat.completions.create({
+      model: "deepseek-chat", // Use the appropriate DeepSeek model
+      messages: [
         {
-          model: "deepseek-chat",
-          messages: [
-            {
-              role: "system",
-              content: "You are a medical procedure documentation expert that converts transcripts into structured YAML format. Always ensure your output is valid YAML that can be parsed by standard YAML parsers."
-            },
-            {
-              role: "user",
-              content: prompt
-            }
-          ],
-          temperature: 0.7,
-          max_tokens: 2000
+          role: "system",
+          content: "You are an expert in medical and technical procedure documentation. Your task is to generate a highly structured YAML document from a list of procedure steps, strictly following the provided format and instructions."
         },
         {
-          headers: {
-            'Authorization': `Bearer ${apiKey}`,
-            'Content-Type': 'application/json'
-          }
+          role: "user",
+          content: prompt
         }
-      );
-      
-      console.log('DeepSeek API call successful for YAML');
-      
-      let generatedYaml = response.data.choices[0].message.content || '';
-      console.log('Generated YAML sample:', generatedYaml.substring(0, 100) + '...');
-      
-      // Clean up the YAML string
-      generatedYaml = generatedYaml.trim();
-      
-      // Validate the YAML by attempting to parse it
-      try {
-        const parsed = yaml.load(generatedYaml);
-        if (!parsed || typeof parsed !== 'object') {
-          throw new Error('Invalid YAML structure');
-        }
-        
-        // Check for required fields
-        if (!('procedure_name' in parsed) || !('stages' in parsed)) {
-          throw new Error('Missing required fields in YAML');
-        }
-        
-        return NextResponse.json({ yaml: generatedYaml });
-      } catch (yamlError) {
-        console.error('YAML validation error:', yamlError);
-        console.error('Generated YAML:', generatedYaml);
-        
-        return NextResponse.json(
-          { error: 'Generated YAML is invalid' },
-          { status: 500 }
-        );
+      ],
+      temperature: 0.3, // Lower temperature for more deterministic YAML output
+      max_tokens: 2048 // Allow more tokens for potentially long YAML
+    });
+
+    let generatedYaml = completion.choices[0]?.message?.content || '';
+    console.log('Raw response from DeepSeek (YAML):', generatedYaml);
+
+    // Basic cleanup - remove potential markdown fences if DeepSeek adds them
+    generatedYaml = generatedYaml.replace(/^```yaml\n/, '').replace(/\n```$/, '').trim();
+
+    // Validate the YAML structure
+    try {
+      const parsedYaml = yaml.load(generatedYaml);
+      if (typeof parsedYaml !== 'object' || parsedYaml === null) {
+        throw new Error('Generated YAML is not a valid object.');
       }
-    } catch (deepseekError) {
-      console.error('DeepSeek API error for YAML generation:', deepseekError);
-      throw deepseekError;
+      // Add more specific checks if needed, e.g., presence of procedure_name, stages, etc.
+      if (!('procedure_name' in parsedYaml) || !('stages' in parsedYaml) || !('purpose' in parsedYaml) || !('considerations' in parsedYaml) || !('goals' in parsedYaml)) {
+         console.error('Generated YAML missing required fields. Content:', generatedYaml);
+         throw new Error('Generated YAML is missing one or more required fields (procedure_name, purpose, stages, considerations, goals).');
+      }
+
+      console.log('Successfully generated and validated YAML.');
+      return NextResponse.json({ yaml: generatedYaml });
+
+    } catch (validationError) {
+      console.error('Generated YAML failed validation:', validationError);
+      console.error('Problematic YAML content from DeepSeek:', generatedYaml);
+      return NextResponse.json(
+        { 
+          error: 'DeepSeek generated invalid YAML', 
+          details: validationError instanceof Error ? validationError.message : 'YAML validation failed',
+          yaml_content: generatedYaml // Send back the problematic YAML for debugging
+        },
+        { status: 500 }
+      );
     }
+
   } catch (error) {
-    console.error('Error generating YAML:', error);
-    
-    // Get detailed error information
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    const errorStack = error instanceof Error ? error.stack : '';
-    
-    console.error('Error details:', { message: errorMessage, stack: errorStack });
-    
+    console.error('Error in DeepSeek generate-yaml API:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown DeepSeek API error';
     return NextResponse.json(
-      { error: 'Failed to generate YAML', details: errorMessage },
+      { error: 'Failed to generate YAML with DeepSeek', details: errorMessage },
       { status: 500 }
     );
   }
