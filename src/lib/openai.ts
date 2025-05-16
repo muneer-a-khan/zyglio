@@ -1,3 +1,5 @@
+import axios from 'axios';
+
 interface OpenAIResponse {
   id: string;
   object: string;
@@ -22,6 +24,10 @@ interface OpenAIResponse {
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const API_URL = 'https://api.openai.com/v1/chat/completions';
 
+// Define the API URL for DeepSeek
+const DEEPSEEK_API_URL = 'https://api.deepseek.com/v1/chat/completions';
+const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY || process.env.OPENAI_API_KEY; // Fallback to OpenAI key if DeepSeek not set
+
 /**
  * Generate a detailed YAML structure for a procedure using OpenAI
  * Server-side only function
@@ -30,9 +36,12 @@ export async function generateProcedureYaml(
   steps: string[],
   modelName: string = 'gpt-3.5-turbo'
 ): Promise<{ yaml: string; error?: string }> {
+  console.log('[OpenAI] generateProcedureYaml called with steps:', steps);
+  console.log('[OpenAI] API Key available?', !!OPENAI_API_KEY);
+  
   try {
     if (!OPENAI_API_KEY) {
-      console.error('OpenAI API key is not defined');
+      console.error('[OpenAI] ERROR: API key is not defined');
       return { 
         yaml: generateFallbackYaml(steps),
         error: 'OpenAI API key is not defined'
@@ -41,7 +50,9 @@ export async function generateProcedureYaml(
 
     // Create a structured prompt with the sample YAML format
     const prompt = createPrompt(steps);
+    console.log('[OpenAI] Generated prompt:', prompt.substring(0, 500) + '... (truncated)');
 
+    console.log('[OpenAI] Making API request to OpenAI');
     const response = await fetch(API_URL, {
       method: 'POST',
       headers: {
@@ -67,28 +78,34 @@ export async function generateProcedureYaml(
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('OpenAI API error:', errorText);
+      console.error('[OpenAI] API error:', response.status, response.statusText, errorText);
       return {
         yaml: generateFallbackYaml(steps),
         error: `OpenAI API error: ${response.status} ${response.statusText}`
       };
     }
 
+    console.log('[OpenAI] Received successful response from OpenAI API');
     const data = await response.json() as OpenAIResponse;
     
     if (data.choices && data.choices.length > 0) {
       const generatedYaml = data.choices[0].message.content.trim();
+      console.log('[OpenAI] Raw YAML from OpenAI:', generatedYaml.substring(0, 500) + '... (truncated)');
       
       // Add the hidden steps section for the flowchart
-      return { yaml: addFlowchartStepsToYaml(generatedYaml, steps) };
+      const finalYaml = addFlowchartStepsToYaml(generatedYaml, steps);
+      console.log('[OpenAI] Final processed YAML (with steps section):', finalYaml.substring(0, 500) + '... (truncated)');
+      
+      return { yaml: finalYaml };
     } else {
+      console.error('[OpenAI] No choices in API response:', data);
       return {
         yaml: generateFallbackYaml(steps),
         error: 'No response from OpenAI API'
       };
     }
   } catch (error) {
-    console.error('Error generating YAML with OpenAI:', error);
+    console.error('[OpenAI] Error in generateProcedureYaml:', error);
     return { 
       yaml: generateFallbackYaml(steps),
       error: error instanceof Error ? error.message : 'Unknown error'
@@ -156,6 +173,14 @@ Your response should be ONLY the YAML, with no additional text, explanations, or
   return prompt;
 }
 
+type MappedStep = {
+  id: string;
+  title: string;
+  description: string;
+  next: string | null | undefined;
+  is_terminal: boolean;
+};
+
 /**
  * Add the hidden steps section to the generated YAML for the flowchart
  */
@@ -179,7 +204,7 @@ function addFlowchartStepsToYaml(yaml: string, originalSteps: string[]): string 
   });
   
   // Generate unique IDs for each stage
-  const stepsWithIds = stages.map((stage, index) => {
+  const stepsWithIds: MappedStep[] = stages.map((stage, index): MappedStep => {
     // Create a slug-like ID from the title
     const id = stage.title.toLowerCase()
       .replace(/[^a-z0-9]+/g, '_')
@@ -189,14 +214,16 @@ function addFlowchartStepsToYaml(yaml: string, originalSteps: string[]): string 
       id,
       title: stage.title,
       description: stage.description,
-      next: index < stages.length - 1 ? null : undefined, // Will be filled in next
+      next: null, // Initialize as null, type MappedStep allows string assignment later
       is_terminal: index === stages.length - 1
     };
   });
   
   // Set next links
   for (let i = 0; i < stepsWithIds.length - 1; i++) {
-    stepsWithIds[i].next = stepsWithIds[i + 1].id;
+    if (stepsWithIds[i+1]) { // Check if the next element exists
+        stepsWithIds[i].next = stepsWithIds[i + 1].id;
+    }
   }
   
   // Generate steps section YAML
@@ -289,4 +316,87 @@ function generateFallbackYaml(steps: string[]): string {
   });
   
   return yaml;
+}
+
+/**
+ * Generate steps from transcript using DeepSeek API
+ */
+export async function generateStepsFromTranscript(transcript: string): Promise<string[]> {
+  try {
+    const response = await fetch('/api/deepseek/generate-steps', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ transcript }),
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to generate steps from transcript');
+    }
+
+    const data = await response.json();
+    return data.steps;
+  } catch (error) {
+    console.error('Error generating steps from transcript:', error);
+    throw error;
+  }
+}
+
+/**
+ * Generate YAML from transcript using DeepSeek API
+ */
+export async function generateYamlFromTranscript(transcript: string): Promise<string> {
+  try {
+    const response = await fetch('/api/deepseek/generate-yaml', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ transcript }),
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to generate YAML from transcript');
+    }
+
+    const data = await response.json();
+    return data.yaml;
+  } catch (error) {
+    console.error('Error generating YAML from transcript:', error);
+    throw error;
+  }
+}
+
+/**
+ * Makes a direct call to the DeepSeek API
+ */
+export async function callDeepSeekAPI(messages: any[], model: string = 'deepseek-chat'): Promise<string> {
+  try {
+    // This would typically be handled server-side to protect your API key
+    const response = await axios.post(
+      DEEPSEEK_API_URL,
+      {
+        model: model,
+        messages: messages,
+        temperature: 0.7,
+        max_tokens: 2000
+      },
+      {
+        headers: {
+          'Authorization': `Bearer ${DEEPSEEK_API_KEY}`,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+
+    if (response.data && response.data.choices && response.data.choices.length > 0) {
+      return response.data.choices[0].message.content;
+    } else {
+      throw new Error('No response content from DeepSeek API');
+    }
+  } catch (error) {
+    console.error('Error calling DeepSeek API:', error);
+    throw error;
+  }
 } 

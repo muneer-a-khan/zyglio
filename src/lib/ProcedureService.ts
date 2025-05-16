@@ -369,6 +369,36 @@ class ProcedureService {
   }
 
   /**
+   * Saves the YAML content for the procedure
+   */
+  async saveYamlContent(yamlContent: string): Promise<void> {
+    try {
+      if (!this.currentTaskId) {
+        throw new Error('No active task to save YAML content for');
+      }
+      
+      const response = await fetch('/api/procedures/yaml', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          taskId: this.currentTaskId,
+          yamlContent,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to save YAML content');
+      }
+    } catch (error) {
+      console.error('Error saving YAML content:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Loads a procedure by ID
    */
   async getProcedure(id?: string): Promise<Procedure | null> {

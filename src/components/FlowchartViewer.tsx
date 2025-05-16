@@ -1,64 +1,74 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { RefreshCw, Cpu } from "lucide-react";
+import { RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import ReactFlowChart from "./ReactFlowChart";
+import yaml from 'js-yaml';
 
 export interface FlowchartViewerProps {
   steps: string[];
   onChange?: (content: string) => void;
 }
 
-const FlowchartViewer = ({ steps, onChange }: FlowchartViewerProps) => {
-  const [isRendering, setIsRendering] = useState(false);
+// Helper function to extract raw step descriptions from a string
+const extractRawStepsFromString = (inputString: string): string[] => {
+  if (!inputString || inputString.trim() === "") {
+    return [];
+  }
+  try {
+    const doc = yaml.load(inputString) as any;
+    let extracted: string[] = [];
+    if (doc && typeof doc === 'object') {
+      if (doc.stages && Array.isArray(doc.stages)) {
+        extracted = doc.stages.map((stage: any) => {
+          if (typeof stage === 'string') return stage.split(':')[0].trim(); 
+          if (typeof stage === 'object' && stage !== null) {
+            const firstKey = Object.keys(stage)[0];
+            if (firstKey) return String(stage[firstKey]).split(':')[0].trim();
+          }
+          return String(stage).split(':')[0].trim();
+        });
+      } else if (doc.steps && Array.isArray(doc.steps)) { // For basic "steps:" yaml
+        extracted = doc.steps.map((step: any) => String(step.title || step.id || 'Unnamed Step'));
+      }
+      // Filter out any empty strings that might result from parsing
+      const filteredExtracted = extracted.filter(s => s && s.trim() !== '');
+      if (filteredExtracted.length > 0) return filteredExtracted;
+    }
+  } catch (e) {
+    // Not valid YAML or not the structure we're looking for, fall through
+  }
+  // Default to the whole string as one step if it's not empty
+  const trimmedInput = inputString.trim();
+  return trimmedInput ? [trimmedInput] : [];
+};
+
+const FlowchartViewer = ({ steps: stepsProp, onChange }: FlowchartViewerProps) => {
   const [isGeneratingAI, setIsGeneratingAI] = useState(false);
   const [yamlContent, setYamlContent] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
 
-  // Extract YAML content if available
-  useEffect(() => {
-    if (steps.length === 1 && (steps[0].includes('steps:') || steps[0].includes('stages:'))) {
-      setYamlContent(steps[0]);
-      // If onChange callback is provided, pass the YAML content
-      if (onChange) {
-        onChange(steps[0]);
-      }
-    } else {
+  const generateAIYaml = useCallback(async (currentInputSource: string[]) => {
+    if (!currentInputSource || currentInputSource.length === 0 || currentInputSource.every(s => s.trim() === "")) {
       setYamlContent("");
+      if (onChange) onChange("");
+      toast.info("No steps provided for AI generation.");
+      return;
     }
-  }, [steps, onChange]);
 
-  const refreshFlowchart = () => {
-    setIsRendering(true);
-    setError(null);
-    
-    try {
-      // Update the YAML content if needed
-      if (steps.length === 1 && (steps[0].includes('steps:') || steps[0].includes('stages:'))) {
-        setYamlContent(steps[0]);
-      } else {
-        // Generate comprehensive YAML for steps
-        const complexYaml = generateComplexYaml(steps);
-        setYamlContent(complexYaml);
-        
-        // If onChange callback is provided, pass the generated YAML
-        if (onChange) {
-          onChange(complexYaml);
-        }
-      }
-    } catch (error: any) {
-      setError(error.message || "Error generating flowchart");
-      console.error('Error generating flowchart:', error);
-    } finally {
-      setIsRendering(false);
+    let rawStepsForAI: string[];
+
+    if (currentInputSource.length === 1) {
+      rawStepsForAI = extractRawStepsFromString(currentInputSource[0]);
+    } else {
+      rawStepsForAI = currentInputSource.map(s => s.trim()).filter(s => s !== "");
     }
-  };
-  
-  // Generate AI-powered YAML via server API
-  const generateAIYaml = async () => {
-    if (steps.length === 0) {
-      toast.error("Please add steps first");
+
+    if (rawStepsForAI.length === 0) {
+      toast.error("Could not extract meaningful steps for AI generation.");
+      // Optionally, use a fallback or keep existing YAML
+      // For now, we do nothing to prevent overwriting valid YAML with an error state here
       return;
     }
     
@@ -66,94 +76,64 @@ const FlowchartViewer = ({ steps, onChange }: FlowchartViewerProps) => {
     setError(null);
     
     try {
-      // Call server API to generate YAML
       const response = await fetch('/api/yaml', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ steps }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ steps: rawStepsForAI }),
       });
       
       if (!response.ok) {
-        throw new Error(`API error: ${response.status}`);
+        const errorData = await response.json().catch(() => ({ error: `API error: ${response.status}` }));
+        throw new Error(errorData.error || `API error: ${response.status}`);
       }
       
       const result = await response.json();
       
       if (result.error) {
         console.warn('AI generation warning:', result.error);
-        toast.warning("AI generation had issues, using basic formatting");
+        toast.warning("AI generation had issues. Displaying potentially partial or fallback YAML.");
+        // The server might return a fallback YAML in result.yaml even if there's an error message
       }
       
-      setYamlContent(result.yaml);
+      setYamlContent(result.yaml || ""); // Ensure yamlContent is not undefined
       
-      // If onChange callback is provided, pass the generated YAML
       if (onChange) {
-        onChange(result.yaml);
+        onChange(result.yaml || "");
       }
       
-      toast.success("AI-optimized procedure flowchart created");
+      if (!result.error) {
+        toast.success("AI-optimized procedure flowchart created/updated");
+      }
     } catch (error: any) {
       setError(error.message || "Error generating AI flowchart");
       console.error('Error generating AI flowchart:', error);
-      toast.error("Failed to generate AI flowchart");
+      toast.error(`Failed to generate AI flowchart: ${error.message}`);
     } finally {
       setIsGeneratingAI(false);
     }
-  };
-  
-  // Generate comprehensive YAML format with all requested sections
-  const generateComplexYaml = (steps: string[]): string => {
-    if (steps.length === 0) return "";
-    
-    let yaml = "procedure_name: Sample Procedure\n";
-    yaml += "purpose: To demonstrate a procedural workflow and visualize the steps in a flowchart format.\n";
-    
-    // Generate stages from steps
-    yaml += "stages:\n";
-    steps.forEach((step, index) => {
-      yaml += `    - ${step || `Step ${index + 1}`}\n`;
-    });
-    
-    // Add considerations section
-    yaml += "considerations:\n";
-    yaml += "    - pre-operative:\n";
-    yaml += "        - Review procedure details\n";
-    yaml += "        - Prepare necessary equipment\n";
-    yaml += "    - intra-operative:\n";
-    yaml += "        - Monitor progress through steps\n";
-    yaml += "        - Document any deviations\n";
-    yaml += "    - post-operative:\n";
-    yaml += "        - Review outcome\n";
-    yaml += "        - Plan follow-up\n";
-    
-    // Add goals section
-    yaml += "goals:\n";
-    yaml += "    - Successfully complete the procedure\n";
-    yaml += "    - Document all steps accurately\n";
-    yaml += "    - Ensure quality control\n";
-    
-    // Invisible steps section for react-flow to use
-    yaml += "\n# Internal mapping for flowchart (not displayed)\n";
-    yaml += "steps:\n";
-    
-    steps.forEach((step, index) => {
-      const stepId = `step${index + 1}`;
-      const nextId = index < steps.length - 1 ? `step${index + 2}` : undefined;
-      
-      yaml += `  - id: ${stepId}\n`;
-      yaml += `    title: ${step || `Step ${index + 1}`}\n`;
-      
-      if (nextId) {
-        yaml += `    next: ${nextId}\n`;
-      } else {
-        yaml += `    is_terminal: true\n`;
+  }, [onChange]);
+
+  useEffect(() => {
+    const isInputLikelyFullAiYaml = 
+      stepsProp.length === 1 &&
+      stepsProp[0] && // ensure stepsProp[0] exists
+      stepsProp[0].includes('procedure_name:') &&
+      (stepsProp[0].includes('stages:') || stepsProp[0].includes('steps:'));
+
+    if (isInputLikelyFullAiYaml) {
+      setYamlContent(stepsProp[0]);
+      if (onChange) {
+        onChange(stepsProp[0]);
       }
-    });
-    
-    return yaml;
-  };
+    } else if (stepsProp && stepsProp.length > 0 && stepsProp.some(s => s.trim() !== "")) {
+      generateAIYaml(stepsProp);
+    } else {
+      setYamlContent("");
+      if (onChange) {
+        onChange("");
+      }
+    }
+  }, [stepsProp, onChange, generateAIYaml]);
 
   return (
     <Card>
@@ -163,21 +143,12 @@ const FlowchartViewer = ({ steps, onChange }: FlowchartViewerProps) => {
           <Button
             variant="outline"
             size="sm"
-            onClick={generateAIYaml}
-            disabled={isGeneratingAI || steps.length === 0}
-          >
-            <Cpu
-              className={`mr-1 h-4 w-4 ${isGeneratingAI ? "animate-pulse" : ""}`}
-            /> AI Generate
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={refreshFlowchart}
-            disabled={isRendering}
+            onClick={() => generateAIYaml(stepsProp)} 
+            disabled={isGeneratingAI || !stepsProp || stepsProp.length === 0 || stepsProp.every(s => s.trim() === "")}
+            title="Regenerate flowchart with AI"
           >
             <RefreshCw
-              className={`mr-1 h-4 w-4 ${isRendering ? "animate-spin" : ""}`}
+              className={`mr-1 h-4 w-4 ${isGeneratingAI ? "animate-spin" : ""}`}
             /> Refresh
           </Button>
         </div>
@@ -185,8 +156,8 @@ const FlowchartViewer = ({ steps, onChange }: FlowchartViewerProps) => {
       <CardContent>
         {error && (
           <div className="bg-red-50 p-3 mb-4 text-red-600 text-sm rounded border border-red-200">
-            <p className="font-semibold">Error rendering flowchart:</p>
-            <p>{error}</p>
+            <p className="font-semibold">Error with AI Flowchart Generation:</p>
+            <pre className="whitespace-pre-wrap text-xs">{error}</pre>
           </div>
         )}
         

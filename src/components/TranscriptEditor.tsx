@@ -20,19 +20,23 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { Step } from "@/lib/ProcedureService";
 import { v4 as uuidv4 } from 'uuid';
+import { generateYamlFromTranscript, generateStepsFromTranscript } from "@/lib/openai";
+import * as yaml from 'js-yaml';
 
 export interface TranscriptEditorProps {
   transcript: string;
   onChange: (text: string) => void;
   onStepsChange?: (steps: Step[]) => void;
   steps?: Step[];
+  onYamlGenerated?: (yaml: any) => void;
 }
 
 const TranscriptEditor = ({ 
   transcript, 
   onChange, 
   onStepsChange, 
-  steps = [] 
+  steps = [],
+  onYamlGenerated,
 }: TranscriptEditorProps) => {
   const [procedureSteps, setProcedureSteps] = useState<Step[]>(steps);
   const [editingStepId, setEditingStepId] = useState<string | null>(null);
@@ -133,38 +137,72 @@ const TranscriptEditor = ({
     }
   };
 
-  const generateStepsWithAI = () => {
+  const generateStepsWithAI = async () => {
     if (!transcript.trim()) return;
 
     setIsGeneratingSteps(true);
 
-    setTimeout(() => {
-      const sentences = transcript
-        .split(/[.!?]+/)
-        .filter((sentence) => sentence.trim().length > 5)
-        .map((sentence) => sentence.trim());
-
-      const newSteps = sentences.map((sentence) => ({
+    try {
+      // First, try to generate steps from the OpenAI API
+      let generatedSteps: string[] = [];
+      
+      try {
+        generatedSteps = await generateStepsFromTranscript(transcript);
+      } catch (apiError) {
+        console.error('API error in step generation:', apiError);
+        toast.error('API error - using fallback method');
+        
+        // Fallback: Split the transcript into sentences and use as steps
+        generatedSteps = transcript
+          .split(/[.!?]+/)
+          .map(sentence => sentence.trim())
+          .filter(sentence => sentence.length > 10)
+          .map((sentence, index) => `Step ${index + 1}: ${sentence}`);
+      }
+      
+      if (generatedSteps.length === 0) {
+        toast.error('Could not generate any steps from transcript');
+        return;
+      }
+      
+      // Create Step objects from the generated steps
+      const newSteps = generatedSteps.map(stepText => ({
         id: uuidv4(),
-        content: sentence,
-        comments: [],
+        content: stepText,
+        comments: []
       }));
 
-      if (newSteps.length > 0) {
-        const updatedSteps = [...procedureSteps, ...newSteps];
-        setProcedureSteps(updatedSteps);
-        onChange("");
-        toast.success(`Created ${newSteps.length} steps from transcript`);
-        
-        if (onStepsChange) {
-          onStepsChange(updatedSteps);
-        }
-      } else {
-        toast.error("Could not generate any meaningful steps from transcript");
+      // Update the steps state
+      const updatedSteps = [...procedureSteps, ...newSteps];
+      setProcedureSteps(updatedSteps);
+      
+      if (onStepsChange) {
+        onStepsChange(updatedSteps);
       }
 
+      // Then, try to generate YAML from the steps
+      try {
+        const yamlString = await generateYamlFromTranscript(
+          generatedSteps.join('\n')
+        );
+        
+        // Store the YAML in the parent component
+        if (onYamlGenerated && yamlString) {
+          onYamlGenerated(yamlString);
+        }
+      } catch (yamlError) {
+        console.error('Error generating YAML:', yamlError);
+        toast.error('Generated steps but failed to create YAML');
+      }
+
+      onChange("");
+      toast.success(`Created ${newSteps.length} steps from transcript`);
+    } catch (error) {
+      console.error('Error in step generation process:', error);
+      toast.error('Failed to generate steps from transcript');
+    } finally {
       setIsGeneratingSteps(false);
-    }, 2000);
+    }
   };
 
   const addQuestionsWithAI = () => {

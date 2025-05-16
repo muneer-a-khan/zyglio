@@ -111,14 +111,13 @@ export default function CreateProcedure() {
     }
   };
   
-  const handleYamlChange = async (content: string) => {
-    setYamlContent(content);
-    
+  const handleYamlGenerated = async (yaml: string) => {
+    setYamlContent(yaml);
     try {
       // Save YAML content to database
-      await procedureService.saveYaml(content);
+      await procedureService.saveYamlContent(yaml);
     } catch (error) {
-      console.error("Error saving YAML:", error);
+      console.error("Error saving YAML content:", error);
     }
   };
   
@@ -347,6 +346,7 @@ export default function CreateProcedure() {
                     transcript={transcript}
                     onChange={handleTranscriptChange}
                     onStepsChange={handleStepsChange}
+                    onYamlGenerated={handleYamlGenerated}
                     steps={steps}
                   />
                 </CardContent>
@@ -373,7 +373,7 @@ export default function CreateProcedure() {
                   steps={steps}
                   procedureName={taskDefinition?.name || "Procedure"}
                   initialYaml={yamlContent}
-                  onChange={handleYamlChange}
+                  onChange={handleYamlGenerated}
                 />
               </CardContent>
             </Card>
