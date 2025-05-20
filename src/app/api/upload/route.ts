@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from '@supabase/supabase-js';
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { authOptions } from "@/lib/auth";
 import { v4 as uuidv4 } from "uuid";
+import { prisma } from "@/lib/prisma";
 
 export async function POST(req: NextRequest) {
   try {
@@ -13,12 +14,34 @@ export async function POST(req: NextRequest) {
 
     const formData = await req.formData();
     const file = formData.get('file') as File;
+    const taskId = formData.get('taskId') as string;
     
     if (!file) {
       return NextResponse.json({ 
         success: false, 
         message: "No file provided" 
       }, { status: 400 });
+    }
+
+    if (!taskId) {
+      return NextResponse.json({ 
+        success: false, 
+        message: "No taskId provided for associating the media" 
+      }, { status: 400 });
+    }
+
+    const learningTask = await prisma.learningTask.findUnique({
+      where: {
+        id: taskId,
+        userId: session.user.id, 
+      }
+    });
+
+    if (!learningTask) {
+      return NextResponse.json({ 
+        success: false, 
+        message: "Learning task not found or access denied" 
+      }, { status: 404 });
     }
     
     // Get file extension
@@ -37,7 +60,6 @@ export async function POST(req: NextRequest) {
     const arrayBuffer = await file.arrayBuffer();
     const fileBuffer = new Uint8Array(arrayBuffer);
     
-    // Create a Supabase client with the service role key to bypass RLS
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
     const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
     
@@ -59,7 +81,6 @@ export async function POST(req: NextRequest) {
       }
     );
     
-    // Check if bucket exists and create it if it doesn't
     const { data: buckets, error: bucketsError } = await supabaseAdmin.storage.listBuckets();
     
     if (bucketsError) {
@@ -72,24 +93,15 @@ export async function POST(req: NextRequest) {
     const userUploadsBucket = buckets.find(b => b.name === 'user-uploads');
     
     if (!userUploadsBucket) {
-      const { data: newBucket, error: createBucketError } = await supabaseAdmin.storage.createBucket('user-uploads', {
+      await supabaseAdmin.storage.createBucket('user-uploads', {
         public: false,
         allowedMimeTypes: ['image/*', 'video/*', 'audio/*', 'application/pdf'],
         fileSizeLimit: 50 * 1024 * 1024 // 50MB
       });
-      
-      if (createBucketError) {
-        return NextResponse.json({ 
-          success: false, 
-          message: "Failed to create storage bucket: " + createBucketError.message 
-        }, { status: 500 });
-      }
     }
     
-    // Construct the final file path
     const filePath = `${folder}/${session.user.id}_${fileName}`;
     
-    // Upload to Supabase Storage with admin privileges
     const { data, error } = await supabaseAdmin.storage
       .from('user-uploads')
       .upload(filePath, fileBuffer, {
@@ -105,9 +117,7 @@ export async function POST(req: NextRequest) {
       }, { status: 500 });
     }
     
-    // For private buckets, we need to create a signed URL (with expiry time)
-    // You can adjust the expiresIn value as needed (in seconds)
-    const TEN_YEARS_IN_SECONDS = 60 * 60 * 24 * 365 * 10; // 10 years
+    const TEN_YEARS_IN_SECONDS = 60 * 60 * 24 * 365 * 10;
     const { data: signedUrlData, error: signedUrlError } = await supabaseAdmin.storage
       .from('user-uploads')
       .createSignedUrl(filePath, TEN_YEARS_IN_SECONDS);
@@ -121,31 +131,18 @@ export async function POST(req: NextRequest) {
     
     const fileUrl = signedUrlData.signedUrl;
     
-    // Write to the database
-    try {
-      const prisma = require('@/lib/prisma').default;
-      
-      // Create a media item in the database
-      const mediaItem = await prisma.mediaItem.create({
-        data: {
-          id: uuidv4(),
-          type: file.type.startsWith('image/') ? 'IMAGE' : 
-                file.type.startsWith('video/') ? 'VIDEO' : 
-                file.type.startsWith('audio/') ? 'AUDIO' : 'PDF',
-          caption: file.name,
-          url: fileUrl,
-          filePath: filePath,
-          task: {
-            connect: {
-              userId: session.user.id
-            }
-          }
-        }
-      });
-    } catch (dbError) {
-      console.error('Warning: Failed to create database record:', dbError);
-      // Continue even if database fails - we'll still use the file from storage
-    }
+    await prisma.mediaItem.create({
+      data: {
+        id: uuidv4(),
+        type: file.type.startsWith('image/') ? 'IMAGE' :
+              file.type.startsWith('video/') ? 'VIDEO' :
+              file.type.startsWith('audio/') ? 'AUDIO' : 'PDF',
+        caption: file.name,
+        url: fileUrl,
+        filePath: filePath,
+        taskId: taskId,
+      }
+    });
     
     return NextResponse.json({
       success: true,
@@ -160,6 +157,9 @@ export async function POST(req: NextRequest) {
     
   } catch (error: any) {
     console.error('Error uploading file:', error);
+    if (error.code && error.meta) {
+        console.error('Prisma DB Error during media item creation:', error.code, error.meta);
+    }
     return NextResponse.json({ 
       success: false, 
       message: error.message || "An error occurred",

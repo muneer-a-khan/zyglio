@@ -81,24 +81,56 @@ export default function CreateProcedure() {
   };
 
   const handleTranscriptChange = async (text: string) => {
-    setTranscript(text);
-    
     try {
+      // Only save if we have a task ID and non-empty transcript
+      if (!procedureService.currentTaskId) {
+        console.log('No task ID available for saving transcript');
+        return;
+      }
+
+      if (!text.trim()) {
+        console.log('Empty transcript, skipping save');
+        return;
+      }
+
+      setTranscript(text);
+      
       // Save transcript to database
       await procedureService.saveTranscript(text);
     } catch (error) {
       console.error("Error saving transcript:", error);
+      toast.error("Failed to save transcript. Please try again.");
     }
   };
   
   const handleStepsChange = async (newSteps: Step[]) => {
-    setSteps(newSteps);
-    
     try {
+      // Update local state first
+      setSteps(newSteps);
+      
+      if (!procedureService.currentProcedureId) {
+        console.error('No active procedure ID for saving steps');
+        return;
+      }
+
       // Save steps to database
-      await procedureService.saveSteps(newSteps);
+      const success = await procedureService.saveSteps(procedureService.currentProcedureId, newSteps);
+      
+      if (!success) {
+        toast.error("Failed to save steps. Please try again.");
+        return;
+      }
+
+      // If we have YAML generation enabled, trigger it
+      if (newSteps.length > 0 && taskDefinition?.name) {
+        const yaml = await handleRegenerateYamlFromStepsViaApi(newSteps, taskDefinition.name);
+        if (yaml) {
+          setYamlContent(yaml);
+        }
+      }
     } catch (error) {
-      console.error("Error saving steps:", error);
+      console.error("Error handling steps change:", error);
+      toast.error("Failed to save steps. Please try again.");
     }
   };
   
@@ -151,10 +183,6 @@ export default function CreateProcedure() {
     try {
       if (activeTab === "dictation" && transcript) {
         await procedureService.saveTranscript(transcript);
-        // Also save any steps parsed from the transcript
-        if (steps.length > 0) {
-          await procedureService.saveSteps(steps);
-        }
       } else if (activeTab === "yaml" && yamlContent) {
         await procedureService.saveYaml(yamlContent);
       } else if (activeTab === "flowchart" && flowchartContent) {
@@ -379,8 +407,11 @@ export default function CreateProcedure() {
                     initialTranscript={transcript}
                     onTranscriptChange={handleTranscriptChange}
                     onStepsChange={handleStepsChange}
-                    procedureName={taskDefinition?.procedure_name || "Procedure"}
+                    steps={steps}
                     onYamlGenerated={handleYamlGenerated}
+                    procedureName={taskDefinition?.name || "Procedure"}
+                    procedureId={procedureService.currentProcedureId || ""}
+                    onSaveSteps={handleStepsChange}
                   />
                 </CardContent>
               </Card>

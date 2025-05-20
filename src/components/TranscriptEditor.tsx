@@ -30,6 +30,8 @@ export interface TranscriptEditorProps {
   steps?: Step[];
   onYamlGenerated?: (yaml: string) => void;
   procedureName: string;
+  procedureId: string;
+  onSaveSteps?: (steps: Step[]) => Promise<boolean>;
 }
 
 const TranscriptEditor = ({ 
@@ -39,6 +41,8 @@ const TranscriptEditor = ({
   steps = [],
   onYamlGenerated,
   procedureName,
+  procedureId,
+  onSaveSteps,
 }: TranscriptEditorProps) => {
   const [currentTranscript, setCurrentTranscript] = useState(initialTranscript);
   const [procedureSteps, setProcedureSteps] = useState<Step[]>(steps);
@@ -66,7 +70,7 @@ const TranscriptEditor = ({
     onTranscriptChange(newValue);
   };
 
-  const handleAddStepManual = () => {
+  const handleAddStepManual = async () => {
     if (!currentTranscript.trim()) {
       toast.info("Transcript is empty. Cannot create step.");
       return;
@@ -82,11 +86,10 @@ const TranscriptEditor = ({
     setProcedureSteps(newStepsArray);
     
     if (onStepsChange) {
-      onStepsChange(newStepsArray);
+      await onStepsChange(newStepsArray);
     }
     
     setCurrentTranscript("");
-    onTranscriptChange("");
     toast.success("Manual step created successfully");
   };
 
@@ -174,14 +177,17 @@ const TranscriptEditor = ({
 
       const updatedStepsArray = [...procedureSteps, ...newStepObjects];
       setProcedureSteps(updatedStepsArray);
+      
       if (onStepsChange) {
-        onStepsChange(updatedStepsArray);
+        await onStepsChange(updatedStepsArray);
       }
+
       toast.success(`${newStepObjects.length} steps generated and added.`);
       setCurrentTranscript("");
-      onTranscriptChange("");
 
-      await generateAndPassYaml(updatedStepsArray, procedureName);
+      if (onYamlGenerated) {
+        await generateAndPassYaml(updatedStepsArray, procedureName);
+      }
 
     } catch (error) {
       console.error('Error in AI step generation process:', error);

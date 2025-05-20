@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { authOptions } from "@/lib/auth"; // Corrected path
 import { createClient } from '@supabase/supabase-js';
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: { procedureId: string } } // Changed id to procedureId
 ) {
   try {
     const session = await getServerSession(authOptions);
@@ -17,7 +17,7 @@ export async function GET(
       );
     }
 
-    const procedureId = params.id;
+    const procedureId = params.procedureId; // Changed params.id to params.procedureId
     
     if (!procedureId) {
       return NextResponse.json(
@@ -46,7 +46,7 @@ export async function GET(
 
     // Get media items
     const mediaData = await prisma.mediaItem.findMany({
-      where: { procedureId: procedureId }
+      where: { procedureId: procedureId } // This line needs to be updated in schema or logic
     });
 
     // Refresh signed URLs for media items if needed
@@ -117,7 +117,10 @@ export async function GET(
     const steps = stepsData.map(step => ({
       id: step.id,
       content: step.content,
-      comments: step.notes ? [step.notes] : []
+      // comments: step.notes ? [step.notes] : [] // This needs to match ProcedureStep schema
+      order: step.index,
+      isCheckpoint: step.isCheckpoint,
+      expectedResponses: step.expectedResponses
     }));
 
     // Get the learning task associated with this procedure
@@ -129,7 +132,7 @@ export async function GET(
     const procedure = {
       id: procedureData.id,
       title: procedureData.title,
-      description: procedureData.title, // Assuming no separate description field
+      // description: procedureData.title, // Assuming no separate description field
       presenter: task?.presenter || '',
       affiliation: task?.affiliation || '',
       kpiTech: task?.kpiTech ? [task.kpiTech] : [],

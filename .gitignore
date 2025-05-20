@@ -41,3 +41,5 @@ build/
 
 # Vercel
 .vercel
+
+.cursor

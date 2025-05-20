@@ -1,3 +1,5 @@
+"use client";
+
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -33,27 +35,46 @@ import { Separator } from "@/components/ui/separator";
 import { Step, procedureService } from "@/lib/ProcedureService";
 
 export interface SimulationSettings {
-  name: string;
-  mode: string;
-  enableVoiceInput: boolean;
-  enableTextInput: boolean;
-  feedbackLevel: string;
-  enableScoring: boolean;
-  timeLimit: string;
-  steps: {
-    id: string;
-    content: string;
-    isCheckpoint: boolean;
-    expectedResponses: string[];
-  }[];
+  enabled: boolean;
+  mode: "guided" | "freeform";
+  timeLimit?: number;
+  allowRetries: boolean;
+  maxRetries?: number;
+  showHints: boolean;
+  requireMediaConfirmation: boolean;
+  feedbackDelay: number;
+  difficulty: "easy" | "medium" | "hard";
+  name?: string;
+  enableVoiceInput?: boolean;
+  enableTextInput?: boolean;
+  feedbackLevel?: string;
+  enableScoring?: boolean;
+  steps?: any[];
 }
 
 interface SimulationBuilderProps {
   steps: Step[];
   procedureName: string;
   initialSettings?: SimulationSettings;
-  onChange?: (settings: SimulationSettings) => void;
+  onChange: (settings: SimulationSettings) => void;
 }
+
+const defaultSettings: SimulationSettings = {
+  enabled: true,
+  mode: "guided",
+  timeLimit: 300,
+  allowRetries: true,
+  maxRetries: 3,
+  showHints: true,
+  requireMediaConfirmation: false,
+  feedbackDelay: 2,
+  difficulty: "medium",
+  enableVoiceInput: true,
+  enableTextInput: true,
+  feedbackLevel: "detailed",
+  enableScoring: true,
+  steps: []
+};
 
 const SimulationBuilder = ({
   steps,
@@ -63,115 +84,78 @@ const SimulationBuilder = ({
 }: SimulationBuilderProps) => {
   const [activeTab, setActiveTab] = useState("settings");
   const [simulationName, setSimulationName] = useState(`${procedureName} Simulation`);
-  const [enableVoiceInput, setEnableVoiceInput] = useState(true);
-  const [enableTextInput, setEnableTextInput] = useState(true);
-  const [simulationMode, setSimulationMode] = useState("guided");
-  const [feedbackLevel, setFeedbackLevel] = useState("detailed");
-  const [enableScoring, setEnableScoring] = useState(true);
-  const [timeLimit, setTimeLimit] = useState("0");
-  const [simulationSteps, setSimulationSteps] = useState<
-    {
-      id: string;
-      content: string;
-      isCheckpoint: boolean;
-      expectedResponses: string[];
-    }[]
-  >(
-    steps.map((step) => ({
-      id: step.id,
-      content: step.content,
-      isCheckpoint: false,
-      expectedResponses: [],
-    }))
+  const [settings, setSettings] = useState<SimulationSettings>(
+    initialSettings || defaultSettings
   );
   const [isSaving, setIsSaving] = useState(false);
 
-  // Load initial settings if provided
   useEffect(() => {
     if (initialSettings) {
-      setSimulationName(initialSettings.name);
-      setSimulationMode(initialSettings.mode);
-      setEnableVoiceInput(initialSettings.enableVoiceInput);
-      setEnableTextInput(initialSettings.enableTextInput);
-      setFeedbackLevel(initialSettings.feedbackLevel);
-      setEnableScoring(initialSettings.enableScoring);
-      setTimeLimit(initialSettings.timeLimit);
-      setSimulationSteps(initialSettings.steps);
+      setSimulationName(initialSettings.name ?? `${procedureName} Simulation`);
+      setSettings(initialSettings);
     }
-  }, [initialSettings]);
+  }, [initialSettings, procedureName]);
 
-  // Update when steps change
   useEffect(() => {
-    if (steps.length > 0 && !initialSettings) {
-      // Only update simulation steps if we don't have initial settings
-      setSimulationSteps(
-        steps.map((step) => {
-          // Try to preserve existing simulation steps data
-          const existingStep = simulationSteps.find(s => s.id === step.id);
-          return existingStep || {
-            id: step.id,
-            content: step.content,
-            isCheckpoint: false,
-            expectedResponses: [],
-          };
-        })
-      );
+    if (steps.length > 0 && !initialSettings?.steps) {
+      setSettings(prev => ({
+        ...prev,
+        steps: steps.map((step) => ({
+          id: step.id,
+          content: step.content,
+          isCheckpoint: false,
+          expectedResponses: [],
+        }))
+      }));
     }
   }, [steps, initialSettings]);
 
-  // Notify parent component when settings change
-  useEffect(() => {
-    if (onChange) {
-      const settings: SimulationSettings = {
-        name: simulationName,
-        mode: simulationMode,
-        enableVoiceInput,
-        enableTextInput,
-        feedbackLevel,
-        enableScoring,
-        timeLimit,
-        steps: simulationSteps
-      };
-      onChange(settings);
-    }
-  }, [
-    simulationName, 
-    simulationMode, 
-    enableVoiceInput, 
-    enableTextInput,
-    feedbackLevel,
-    enableScoring,
-    timeLimit,
-    simulationSteps,
-    onChange
-  ]);
+  const handleSettingChange = (key: keyof SimulationSettings, value: any) => {
+    const updatedSettings = {
+      ...settings,
+      [key]: value
+    };
+    setSettings(updatedSettings);
+    onChange(updatedSettings);
+  };
 
   const handleStepChange = (id: string, content: string) => {
-    setSimulationSteps((prev) =>
-      prev.map((step) => (step.id === id ? { ...step, content } : step))
-    );
+    const updatedSettings = {
+      ...settings,
+      steps: settings.steps?.map((step) =>
+        step.id === id ? { ...step, content } : step
+      ) || []
+    };
+    setSettings(updatedSettings);
+    onChange(updatedSettings);
   };
 
   const toggleCheckpoint = (id: string) => {
-    setSimulationSteps((prev) =>
-      prev.map((step) =>
+    const updatedSettings = {
+      ...settings,
+      steps: settings.steps?.map((step) =>
         step.id === id ? { ...step, isCheckpoint: !step.isCheckpoint } : step
-      )
-    );
+      ) || []
+    };
+    setSettings(updatedSettings);
+    onChange(updatedSettings);
   };
 
   const addExpectedResponse = (stepId: string, response: string = "") => {
-    setSimulationSteps((prev) =>
-      prev.map((step) => {
+    const updatedSettings = {
+      ...settings,
+      steps: settings.steps?.map((step) => {
         if (step.id === stepId) {
           return {
             ...step,
-            expectedResponses: [...step.expectedResponses, response],
+            expectedResponses: [...(step.expectedResponses || []), response],
           };
         }
         return step;
-      })
-    );
+      }) || []
+    };
+    setSettings(updatedSettings);
+    onChange(updatedSettings);
   };
 
   const updateExpectedResponse = (
@@ -179,10 +163,11 @@ const SimulationBuilder = ({
     index: number,
     value: string
   ) => {
-    setSimulationSteps((prev) =>
-      prev.map((step) => {
+    const updatedSettings = {
+      ...settings,
+      steps: settings.steps?.map((step) => {
         if (step.id === stepId) {
-          const newResponses = [...step.expectedResponses];
+          const newResponses = [...(step.expectedResponses || [])];
           newResponses[index] = value;
           return {
             ...step,
@@ -190,24 +175,29 @@ const SimulationBuilder = ({
           };
         }
         return step;
-      })
-    );
+      }) || []
+    };
+    setSettings(updatedSettings);
+    onChange(updatedSettings);
   };
 
   const removeExpectedResponse = (stepId: string, index: number) => {
-    setSimulationSteps((prev) =>
-      prev.map((step) => {
+    const updatedSettings = {
+      ...settings,
+      steps: settings.steps?.map((step) => {
         if (step.id === stepId) {
           return {
             ...step,
-            expectedResponses: step.expectedResponses.filter(
+            expectedResponses: (step.expectedResponses || []).filter(
               (_, i) => i !== index
             ),
           };
         }
         return step;
-      })
-    );
+      }) || []
+    };
+    setSettings(updatedSettings);
+    onChange(updatedSettings);
   };
 
   const saveSimulation = async () => {
@@ -216,13 +206,13 @@ const SimulationBuilder = ({
       
       const simulationSettings: SimulationSettings = {
         name: simulationName,
-        mode: simulationMode,
-        enableVoiceInput,
-        enableTextInput,
-        feedbackLevel,
-        enableScoring,
-        timeLimit,
-        steps: simulationSteps
+        mode: settings.mode,
+        enableVoiceInput: settings.enableVoiceInput ?? true,
+        enableTextInput: settings.enableTextInput ?? true,
+        feedbackLevel: settings.feedbackLevel ?? "detailed",
+        enableScoring: settings.enableScoring ?? true,
+        timeLimit: settings.timeLimit ?? 300,
+        steps: settings.steps ?? []
       };
       
       await procedureService.saveSimulationSettings(simulationSettings);
@@ -236,7 +226,7 @@ const SimulationBuilder = ({
   };
 
   const getModeDescription = () => {
-    switch (simulationMode) {
+    switch (settings.mode) {
       case "guided":
         return "Guided mode walks users through each step in order with detailed instructions";
       case "test":
@@ -247,6 +237,8 @@ const SimulationBuilder = ({
         return "";
     }
   };
+
+  const stepsArray = settings.steps ?? [];
 
   return (
     <Card className="w-full">
@@ -275,7 +267,7 @@ const SimulationBuilder = ({
               <h3 className="text-lg font-medium">Simulation Name</h3>
               <Input
                 placeholder="Enter simulation name"
-                value={simulationName}
+                value={simulationName ?? `${procedureName} Simulation`}
                 onChange={(e) => setSimulationName(e.target.value)}
               />
             </div>
@@ -283,8 +275,8 @@ const SimulationBuilder = ({
             <div className="space-y-3">
               <h3 className="text-lg font-medium">Mode</h3>
               <Select
-                value={simulationMode}
-                onValueChange={setSimulationMode}
+                value={settings.mode ?? "guided"}
+                onValueChange={(value) => handleSettingChange("mode", value)}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Select mode" />
@@ -309,8 +301,8 @@ const SimulationBuilder = ({
                 </div>
                 <Switch
                   id="voice-input"
-                  checked={enableVoiceInput}
-                  onCheckedChange={setEnableVoiceInput}
+                  checked={settings.enableVoiceInput ?? true}
+                  onCheckedChange={(checked) => handleSettingChange("enableVoiceInput", checked)}
                 />
               </div>
 
@@ -321,8 +313,8 @@ const SimulationBuilder = ({
                 </div>
                 <Switch
                   id="text-input"
-                  checked={enableTextInput}
-                  onCheckedChange={setEnableTextInput}
+                  checked={settings.enableTextInput ?? true}
+                  onCheckedChange={(checked) => handleSettingChange("enableTextInput", checked)}
                 />
               </div>
             </div>
@@ -335,8 +327,8 @@ const SimulationBuilder = ({
               <div className="space-y-3">
                 <Label htmlFor="feedback-level">Feedback Level</Label>
                 <Select
-                  value={feedbackLevel}
-                  onValueChange={setFeedbackLevel}
+                  value={settings.feedbackLevel ?? "detailed"}
+                  onValueChange={(value) => handleSettingChange("feedbackLevel", value)}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Select feedback level" />
@@ -352,8 +344,8 @@ const SimulationBuilder = ({
               <div className="flex items-center space-x-2">
                 <Checkbox
                   id="enable-scoring"
-                  checked={enableScoring}
-                  onCheckedChange={(checked) => setEnableScoring(!!checked)}
+                  checked={settings.enableScoring ?? true}
+                  onCheckedChange={(checked) => handleSettingChange("enableScoring", !!checked)}
                 />
                 <Label htmlFor="enable-scoring">Enable Scoring</Label>
               </div>
@@ -366,15 +358,15 @@ const SimulationBuilder = ({
                   id="time-limit"
                   type="number"
                   min="0"
-                  value={timeLimit}
-                  onChange={(e) => setTimeLimit(e.target.value)}
+                  value={settings.timeLimit ?? 300}
+                  onChange={(e) => handleSettingChange("timeLimit", parseInt(e.target.value) || 0)}
                 />
               </div>
             </div>
           </TabsContent>
 
           <TabsContent value="steps" className="space-y-6">
-            {simulationSteps.length === 0 ? (
+            {stepsArray.length === 0 ? (
               <div className="text-center p-6 border rounded-lg">
                 <p className="text-gray-500">
                   No steps available. Add steps in the Procedure tab first.
@@ -382,7 +374,7 @@ const SimulationBuilder = ({
               </div>
             ) : (
               <div className="space-y-4">
-                {simulationSteps.map((step, index) => (
+                {stepsArray.map((step, index) => (
                   <Card key={step.id} className="relative overflow-hidden">
                     <CardContent className="p-4">
                       <div className="flex justify-between items-start mb-3">
@@ -396,7 +388,7 @@ const SimulationBuilder = ({
                           <div className="flex items-center space-x-2">
                             <Checkbox
                               id={`checkpoint-${step.id}`}
-                              checked={step.isCheckpoint}
+                              checked={step.isCheckpoint ?? false}
                               onCheckedChange={() => toggleCheckpoint(step.id)}
                             />
                             <Label htmlFor={`checkpoint-${step.id}`}>
@@ -424,16 +416,16 @@ const SimulationBuilder = ({
                           </Button>
                         </div>
 
-                        {step.expectedResponses.length === 0 ? (
+                        {(step.expectedResponses?.length || 0) === 0 ? (
                           <p className="text-sm text-gray-500">
                             No expected responses defined.
                           </p>
                         ) : (
                           <div className="space-y-2">
-                            {step.expectedResponses.map((response, respIndex) => (
+                            {(step.expectedResponses || []).map((response, respIndex) => (
                               <div key={respIndex} className="flex items-center gap-2">
                                 <Input
-                                  value={response}
+                                  value={response ?? ""}
                                   onChange={(e) =>
                                     updateExpectedResponse(
                                       step.id,
@@ -478,7 +470,7 @@ const SimulationBuilder = ({
                       <h3 className="font-medium text-lg">{simulationName}</h3>
                       <div className="mt-4 space-y-4">
                         <div className="border rounded p-3 bg-blue-50 text-blue-800">
-                          {simulationSteps.length > 0 ? simulationSteps[0].content : "No steps available"}
+                          {stepsArray.length > 0 ? stepsArray[0].content : "No steps available"}
                         </div>
                         <div className="border rounded p-2 bg-gray-100">
                           <div className="flex items-center">
@@ -527,6 +519,11 @@ const SimulationBuilder = ({
               </>
             )}
           </Button>
+        </div>
+
+        <div className="text-sm text-gray-500">
+          <p>Total Steps: {stepsArray.length}</p>
+          <p>Procedure: {procedureName}</p>
         </div>
       </CardContent>
     </Card>
