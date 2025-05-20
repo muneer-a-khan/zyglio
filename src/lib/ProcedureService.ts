@@ -91,12 +91,6 @@ class ProcedureService {
 
   constructor() {
     this.isServer = typeof window === 'undefined';
-    
-    // Initialize with IDs from local storage/session
-    if (!this.isServer) {
-      this.currentProcedureId = localStorage.getItem('current_procedure_id') || null;
-      this.currentTaskId = localStorage.getItem('current_task_id') || null;
-    }
   }
 
   /**
@@ -105,6 +99,7 @@ class ProcedureService {
   async createProcedure(taskDefinition: TaskDefinition): Promise<string> {
     try {
       if (!this.currentProcedureId) {
+        console.log('Creating new procedure with task definition:', taskDefinition);
         const response = await fetch('/api/procedures', {
           method: 'POST',
           headers: {
@@ -119,19 +114,15 @@ class ProcedureService {
         }
 
         const data = await response.json();
+        console.log('Procedure creation response:', data);
         
-        if (!data.success || !data.data?.procedureId) {
-          throw new Error('Failed to create procedure');
-        }
-        
-        // Store IDs in local storage
-        if (typeof window !== 'undefined') {
-          localStorage.setItem('current_procedure_id', data.data.procedureId);
-          localStorage.setItem('current_task_id', data.data.taskId);
+        if (!data.success || !data.data?.procedureId || !data.data?.taskId) {
+          throw new Error('Failed to create procedure - missing IDs');
         }
         
         this.currentProcedureId = data.data.procedureId;
         this.currentTaskId = data.data.taskId;
+        console.log('Set current IDs:', { procedureId: this.currentProcedureId, taskId: this.currentTaskId });
         
         return data.data.procedureId;
       }
@@ -268,10 +259,31 @@ class ProcedureService {
    */
   async saveTranscript(transcript: string): Promise<void> {
     try {
+      console.log('Saving transcript. Current state:', { 
+        currentTaskId: this.currentTaskId, 
+        currentProcedureId: this.currentProcedureId 
+      });
+
+      // If we don't have a task ID, try to get it from the current procedure
+      if (!this.currentTaskId && this.currentProcedureId) {
+        console.log('No task ID found, attempting to recover from procedure:', this.currentProcedureId);
+        const procedure = await prisma.procedure.findUnique({
+          where: { id: this.currentProcedureId }
+        });
+        
+        if (procedure) {
+          this.currentTaskId = procedure.taskId;
+          console.log('Recovered task ID:', this.currentTaskId);
+        } else {
+          console.log('No procedure found:', this.currentProcedureId);
+        }
+      }
+
       if (!this.currentTaskId) {
         throw new Error('No active task to save transcript for');
       }
       
+      console.log('Sending transcript save request with task ID:', this.currentTaskId);
       const response = await fetch('/api/procedures/dictation', {
         method: 'POST',
         headers: {
@@ -285,6 +297,7 @@ class ProcedureService {
 
       if (!response.ok) {
         const errorData = await response.json();
+        console.error('Transcript save failed:', errorData);
         throw new Error(errorData.message || 'Failed to save transcript');
       }
     } catch (error) {
@@ -438,7 +451,18 @@ class ProcedureService {
       // In browser, fetch via API
       if (!this.isServer) {
         console.log('Running in browser, using API to fetch procedure');
-        return this.getProcedureViaApi(procedureId);
+        const procedure = await this.getProcedureViaApi(procedureId);
+        if (procedure) {
+          this.currentProcedureId = procedureId;
+          // Set the task ID from the procedure data
+          const task = await prisma.learningTask.findFirst({
+            where: { procedureId: procedureId }
+          });
+          if (task) {
+            this.currentTaskId = task.id;
+          }
+        }
+        return procedure;
       }
       
       // On server, use Prisma directly
@@ -456,6 +480,10 @@ class ProcedureService {
         console.error('No procedure data found for ID:', procedureId);
         return null;
       }
+
+      // Set the current IDs
+      this.currentProcedureId = procedureId;
+      this.currentTaskId = procedureData.taskId;
 
       // Get procedure steps using Prisma
       const stepsData = await prisma.procedureStep.findMany({
@@ -644,11 +672,8 @@ class ProcedureService {
         data: {}  // Just touch the record to update timestamps
       });
 
-      // Clear the current procedure ID from local storage
-      if (typeof window !== 'undefined') {
-        localStorage.removeItem('current_procedure_id');
-      }
       this.currentProcedureId = null;
+      this.currentTaskId = null;
       
       return true;
     } catch (error) {
@@ -661,10 +686,8 @@ class ProcedureService {
    * Clears the current procedure context
    */
   clearCurrentProcedure(): void {
-    if (typeof window !== 'undefined') {
-      localStorage.removeItem('current_procedure_id');
-    }
     this.currentProcedureId = null;
+    this.currentTaskId = null;
   }
 }
 

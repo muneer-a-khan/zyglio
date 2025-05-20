@@ -86,7 +86,6 @@ const TranscriptEditor = ({
     }
     
     setCurrentTranscript("");
-    onTranscriptChange("");
     toast.success("Manual step created successfully");
   };
 
@@ -178,8 +177,10 @@ const TranscriptEditor = ({
         onStepsChange(updatedStepsArray);
       }
       toast.success(`${newStepObjects.length} steps generated and added.`);
+      
+      // Clear the transcript input without triggering a save
       setCurrentTranscript("");
-      onTranscriptChange("");
+      // Don't call onTranscriptChange with empty string
 
       await generateAndPassYaml(updatedStepsArray, procedureName);
 
