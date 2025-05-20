@@ -3,12 +3,6 @@ import prisma from "@/lib/prisma";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { v4 as uuidv4 } from "uuid";
-import { createClient } from '@supabase/supabase-js';
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_KEY!
-);
 
 export async function POST(req: NextRequest) {
   try {
@@ -60,16 +54,6 @@ export async function POST(req: NextRequest) {
           content: yamlContent
         }
       });
-    }
-    
-    const { error: supabaseError } = await supabase
-      .from('procedures')
-      .update({ yaml_content: yamlContent })
-      .eq('id', taskId);
-
-    if (supabaseError) {
-      console.error('Supabase error updating YAML content:', supabaseError);
-      throw supabaseError;
     }
     
     return NextResponse.json({

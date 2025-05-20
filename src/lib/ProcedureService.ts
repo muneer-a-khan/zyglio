@@ -167,30 +167,32 @@ class ProcedureService {
   /**
    * Saves steps for a procedure
    */
-  async saveSteps(steps: Step[]): Promise<void> {
+  async saveSteps(procedureId: string, steps: Step[]): Promise<boolean> {
     try {
-      if (!this.currentProcedureId) {
-        throw new Error('No active procedure to update steps for');
-      }
-
       const response = await fetch('/api/procedures/steps', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          procedureId: this.currentProcedureId,
-          steps,
+          procedureId,
+          steps: steps.map((step, index) => ({
+            content: step.content,
+            notes: step.comments?.join('\n'),
+            index
+          }))
         }),
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Failed to save steps');
+      const result = await response.json();
+      if (!result.success) {
+        throw new Error(result.message || 'Failed to save steps');
       }
+
+      return true;
     } catch (error) {
       console.error('Error saving steps:', error);
-      throw error;
+      return false;
     }
   }
 
