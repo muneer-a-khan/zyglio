@@ -424,15 +424,32 @@ class ProcedureService {
   /**
    * Saves simulation settings for the procedure
    */
-  async saveSimulationSettings(simulationSettings: SimulationSettings): Promise<void> {
+  async saveSimulationSettings(settings: SimulationSettings): Promise<boolean> {
     try {
-      // The simulation_settings field doesn't exist in the procedures table
-      // For now, we'll store it in memory only
-      console.warn('saveSimulationSettings: simulation_settings field does not exist in procedures table');
-      // await this.updateProcedure({ simulationSettings });
+      if (!this.currentProcedureId) {
+        console.error('No active procedure ID for saving simulation settings');
+        return false;
+      }
+
+      const response = await fetch('/api/procedures/simulation', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          procedureId: this.currentProcedureId,
+          settings
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to save simulation settings: ${response.statusText}`);
+      }
+
+      return true;
     } catch (error) {
       console.error('Error saving simulation settings:', error);
-      throw error;
+      return false;
     }
   }
 
