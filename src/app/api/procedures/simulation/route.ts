@@ -19,20 +19,31 @@ export async function POST(req: Request) {
       );
     }
 
-    // Verify the procedure exists and belongs to the user
-    const procedure = await prisma.procedure.findFirst({
+    // Verify the procedure exists
+    const procedure = await prisma.procedure.findUnique({
       where: {
         id: procedureId,
-        task: {
-          userId: session.user.id
-        }
-      }
+      },
     });
 
     if (!procedure) {
       return NextResponse.json(
-        { error: 'Procedure not found or access denied' },
+        { error: "Procedure not found" },
         { status: 404 }
+      );
+    }
+
+    // Verify the procedure belongs to the user
+    const learningTask = await prisma.learningTask.findUnique({
+      where: {
+        id: procedure.taskId,
+      },
+    });
+
+    if (!learningTask || learningTask.userId !== session.user.id) {
+      return NextResponse.json(
+        { error: "Access denied" },
+        { status: 403 }
       );
     }
 

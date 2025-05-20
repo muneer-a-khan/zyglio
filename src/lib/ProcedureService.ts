@@ -629,28 +629,58 @@ class ProcedureService {
         return [];
       }
       
-      // Get all procedures using Prisma
+      // Get procedures with non-null simulationSettings using Prisma
       const procedures = await prisma.procedure.findMany({
         orderBy: { id: 'desc' },
-        include: {
-          task: true
+        where: {
+          simulationSettings: {
+            not: null
+          }
         }
       });
 
       if (!procedures.length) return [];
 
-      return procedures.map((item: any) => ({
-        id: item.id,
-        title: item.title,
-        description: item.title, // Assuming no separate description field
-        presenter: item.task?.presenter || '',
-        affiliation: item.task?.affiliation || '',
-        kpiTech: item.task?.kpiTech ? [item.task.kpiTech] : [],
-        kpiConcept: item.task?.kpiConcept ? [item.task.kpiConcept] : [],
-        date: item.task?.date?.toISOString() || '',
-        steps: [],
-        mediaItems: []
-      }));
+      // Filter procedures to only include those with valid simulationSettings
+      // (must have a name property)
+      const validProcedures = procedures.filter((proc: any) => {
+        const settings = proc.simulationSettings;
+        return settings && typeof settings === 'object' && 'name' in settings;
+      });
+
+      if (!validProcedures.length) return [];
+
+      // Get the associated learning tasks
+      const taskIds = validProcedures.map((p: any) => p.taskId).filter(Boolean);
+      const learningTasks = await prisma.learningTask.findMany({
+        where: {
+          id: { in: taskIds }
+        }
+      });
+      
+      // Create a map for quick lookups
+      const taskMap = new Map();
+      learningTasks.forEach((task: any) => {
+        taskMap.set(task.id, task);
+      });
+
+      return validProcedures
+        .filter((proc: any) => taskMap.has(proc.taskId))
+        .map((proc: any) => {
+          const task = taskMap.get(proc.taskId);
+          return {
+            id: proc.id,
+            title: proc.title,
+            description: proc.title, // Assuming no separate description field
+            presenter: task?.presenter || '',
+            affiliation: task?.affiliation || '',
+            kpiTech: task?.kpiTech ? [task.kpiTech] : [],
+            kpiConcept: task?.kpiConcept ? [task.kpiConcept] : [],
+            date: task?.date?.toISOString() || '',
+            steps: [],
+            mediaItems: []
+          };
+        });
     } catch (error) {
       console.error('Error getting all procedures:', error);
       
@@ -667,10 +697,13 @@ class ProcedureService {
    */
   private async getAllProceduresViaApi(): Promise<Procedure[]> {
     try {
+      console.log('Fetching all procedures via API');
       const response = await fetch('/api/procedures');
       
+      // Handle errors gracefully
       if (!response.ok) {
-        throw new Error('Failed to fetch procedures data');
+        console.error(`API error (${response.status}): ${response.statusText}`);
+        return []; // Return empty array instead of throwing
       }
       
       const data = await response.json();
@@ -679,10 +712,11 @@ class ProcedureService {
         return data.procedures;
       }
       
-      throw new Error(data.message || 'Failed to get procedures data');
+      console.warn('API returned unexpected format:', data);
+      return []; // Return empty array for unexpected format
     } catch (error) {
       console.error('Error fetching all procedures via API:', error);
-      return [];
+      return []; // Always return empty array on error
     }
   }
 
@@ -693,6 +727,35 @@ class ProcedureService {
     try {
       if (!this.currentProcedureId) {
         throw new Error('No active procedure to publish');
+      }
+
+      // Client-side: use API
+      if (!this.isServer) {
+        const response = await fetch(`/api/procedures/publish`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            procedureId: this.currentProcedureId
+          }),
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.message || 'Failed to publish procedure');
+        }
+
+        this.currentProcedureId = null;
+        this.currentTaskId = null;
+        
+        return true;
+      }
+      
+      // Server-side: use Prisma directly
+      if (!prisma) {
+        console.error('Prisma client is not available');
+        return false;
       }
 
       // Update the procedure using Prisma

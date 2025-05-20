@@ -44,6 +44,12 @@ export interface SimulationSettings {
   requireMediaConfirmation: boolean;
   feedbackDelay: number;
   difficulty: "easy" | "medium" | "hard";
+  name?: string;
+  enableVoiceInput?: boolean;
+  enableTextInput?: boolean;
+  feedbackLevel?: string;
+  enableScoring?: boolean;
+  steps?: any[];
 }
 
 interface SimulationBuilderProps {
@@ -62,7 +68,12 @@ const defaultSettings: SimulationSettings = {
   showHints: true,
   requireMediaConfirmation: false,
   feedbackDelay: 2,
-  difficulty: "medium"
+  difficulty: "medium",
+  enableVoiceInput: true,
+  enableTextInput: true,
+  feedbackLevel: "detailed",
+  enableScoring: true,
+  steps: []
 };
 
 const SimulationBuilder = ({
@@ -80,13 +91,13 @@ const SimulationBuilder = ({
 
   useEffect(() => {
     if (initialSettings) {
-      setSimulationName(initialSettings.name);
+      setSimulationName(initialSettings.name ?? `${procedureName} Simulation`);
       setSettings(initialSettings);
     }
-  }, [initialSettings]);
+  }, [initialSettings, procedureName]);
 
   useEffect(() => {
-    if (steps.length > 0 && !initialSettings) {
+    if (steps.length > 0 && !initialSettings?.steps) {
       setSettings(prev => ({
         ...prev,
         steps: steps.map((step) => ({
@@ -99,48 +110,52 @@ const SimulationBuilder = ({
     }
   }, [steps, initialSettings]);
 
-  useEffect(() => {
-    onChange(settings);
-  }, [settings, onChange]);
-
   const handleSettingChange = (key: keyof SimulationSettings, value: any) => {
-    setSettings(prev => ({
-      ...prev,
+    const updatedSettings = {
+      ...settings,
       [key]: value
-    }));
+    };
+    setSettings(updatedSettings);
+    onChange(updatedSettings);
   };
 
   const handleStepChange = (id: string, content: string) => {
-    setSettings(prev => ({
-      ...prev,
-      steps: prev.steps.map((step) =>
+    const updatedSettings = {
+      ...settings,
+      steps: settings.steps?.map((step) =>
         step.id === id ? { ...step, content } : step
-      )
-    }));
+      ) || []
+    };
+    setSettings(updatedSettings);
+    onChange(updatedSettings);
   };
 
   const toggleCheckpoint = (id: string) => {
-    setSettings(prev => ({
-      ...prev,
-      steps: prev.steps.map((step) =>
+    const updatedSettings = {
+      ...settings,
+      steps: settings.steps?.map((step) =>
         step.id === id ? { ...step, isCheckpoint: !step.isCheckpoint } : step
-      )
-    }));
+      ) || []
+    };
+    setSettings(updatedSettings);
+    onChange(updatedSettings);
   };
 
   const addExpectedResponse = (stepId: string, response: string = "") => {
-    setSettings(prev => ({
-      ...prev,
-      steps: prev.steps.map((step) => {
+    const updatedSettings = {
+      ...settings,
+      steps: settings.steps?.map((step) => {
         if (step.id === stepId) {
           return {
             ...step,
-            expectedResponses: [...step.expectedResponses, response],
+            expectedResponses: [...(step.expectedResponses || []), response],
           };
         }
         return step;
-      })
-    }));
+      }) || []
+    };
+    setSettings(updatedSettings);
+    onChange(updatedSettings);
   };
 
   const updateExpectedResponse = (
@@ -148,11 +163,11 @@ const SimulationBuilder = ({
     index: number,
     value: string
   ) => {
-    setSettings(prev => ({
-      ...prev,
-      steps: prev.steps.map((step) => {
+    const updatedSettings = {
+      ...settings,
+      steps: settings.steps?.map((step) => {
         if (step.id === stepId) {
-          const newResponses = [...step.expectedResponses];
+          const newResponses = [...(step.expectedResponses || [])];
           newResponses[index] = value;
           return {
             ...step,
@@ -160,25 +175,29 @@ const SimulationBuilder = ({
           };
         }
         return step;
-      })
-    }));
+      }) || []
+    };
+    setSettings(updatedSettings);
+    onChange(updatedSettings);
   };
 
   const removeExpectedResponse = (stepId: string, index: number) => {
-    setSettings(prev => ({
-      ...prev,
-      steps: prev.steps.map((step) => {
+    const updatedSettings = {
+      ...settings,
+      steps: settings.steps?.map((step) => {
         if (step.id === stepId) {
           return {
             ...step,
-            expectedResponses: step.expectedResponses.filter(
+            expectedResponses: (step.expectedResponses || []).filter(
               (_, i) => i !== index
             ),
           };
         }
         return step;
-      })
-    }));
+      }) || []
+    };
+    setSettings(updatedSettings);
+    onChange(updatedSettings);
   };
 
   const saveSimulation = async () => {
@@ -188,12 +207,12 @@ const SimulationBuilder = ({
       const simulationSettings: SimulationSettings = {
         name: simulationName,
         mode: settings.mode,
-        enableVoiceInput: true,
-        enableTextInput: true,
-        feedbackLevel: "detailed",
-        enableScoring: true,
-        timeLimit: settings.timeLimit,
-        steps: settings.steps
+        enableVoiceInput: settings.enableVoiceInput ?? true,
+        enableTextInput: settings.enableTextInput ?? true,
+        feedbackLevel: settings.feedbackLevel ?? "detailed",
+        enableScoring: settings.enableScoring ?? true,
+        timeLimit: settings.timeLimit ?? 300,
+        steps: settings.steps ?? []
       };
       
       await procedureService.saveSimulationSettings(simulationSettings);
@@ -248,7 +267,7 @@ const SimulationBuilder = ({
               <h3 className="text-lg font-medium">Simulation Name</h3>
               <Input
                 placeholder="Enter simulation name"
-                value={simulationName}
+                value={simulationName ?? `${procedureName} Simulation`}
                 onChange={(e) => setSimulationName(e.target.value)}
               />
             </div>
@@ -256,7 +275,7 @@ const SimulationBuilder = ({
             <div className="space-y-3">
               <h3 className="text-lg font-medium">Mode</h3>
               <Select
-                value={settings.mode}
+                value={settings.mode ?? "guided"}
                 onValueChange={(value) => handleSettingChange("mode", value)}
               >
                 <SelectTrigger>
@@ -282,7 +301,7 @@ const SimulationBuilder = ({
                 </div>
                 <Switch
                   id="voice-input"
-                  checked={settings.enableVoiceInput}
+                  checked={settings.enableVoiceInput ?? true}
                   onCheckedChange={(checked) => handleSettingChange("enableVoiceInput", checked)}
                 />
               </div>
@@ -294,7 +313,7 @@ const SimulationBuilder = ({
                 </div>
                 <Switch
                   id="text-input"
-                  checked={settings.enableTextInput}
+                  checked={settings.enableTextInput ?? true}
                   onCheckedChange={(checked) => handleSettingChange("enableTextInput", checked)}
                 />
               </div>
@@ -308,7 +327,7 @@ const SimulationBuilder = ({
               <div className="space-y-3">
                 <Label htmlFor="feedback-level">Feedback Level</Label>
                 <Select
-                  value={settings.feedbackLevel}
+                  value={settings.feedbackLevel ?? "detailed"}
                   onValueChange={(value) => handleSettingChange("feedbackLevel", value)}
                 >
                   <SelectTrigger>
@@ -325,7 +344,7 @@ const SimulationBuilder = ({
               <div className="flex items-center space-x-2">
                 <Checkbox
                   id="enable-scoring"
-                  checked={settings.enableScoring}
+                  checked={settings.enableScoring ?? true}
                   onCheckedChange={(checked) => handleSettingChange("enableScoring", !!checked)}
                 />
                 <Label htmlFor="enable-scoring">Enable Scoring</Label>
@@ -339,8 +358,8 @@ const SimulationBuilder = ({
                   id="time-limit"
                   type="number"
                   min="0"
-                  value={settings.timeLimit}
-                  onChange={(e) => handleSettingChange("timeLimit", parseInt(e.target.value))}
+                  value={settings.timeLimit ?? 300}
+                  onChange={(e) => handleSettingChange("timeLimit", parseInt(e.target.value) || 0)}
                 />
               </div>
             </div>
@@ -369,7 +388,7 @@ const SimulationBuilder = ({
                           <div className="flex items-center space-x-2">
                             <Checkbox
                               id={`checkpoint-${step.id}`}
-                              checked={step.isCheckpoint}
+                              checked={step.isCheckpoint ?? false}
                               onCheckedChange={() => toggleCheckpoint(step.id)}
                             />
                             <Label htmlFor={`checkpoint-${step.id}`}>
@@ -397,16 +416,16 @@ const SimulationBuilder = ({
                           </Button>
                         </div>
 
-                        {step.expectedResponses.length === 0 ? (
+                        {(step.expectedResponses?.length || 0) === 0 ? (
                           <p className="text-sm text-gray-500">
                             No expected responses defined.
                           </p>
                         ) : (
                           <div className="space-y-2">
-                            {step.expectedResponses.map((response, respIndex) => (
+                            {(step.expectedResponses || []).map((response, respIndex) => (
                               <div key={respIndex} className="flex items-center gap-2">
                                 <Input
-                                  value={response}
+                                  value={response ?? ""}
                                   onChange={(e) =>
                                     updateExpectedResponse(
                                       step.id,

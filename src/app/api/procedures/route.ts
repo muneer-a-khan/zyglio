@@ -109,31 +109,62 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    // Get all procedures
-    const procedureData = await prisma.procedure.findMany({
-      orderBy: { id: 'desc' },
-      include: {
-        task: true
+    // First, fetch procedures with non-null simulationSettings
+    const procedures = await prisma.procedure.findMany({
+      orderBy: { 
+        id: 'desc' 
+      },
+      where: {
+        simulationSettings: {
+          not: null
+        }
       }
     });
+    
+    // Filter procedures to only include those with valid simulationSettings 
+    // (must have a name property)
+    const validProcedures = procedures.filter(procedure => {
+      const settings = procedure.simulationSettings as any;
+      return settings && typeof settings === 'object' && 'name' in settings;
+    });
+    
+    // Now fetch the associated learning tasks separately
+    const taskIds = validProcedures.map(p => p.taskId).filter(Boolean);
+    const learningTasks = await prisma.learningTask.findMany({
+      where: {
+        id: { in: taskIds },
+        userId: session.user.id // Make sure we only get tasks owned by this user
+      }
+    });
+    
+    // Create a map for quick lookups
+    const taskMap = new Map();
+    learningTasks.forEach(task => {
+      taskMap.set(task.id, task);
+    });
 
-    // Format procedures
-    const procedures = procedureData.map(procedure => ({
-      id: procedure.id,
-      title: procedure.title,
-      description: procedure.title, // Assuming no separate description field
-      presenter: procedure.task?.presenter || '',
-      affiliation: procedure.task?.affiliation || '',
-      kpiTech: procedure.task?.kpiTech ? [procedure.task.kpiTech] : [],
-      kpiConcept: procedure.task?.kpiConcept ? [procedure.task.kpiConcept] : [],
-      date: procedure.task?.date?.toISOString() || new Date().toISOString(),
-      steps: [],
-      mediaItems: []
-    }));
+    // Format procedures with their associated tasks
+    const formattedProcedures = validProcedures
+      .filter(procedure => taskMap.has(procedure.taskId)) // Only include procedures with tasks owned by the user
+      .map(procedure => {
+        const task = taskMap.get(procedure.taskId);
+        return {
+          id: procedure.id,
+          title: procedure.title,
+          description: procedure.title, // Assuming no separate description field
+          presenter: task?.presenter || '',
+          affiliation: task?.affiliation || '',
+          kpiTech: task?.kpiTech ? [task.kpiTech] : [],
+          kpiConcept: task?.kpiConcept ? [task.kpiConcept] : [],
+          date: task?.date?.toISOString() || new Date().toISOString(),
+          steps: [],
+          mediaItems: []
+        };
+      });
 
     return NextResponse.json({
       success: true,
-      procedures
+      procedures: formattedProcedures
     });
   } catch (error) {
     console.error("Error fetching procedures:", error);
