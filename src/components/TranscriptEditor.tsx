@@ -86,15 +86,7 @@ const TranscriptEditor = ({
     setProcedureSteps(newStepsArray);
     
     if (onStepsChange) {
-      onStepsChange(newStepsArray);
-    }
-
-    if (onSaveSteps) {
-      const success = await onSaveSteps(newStepsArray);
-      if (!success) {
-        toast.error("Failed to save steps");
-        return;
-      }
+      await onStepsChange(newStepsArray);
     }
     
     setCurrentTranscript("");
@@ -185,22 +177,17 @@ const TranscriptEditor = ({
 
       const updatedStepsArray = [...procedureSteps, ...newStepObjects];
       setProcedureSteps(updatedStepsArray);
+      
       if (onStepsChange) {
-        onStepsChange(updatedStepsArray);
-      }
-
-      if (onSaveSteps) {
-        const success = await onSaveSteps(updatedStepsArray);
-        if (!success) {
-          toast.error("Failed to save steps");
-          return;
-        }
+        await onStepsChange(updatedStepsArray);
       }
 
       toast.success(`${newStepObjects.length} steps generated and added.`);
       setCurrentTranscript("");
 
-      await generateAndPassYaml(updatedStepsArray, procedureName);
+      if (onYamlGenerated) {
+        await generateAndPassYaml(updatedStepsArray, procedureName);
+      }
 
     } catch (error) {
       console.error('Error in AI step generation process:', error);

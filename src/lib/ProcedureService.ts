@@ -263,8 +263,15 @@ class ProcedureService {
     try {
       console.log('Saving transcript. Current state:', { 
         currentTaskId: this.currentTaskId, 
-        currentProcedureId: this.currentProcedureId 
+        currentProcedureId: this.currentProcedureId,
+        transcriptLength: transcript.length
       });
+
+      // Validate inputs
+      if (!transcript.trim()) {
+        console.log('Empty transcript, skipping save');
+        return;
+      }
 
       // If we don't have a task ID, try to get it from the current procedure
       if (!this.currentTaskId && this.currentProcedureId) {
@@ -282,7 +289,8 @@ class ProcedureService {
       }
 
       if (!this.currentTaskId) {
-        throw new Error('No active task to save transcript for');
+        console.error('No task ID available for saving transcript');
+        return;
       }
       
       console.log('Sending transcript save request with task ID:', this.currentTaskId);
@@ -293,7 +301,7 @@ class ProcedureService {
         },
         body: JSON.stringify({
           taskId: this.currentTaskId,
-          transcript,
+          transcript: transcript.trim(),
         }),
       });
 
@@ -302,6 +310,8 @@ class ProcedureService {
         console.error('Transcript save failed:', errorData);
         throw new Error(errorData.message || 'Failed to save transcript');
       }
+
+      console.log('Transcript saved successfully');
     } catch (error) {
       console.error('Error saving transcript:', error);
       throw error;
