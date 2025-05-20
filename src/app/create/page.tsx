@@ -91,15 +91,12 @@ export default function CreateProcedure() {
     }
   };
   
-  const handleStepsChange = async (newSteps: Step[]) => {
-    setSteps(newSteps);
-    
-    try {
-      // Save steps to database
-      await procedureService.saveSteps(newSteps);
-    } catch (error) {
-      console.error("Error saving steps:", error);
+  const handleStepsChange = async (steps: Step[]) => {
+    if (!procedureService.currentProcedureId) {
+      console.error('No active procedure ID for saving steps');
+      return;
     }
+    await procedureService.saveSteps(procedureService.currentProcedureId, steps);
   };
   
   const handleMediaItemsChange = async (newMediaItems: MediaItem[]) => {
@@ -379,8 +376,11 @@ export default function CreateProcedure() {
                     initialTranscript={transcript}
                     onTranscriptChange={handleTranscriptChange}
                     onStepsChange={handleStepsChange}
-                    procedureName={taskDefinition?.procedure_name || "Procedure"}
+                    steps={steps}
                     onYamlGenerated={handleYamlGenerated}
+                    procedureName={taskDefinition?.name || "Procedure"}
+                    procedureId={procedureService.currentProcedureId || ""}
+                    onSaveSteps={handleStepsChange}
                   />
                 </CardContent>
               </Card>

@@ -30,6 +30,8 @@ export interface TranscriptEditorProps {
   steps?: Step[];
   onYamlGenerated?: (yaml: string) => void;
   procedureName: string;
+  procedureId: string;
+  onSaveSteps?: (steps: Step[]) => Promise<boolean>;
 }
 
 const TranscriptEditor = ({ 
@@ -39,6 +41,8 @@ const TranscriptEditor = ({
   steps = [],
   onYamlGenerated,
   procedureName,
+  procedureId,
+  onSaveSteps,
 }: TranscriptEditorProps) => {
   const [currentTranscript, setCurrentTranscript] = useState(initialTranscript);
   const [procedureSteps, setProcedureSteps] = useState<Step[]>(steps);
@@ -66,7 +70,7 @@ const TranscriptEditor = ({
     onTranscriptChange(newValue);
   };
 
-  const handleAddStepManual = () => {
+  const handleAddStepManual = async () => {
     if (!currentTranscript.trim()) {
       toast.info("Transcript is empty. Cannot create step.");
       return;
@@ -83,6 +87,14 @@ const TranscriptEditor = ({
     
     if (onStepsChange) {
       onStepsChange(newStepsArray);
+    }
+
+    if (onSaveSteps) {
+      const success = await onSaveSteps(newStepsArray);
+      if (!success) {
+        toast.error("Failed to save steps");
+        return;
+      }
     }
     
     setCurrentTranscript("");
@@ -176,11 +188,17 @@ const TranscriptEditor = ({
       if (onStepsChange) {
         onStepsChange(updatedStepsArray);
       }
+
+      if (onSaveSteps) {
+        const success = await onSaveSteps(updatedStepsArray);
+        if (!success) {
+          toast.error("Failed to save steps");
+          return;
+        }
+      }
+
       toast.success(`${newStepObjects.length} steps generated and added.`);
-      
-      // Clear the transcript input without triggering a save
       setCurrentTranscript("");
-      // Don't call onTranscriptChange with empty string
 
       await generateAndPassYaml(updatedStepsArray, procedureName);
 
