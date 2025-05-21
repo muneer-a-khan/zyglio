@@ -14,71 +14,55 @@ model User {
   email         String         @unique
   name          String?
   createdAt     DateTime       @default(now()) @db.Timestamptz(6)
-  learningTasks LearningTask[]
   role          user_role      @default(trainee)
-  
-  // No password field as it's managed by Supabase Auth
-  
-  // Maps to auth.users in Supabase
+  learningTasks LearningTask[]
+
   @@map("users")
 }
 
 model LearningTask {
-  id          String             @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  id          String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
   title       String
   kpiTech     String?
   kpiConcept  String?
   presenter   String
   affiliation String?
-  date        DateTime           @db.Timestamptz(6)
-  userId      String             @db.Uuid
-  dictations  Dictation[]
-  urls        ExternalResource[]
-  flowcharts  Flowchart[]
-  user        User               @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  mediaItems  MediaItem[]
-  procedures  Procedure[]
-  simulations Simulation[]
-  yamlOutputs YamlOutput[]
+  date        DateTime @db.Timestamptz(6)
+  userId      String   @db.Uuid
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@index([userId])
 }
 
 model MediaItem {
-  id        String         @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  id        String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
   type      MediaType
   caption   String?
   url       String
   relevance String?
-  createdAt DateTime       @default(now()) @db.Timestamptz(6)
-  taskId    String         @db.Uuid
-  stepId    String?        @db.Uuid
-  step      ProcedureStep? @relation(fields: [stepId], references: [id], onUpdate: NoAction)
-  task      LearningTask   @relation(fields: [taskId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  createdAt DateTime  @default(now()) @db.Timestamptz(6)
+  taskId    String    @db.Uuid
+  stepId    String?   @db.Uuid
 
   @@index([stepId])
   @@index([taskId])
 }
 
 model ExternalResource {
-  id          String       @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  id          String @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
   url         String
   description String
-  taskId      String       @db.Uuid
-  task        LearningTask @relation(fields: [taskId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  taskId      String @db.Uuid
 
   @@index([taskId])
 }
 
 model Dictation {
-  id            String         @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  audioUrl      String
-  transcript    String
-  createdAt     DateTime       @default(now()) @db.Timestamptz(6)
-  taskId        String         @db.Uuid
-  aiSuggestions AISuggestion[]
-  task          LearningTask   @relation(fields: [taskId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  questions     Question[]
+  id         String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  audioUrl   String
+  transcript String
+  createdAt  DateTime @default(now()) @db.Timestamptz(6)
+  taskId     String   @db.Uuid
 
   @@index([taskId])
 }
@@ -88,89 +72,105 @@ model AISuggestion {
   text        String
   kind        SuggestionType
   dictationId String         @db.Uuid
-  dictation   Dictation      @relation(fields: [dictationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@index([dictationId])
 }
 
 model Question {
-  id          String         @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  id          String       @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
   type        QuestionType
   content     String
   options     String?
   correct     String?
-  dictationId String?        @db.Uuid
-  stepId      String?        @db.Uuid
-  dictation   Dictation?     @relation(fields: [dictationId], references: [id], onUpdate: NoAction)
-  step        ProcedureStep? @relation(fields: [stepId], references: [id], onUpdate: NoAction)
+  dictationId String?      @db.Uuid
+  stepId      String?      @db.Uuid
 
   @@index([dictationId])
   @@index([stepId])
 }
 
 model Procedure {
-  id     String          @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  title  String
-  taskId String          @db.Uuid
-  task   LearningTask    @relation(fields: [taskId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  steps  ProcedureStep[]
-  simulationSettings Json? @default("{}")
+  id                 String @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  title              String
+  taskId             String @db.Uuid
+  simulationSettings Json?  @default("{}")
 
   @@index([taskId])
 }
 
 model ProcedureStep {
-  id          String      @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  index       Int
-  content     String
-  notes       String?
-  conditions  String?
-  procedureId String      @db.Uuid
-  media       MediaItem[]
-  procedure   Procedure   @relation(fields: [procedureId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  questions   Question[]
+  id                String   @id
+  procedureId       String
+  content           String
+  index             Int
+  isCheckpoint      Boolean  @default(false)
+  expectedResponses Json     @default("[]")
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime
 
   @@index([procedureId])
 }
 
 model YamlOutput {
-  id      String       @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  id      String @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
   content String
-  taskId  String       @db.Uuid
-  task    LearningTask @relation(fields: [taskId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  taskId  String @db.Uuid
 
   @@index([taskId])
 }
 
 model Flowchart {
-  id      String       @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  id      String @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
   mermaid String
-  taskId  String       @db.Uuid
-  task    LearningTask @relation(fields: [taskId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  taskId  String @db.Uuid
 
   @@index([taskId])
 }
 
 model Simulation {
-  id     String           @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  taskId String           @db.Uuid
-  task   LearningTask     @relation(fields: [taskId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  steps  SimulationStep[]
+  id     String @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  taskId String @db.Uuid
 
   @@index([taskId])
 }
 
 model SimulationStep {
-  id               String     @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  id               String  @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
   prompt           String
   expectedAnswer   String?
   mediaUrl         String?
   latencyThreshold Int?
   feedback         String?
-  simulationId     String     @db.Uuid
-  simulation       Simulation @relation(fields: [simulationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  simulationId     String  @db.Uuid
 
   @@index([simulationId])
+}
+
+model Document {
+  id          String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  title       String
+  url         String
+  broadTopic  String
+  sourceType  String
+  content     String?   @db.Text
+  createdAt   DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime  @updatedAt @db.Timestamptz(6)
+  chunks      Chunk[]
+}
+
+model Chunk {
+  id             String      @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  documentId     String      @db.Uuid
+  document       Document    @relation(fields: [documentId], references: [id])
+  text           String      @db.Text
+  embedding      Unsupported("vector(1536)")? 
+  sequenceNumber Int
+  metadata       Json?
+  createdAt      DateTime    @default(now()) @db.Timestamptz(6)
+  updatedAt      DateTime    @updatedAt @db.Timestamptz(6)
+
+  @@index([documentId])
+  @@index([embedding(ops: "vector_cosine_ops")]) 
 }
 
 enum MediaType {

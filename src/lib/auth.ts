@@ -3,6 +3,9 @@ import { PrismaAdapter } from "@auth/prisma-adapter";
 import { prisma } from "@/lib/prisma";
 import CredentialsProvider from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
+import { getServerSession } from 'next-auth/next';
+import { cookies, headers } from 'next/headers';
+import { createClient } from '@supabase/supabase-js';
 
 export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma),
@@ -105,4 +108,59 @@ export const authOptions: NextAuthOptions = {
     },
   },
   debug: process.env.NODE_ENV === "development",
-}; 
+};
+
+/**
+ * Verify the user session from a request
+ */
+export async function verifySession(request: Request) {
+  try {
+    // Get session from Next-Auth
+    const session = await getServerSession();
+    if (session) {
+      return session;
+    }
+
+    // Fallback to checking auth cookie or header
+    const authHeader = request.headers.get('Authorization');
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.substring(7);
+      return await verifyToken(token);
+    }
+
+    // No valid session found
+    return null;
+  } catch (error) {
+    console.error('Error verifying session:', error);
+    return null;
+  }
+}
+
+/**
+ * Verify a token with Supabase
+ */
+async function verifyToken(token: string) {
+  try {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+    
+    const supabase = createClient(supabaseUrl, supabaseAnonKey);
+    
+    const { data, error } = await supabase.auth.getUser(token);
+    
+    if (error || !data.user) {
+      return null;
+    }
+    
+    return {
+      user: {
+        id: data.user.id,
+        email: data.user.email,
+        name: data.user.user_metadata?.name || null
+      }
+    };
+  } catch (error) {
+    console.error('Error verifying token:', error);
+    return null;
+  }
+} 
