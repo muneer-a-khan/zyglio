@@ -1,14 +1,16 @@
 import { NextResponse } from 'next/server';
-import { retrieveRelevantContext, storeUserProcedureContext } from '@/lib/rag-service';
-import { verifySession } from '@/lib/auth'; // Assuming you have a session verification function
+import { v4 as uuidv4 } from 'uuid';
+import { verifySession } from '@/lib/auth';
+import { createSession } from '@/lib/rag-service';
+import { enhanceInitialContext } from '@/lib/agents/rag-agent';
 
 /**
- * API endpoint to generate initial context for a procedure
+ * API endpoint to generate initial context for voice interview
  * POST /api/rag/generate-context
  */
 export async function POST(request: Request) {
   try {
-    // Basic auth verification - replace with your auth logic
+    // Basic auth verification
     const session = await verifySession(request);
     if (!session) {
       return NextResponse.json(
@@ -18,8 +20,9 @@ export async function POST(request: Request) {
     }
 
     // Parse request data
-    const { procedureId, taskDefinition } = await request.json();
-
+    const data = await request.json();
+    const { procedureId, taskDefinition } = data;
+    
     if (!procedureId || !taskDefinition) {
       return NextResponse.json(
         { error: 'Missing required fields: procedureId and taskDefinition' },
@@ -27,29 +30,44 @@ export async function POST(request: Request) {
       );
     }
 
-    // Build a search query from task definition
-    const { title, description, goal } = taskDefinition;
-    const searchQuery = `
-      ${title}. 
-      ${description ? description : ''}
-      ${goal ? `Goal: ${goal}` : ''}
-    `.trim();
-
-    // Get relevant context from RAG system
-    const ragResult = await retrieveRelevantContext(searchQuery, 10);
+    // Generate a session ID
+    const sessionId = uuidv4();
     
-    // Store the context in a session
-    const sessionId = await storeUserProcedureContext(procedureId, ragResult.context);
+    // Use the RAG agent to enhance the initial context
+    const ragResult = await enhanceInitialContext(taskDefinition);
+    
+    // Create a combined context with both the enhanced context and additional information
+    const combinedContext = `
+# Task Definition
+${taskDefinition.title}
+${taskDefinition.description ? `Description: ${taskDefinition.description}` : ''}
+${taskDefinition.goal ? `Goal: ${taskDefinition.goal}` : ''}
 
+# Enhanced Procedure Context
+${ragResult.enhancedContext}
+
+# Key Topics to Explore
+${ragResult.suggestedTopics.map((topic, i) => `${i+1}. ${topic}`).join('\n')}
+
+# Relevant Factors
+${ragResult.relevantFactors.map((factor, i) => `${i+1}. ${factor}`).join('\n')}
+`;
+
+    // Create session with the initial context
+    await createSession(sessionId, {
+      procedureId,
+      initialContext: combinedContext,
+      conversationHistory: []
+    });
+    
     return NextResponse.json({
       success: true,
       sessionId,
-      context: ragResult.context,
-      sources: ragResult.sources
+      initialContext: combinedContext
     });
 
   } catch (error) {
-    console.error('Error in generate-context API:', error);
+    console.error('Error generating context:', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     
     return NextResponse.json(

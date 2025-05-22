@@ -83,16 +83,18 @@ export async function POST(request: Request) {
  */
 async function generateFirstQuestion(initialContext: string): Promise<string> {
   const systemPrompt = `You are an expert medical/technical interviewer. Your goal is to ask an informed, insightful, and open-ended initial question to a Subject Matter Expert (SME) about a technical or medical procedure.
-Based on the context provided, ask a broad opening question that will help you understand the procedure better.
-Your question should be concise (1-2 sentences) but specific enough to show you have some background knowledge.
-Maintain a professional, curious tone.`;
+Based on the enhanced context provided, ask a specific opening question that demonstrates your knowledge and will help you understand the procedure better.
+Your question should be concise (1-2 sentences) but specific enough to show you've done your research.
+Maintain a professional, curious tone.
+Refer to specific elements from the context to show your understanding of the topic.`;
 
   const userPrompt = `
-## Context:
+## Enhanced Context:
 ${initialContext}
 
 Generate an opening question for a Subject Matter Expert interview about the procedure described in the context above. 
-The question should be specific enough to show you have some background knowledge but open-ended enough to let the expert elaborate.
+The question should reference specific aspects from the enhanced context to demonstrate your background knowledge while remaining open-ended enough to let the expert elaborate.
+Focus on one of the key topics or relevant factors mentioned if appropriate.
 `;
 
   try {

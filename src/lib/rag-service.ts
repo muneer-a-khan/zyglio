@@ -178,4 +178,25 @@ export async function updateConversationHistory(
   global.sessionStore.set(sessionId, session);
   
   return true;
+}
+
+/**
+ * Create a new interview session with initial context
+ */
+export async function createSession(
+  sessionId: string, 
+  sessionData: {
+    procedureId: string;
+    initialContext: string;
+    conversationHistory: Array<{role: 'ai' | 'user', content: string}>;
+  }
+): Promise<string> {
+  try {
+    // Store the session in the global sessions Map
+    sessions.set(sessionId, sessionData);
+    return sessionId;
+  } catch (error) {
+    console.error('Error creating session:', error);
+    throw error;
+  }
 } 
