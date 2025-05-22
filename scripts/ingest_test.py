@@ -46,57 +46,99 @@ def test_db_connection():
                 print("pgvector extension is enabled")
             else:
                 print("WARNING: pgvector extension is NOT enabled!")
+                print("You need to run: CREATE EXTENSION IF NOT EXISTS vector;")
                 
-            # Check if our tables exist
-            cursor.execute("SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'Document');")
-            if cursor.fetchone()[0]:
-                print("Document table exists")
+            # Check for Document table with case sensitivity in mind
+            cursor.execute("""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_schema = 'public' AND table_name = 'Document'
+                );
+            """)
+            document_exists = cursor.fetchone()[0]
+            
+            # If not found, check for lowercase variant
+            if not document_exists:
+                cursor.execute("""
+                    SELECT EXISTS (
+                        SELECT FROM information_schema.tables 
+                        WHERE table_schema = 'public' AND table_name = 'document'
+                    );
+                """)
+                document_exists = cursor.fetchone()[0]
+                document_name = "document" if cursor.fetchone() else "Document"
+            else:
+                document_name = "Document"
+                
+            if document_exists:
+                print(f"{document_name} table exists")
                 
                 # Count documents
-                cursor.execute('SELECT COUNT(*) FROM "Document";')
+                cursor.execute(f'SELECT COUNT(*) FROM "{document_name}";')
                 count = cursor.fetchone()[0]
                 print(f"Current document count: {count}")
                 
                 # Show schema
-                cursor.execute("""
+                cursor.execute(f"""
                     SELECT column_name, data_type 
                     FROM information_schema.columns 
-                    WHERE table_name = 'Document';
+                    WHERE table_name = '{document_name.lower()}';
                 """)
-                print("Document table schema:")
+                print(f"{document_name} table schema:")
                 for col in cursor.fetchall():
                     print(f"  - {col[0]}: {col[1]}")
             else:
                 print("WARNING: Document table does NOT exist!")
                 
-            cursor.execute("SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'Chunk');")
-            if cursor.fetchone()[0]:
-                print("Chunk table exists")
+            # Check for Chunk table with case sensitivity in mind
+            cursor.execute("""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_schema = 'public' AND table_name = 'Chunk'
+                );
+            """)
+            chunk_exists = cursor.fetchone()[0]
+            
+            # If not found, check for lowercase variant
+            if not chunk_exists:
+                cursor.execute("""
+                    SELECT EXISTS (
+                        SELECT FROM information_schema.tables 
+                        WHERE table_schema = 'public' AND table_name = 'chunk'
+                    );
+                """)
+                chunk_exists = cursor.fetchone()[0]
+                chunk_name = "chunk" if cursor.fetchone() else "Chunk"
+            else:
+                chunk_name = "Chunk"
+                
+            if chunk_exists:
+                print(f"{chunk_name} table exists")
                 
                 # Count chunks
-                cursor.execute('SELECT COUNT(*) FROM "Chunk";')
+                cursor.execute(f'SELECT COUNT(*) FROM "{chunk_name}";')
                 count = cursor.fetchone()[0]
                 print(f"Current chunk count: {count}")
                 
                 # Show schema
-                cursor.execute("""
+                cursor.execute(f"""
                     SELECT column_name, data_type 
                     FROM information_schema.columns 
-                    WHERE table_name = 'Chunk';
+                    WHERE table_name = '{chunk_name.lower()}';
                 """)
-                print("Chunk table schema:")
+                print(f"{chunk_name} table schema:")
                 for col in cursor.fetchall():
                     print(f"  - {col[0]}: {col[1]}")
             else:
                 print("WARNING: Chunk table does NOT exist!")
         
         conn.close()
-        return True
+        return True, document_name if document_exists else "Document", chunk_name if chunk_exists else "Chunk"
     except Exception as e:
         print(f"Database test failed: {e}")
-        return False
+        return False, "Document", "Chunk"
 
-def insert_test_document():
+def insert_test_document(document_name="Document", chunk_name="Chunk"):
     """Insert a test document and chunk into the database"""
     try:
         conn = psycopg2.connect(DATABASE_URL)
@@ -115,8 +157,8 @@ def insert_test_document():
         with conn.cursor() as cursor:
             # Insert document
             cursor.execute(
-                """
-                INSERT INTO "Document" (id, title, url, "broadTopic", "sourceType", content, "createdAt", "updatedAt")
+                f"""
+                INSERT INTO "{document_name}" (id, title, url, "broadTopic", "sourceType", content, "createdAt", "updatedAt")
                 VALUES (%s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                 RETURNING id
                 """,
@@ -139,25 +181,37 @@ def insert_test_document():
             mock_embedding = [0.1] * 1536
             embedding_array = f"[{','.join(map(str, mock_embedding))}]"
             
-            cursor.execute(
-                """
-                INSERT INTO "Chunk" (
-                    id, "documentId", text, embedding, "sequenceNumber", 
-                    metadata, "createdAt", "updatedAt"
+            # Check if pgvector extension is enabled before attempting to insert
+            cursor.execute("SELECT * FROM pg_extension WHERE extname = 'vector';")
+            if not cursor.fetchone():
+                print("ERROR: pgvector extension is not enabled. Cannot insert vector data.")
+                print("You need to run: CREATE EXTENSION IF NOT EXISTS vector;")
+                return False
+                
+            try:
+                cursor.execute(
+                    f"""
+                    INSERT INTO "{chunk_name}" (
+                        id, "documentId", text, embedding, "sequenceNumber", 
+                        metadata, "createdAt", "updatedAt"
+                    )
+                    VALUES (%s, %s, %s, %s::vector, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                    """,
+                    (
+                        chunk_id,
+                        doc_id,
+                        chunk_text,
+                        embedding_array,
+                        0,
+                        Json({"position": 0})
+                    )
                 )
-                VALUES (%s, %s, %s, %s::vector, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                """,
-                (
-                    chunk_id,
-                    doc_id,
-                    chunk_text,
-                    embedding_array,
-                    0,
-                    Json({"position": 0})
-                )
-            )
-            
-            print(f"Test chunk inserted with ID: {chunk_id}")
+                
+                print(f"Test chunk inserted with ID: {chunk_id}")
+            except psycopg2.errors.UndefinedObject as e:
+                print(f"ERROR: Vector type not defined: {e}")
+                print("Make sure pgvector is installed and the vector extension is enabled.")
+                return False
         
         conn.close()
         return True
@@ -167,10 +221,13 @@ def insert_test_document():
 
 if __name__ == "__main__":
     print("Testing database connection...")
-    if test_db_connection():
+    success, document_name, chunk_name = test_db_connection()
+    if success:
         print("\nInserting test document...")
-        insert_test_document()
-        print("\nVerifying insertion...")
-        test_db_connection()
+        if insert_test_document(document_name, chunk_name):
+            print("\nVerifying insertion...")
+            test_db_connection()
+        else:
+            print("Failed to insert test document. Check errors above.")
     else:
         print("Database connection failed. Check your DATABASE_URL environment variable.") 
