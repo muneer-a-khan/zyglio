@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server';
 import { generateEmbedding, getSession, retrieveRelevantContext, updateConversationHistory } from '@/lib/rag-service';
+import { generateSpeech } from '@/lib/tts-service';
 import { verifySession } from '@/lib/auth'; // Assuming you have a session verification function
 import OpenAI from 'openai';
 
-// Initialize OpenAI client for whisper and TTS
+// Initialize OpenAI client for whisper
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
@@ -76,14 +77,8 @@ export async function POST(request: Request) {
       smeResponseText
     );
     
-    // 5. Convert AI question to speech
-    const speechResponse = await openai.audio.speech.create({
-      model: 'tts-1',
-      voice: 'alloy',
-      input: aiQuestionText,
-    });
-    
-    const audioArrayBuffer = await speechResponse.arrayBuffer();
+    // 5. Convert AI question to speech using ElevenLabs
+    const audioArrayBuffer = await generateSpeech(aiQuestionText);
     
     // 6. Update conversation history with AI question
     await updateConversationHistory(sessionId, {
@@ -147,7 +142,8 @@ Maintain a professional, curious, and empathetic tone.
 Focus on probing deeper, seeking clarification, and exploring nuances based on the SME's last statement and the context.
 Do NOT simply rephrase or summarize the SME's previous answer.
 Do NOT ask generic questions already covered by the context unless specifically for clarification.
-Keep your questions concise.`;
+Keep your questions concise.
+IMPORTANT: Only return the question itself, with no additional explanation, asterisks, formatting, or commentary. Do not include any text like "Question:" or "My question is:" or any other prefixes.`;
 
   // Full context combining initial and dynamic contexts
   const fullContext = `
@@ -165,6 +161,7 @@ ${conversationHistoryText}
 SME's last statement: "${latestUserResponse}"
 
 Given the conversation history and all provided background information, what is your next insightful question for the SME?
+IMPORTANT: Return ONLY the question itself - no explanation, no commentary, no formatting. Just the plain question text.
 `;
 
   // Call DeepSeek model
@@ -179,7 +176,17 @@ Given the conversation history and all provided background information, what is 
       max_tokens: 300
     });
 
-    return completion.choices[0].message.content || "What more can you tell me about this procedure?";
+    // Extract just the question, removing any explanatory text
+    let questionText = completion.choices[0].message.content || "What more can you tell me about this procedure?";
+    
+    // Clean up any potential formatting or explanations
+    questionText = questionText
+      .replace(/^(Question:|My question is:|Here's my question:|I would ask:)?\s*/i, '')
+      .replace(/\*\*(.*?)\*\*/g, '$1')  // Remove markdown bold
+      .replace(/^\s*["'](.*)["']\s*$/, '$1')  // Remove quotes
+      .trim();
+
+    return questionText;
   } catch (error) {
     console.error('Error generating interview question:', error);
     return "Could you elaborate further on what you just explained?";

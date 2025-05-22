@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Mic, MicOff, Loader2, Volume2, FileText, ArrowRight } from "lucide-react";
+import { Mic, MicOff, Loader2, Volume2, AlertCircle, CheckCircle } from "lucide-react";
 import { toast } from "sonner";
+import { Badge } from "@/components/ui/badge";
 
 interface ConversationEntry {
   role: "ai" | "user";
@@ -37,6 +38,9 @@ export default function VoiceInterview({
   const [conversationHistory, setConversationHistory] = useState<ConversationEntry[]>([]);
   const [currentAIQuestion, setCurrentAIQuestion] = useState<string | null>(null);
   const [audioContext, setAudioContext] = useState<AudioContext | null>(null);
+  const [validationIssues, setValidationIssues] = useState<string[]>([]);
+  const [clarificationsMade, setClarificationsMade] = useState(false);
+  const [followUpChosen, setFollowUpChosen] = useState(false);
   
   // Refs
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -51,7 +55,7 @@ export default function VoiceInterview({
       setIsInitializing(false);
       // If we have a session ID but no conversation history, we need to ask for a first question
       if (conversationHistory.length === 0) {
-        startInterviewWithoutUserInput();
+        startInterviewWithFirstQuestion();
       }
     }
     // Initialize audio context
@@ -95,7 +99,7 @@ export default function VoiceInterview({
       setSessionId(data.sessionId);
       
       // Start the interview by generating the first AI question
-      startInterviewWithoutUserInput();
+      startInterviewWithFirstQuestion();
     } catch (error) {
       console.error('Error initializing interview session:', error);
       toast.error('Failed to initialize interview. Please try again.');
@@ -104,21 +108,20 @@ export default function VoiceInterview({
     }
   };
   
-  // Start interview without user input (used for first question)
-  const startInterviewWithoutUserInput = async () => {
+  // Start interview with first question
+  const startInterviewWithFirstQuestion = async () => {
     if (!sessionId) return;
     
     try {
       setIsProcessing(true);
       
-      const response = await fetch('/api/deepseek/interview-question', {
+      const response = await fetch('/api/interview/first-question', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           sessionId,
-          isFirstQuestion: true,
         }),
       });
       
@@ -129,18 +132,13 @@ export default function VoiceInterview({
       
       const data = await response.json();
       
-      // Add AI question to conversation history
-      const newHistory = [...conversationHistory];
-      newHistory.push({
-        role: 'ai',
-        content: data.aiQuestionText,
-      });
-      setConversationHistory(newHistory);
-      setCurrentAIQuestion(data.aiQuestionText);
+      // Update conversation history
+      setConversationHistory(data.conversationHistory);
+      setCurrentAIQuestion(data.questionText);
       
       // Play audio if available
-      if (data.aiQuestionAudio) {
-        const audioBlob = base64ToBlob(data.aiQuestionAudio, 'audio/mp3');
+      if (data.questionAudio) {
+        const audioBlob = base64ToBlob(data.questionAudio, 'audio/mp3');
         playAudio(audioBlob);
       }
     } catch (error) {
@@ -169,6 +167,11 @@ export default function VoiceInterview({
       
       mediaRecorderRef.current.start();
       setIsRecording(true);
+      
+      // Reset agent feedback states
+      setValidationIssues([]);
+      setClarificationsMade(false);
+      setFollowUpChosen(false);
     } catch (error) {
       console.error('Error starting recording:', error);
       toast.error('Failed to access microphone. Please check permissions.');
@@ -183,7 +186,7 @@ export default function VoiceInterview({
     }
   };
   
-  // Submit the recording to the API
+  // Submit the recording to the orchestrator API
   const submitRecording = async () => {
     if (audioChunksRef.current.length === 0 || !sessionId) return;
     
@@ -195,7 +198,7 @@ export default function VoiceInterview({
       formData.append('sessionId', sessionId);
       formData.append('audioBlob', audioBlob);
       
-      const response = await fetch('/api/rag/interview-turn', {
+      const response = await fetch('/api/interview/orchestrate', {
         method: 'POST',
         body: formData,
       });
@@ -209,11 +212,16 @@ export default function VoiceInterview({
       
       // Update conversation history
       setConversationHistory(data.conversationHistory);
-      setCurrentAIQuestion(data.aiQuestionText);
+      setCurrentAIQuestion(data.aiResponse);
+      
+      // Set agent feedback states
+      setValidationIssues(data.validationIssues || []);
+      setClarificationsMade(data.clarificationsMade || false);
+      setFollowUpChosen(data.followUpChosen || false);
       
       // Play audio response
-      if (data.aiQuestionAudio) {
-        const audioBlob = base64ToBlob(data.aiQuestionAudio, 'audio/mp3');
+      if (data.aiResponseAudio) {
+        const audioBlob = base64ToBlob(data.aiResponseAudio, 'audio/mp3');
         playAudio(audioBlob);
       }
     } catch (error) {
@@ -273,10 +281,7 @@ export default function VoiceInterview({
   // Complete the interview
   const completeInterview = () => {
     if (onInterviewComplete && conversationHistory.length > 0) {
-      toast.success("Interview complete! Generating transcript and procedure steps...");
       onInterviewComplete(conversationHistory);
-    } else {
-      toast.error("Cannot complete interview. Please ensure you have answered at least one question.");
     }
   };
   
@@ -284,10 +289,26 @@ export default function VoiceInterview({
   return (
     <Card className="w-full">
       <CardHeader>
-        <CardTitle className="text-xl">Voice Interview</CardTitle>
-        <CardDescription>
-          Answer the AI interviewer's questions to create a transcript for your procedure
-        </CardDescription>
+        <CardTitle className="text-xl flex items-center justify-between">
+          Voice Interview
+          <div className="flex gap-2">
+            {validationIssues.length > 0 && (
+              <Badge variant="destructive" className="flex items-center gap-1">
+                <AlertCircle className="h-3 w-3" /> Validation
+              </Badge>
+            )}
+            {clarificationsMade && (
+              <Badge variant="secondary" className="flex items-center gap-1">
+                <AlertCircle className="h-3 w-3" /> Clarification
+              </Badge>
+            )}
+            {followUpChosen && (
+              <Badge variant="default" className="flex items-center gap-1">
+                <CheckCircle className="h-3 w-3" /> Follow-up
+              </Badge>
+            )}
+          </div>
+        </CardTitle>
       </CardHeader>
       <CardContent>
         {isInitializing ? (
@@ -323,6 +344,19 @@ export default function VoiceInterview({
                 )}
               </div>
             </div>
+            
+            {validationIssues.length > 0 && (
+              <div className="mb-4 p-3 border border-destructive/50 bg-destructive/10 rounded-md">
+                <h4 className="font-medium text-destructive flex items-center gap-1">
+                  <AlertCircle className="h-4 w-4" /> Validation Issues
+                </h4>
+                <ul className="list-disc list-inside mt-1 text-sm">
+                  {validationIssues.map((issue, index) => (
+                    <li key={index}>{issue}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
             
             <div className="flex flex-col items-center justify-center space-y-4">
               {currentAIQuestion && (
@@ -365,23 +399,14 @@ export default function VoiceInterview({
                   : "Click the microphone to start recording your answer"}
               </p>
               
-              <div className="flex flex-col sm:flex-row items-center gap-3 mt-4">
-                <Button
-                  variant="outline"
-                  onClick={completeInterview}
-                  disabled={isRecording || isProcessing || conversationHistory.length < 2}
-                >
-                  <FileText className="h-4 w-4 mr-1" /> Generate Transcript & Steps
-                </Button>
-                
-                <Button
-                  onClick={completeInterview}
-                  disabled={isRecording || isProcessing || conversationHistory.length < 2}
-                  className="bg-blue-600 hover:bg-blue-700"
-                >
-                  <ArrowRight className="h-4 w-4 mr-1" /> Complete Interview
-                </Button>
-              </div>
+              <Button
+                variant="outline"
+                onClick={completeInterview}
+                disabled={isRecording || isProcessing || conversationHistory.length < 2}
+                className="mt-4"
+              >
+                Complete Interview
+              </Button>
             </div>
           </>
         )}
