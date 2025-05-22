@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import OpenAI from 'openai';
-import { getSession } from '@/lib/rag-service';
+import { getSession } from '@/lib/session-service';
 import { generateSpeech } from '@/lib/tts-service';
 import { verifySession } from '@/lib/auth';
 

@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import OpenAI from 'openai';
 import { orchestrateAgents } from '@/lib/agents/orchestrator';
 import { verifySession } from '@/lib/auth';
-import { getSession, updateConversationHistory } from '@/lib/rag-service';
+import { getSession, updateConversationHistory } from '@/lib/session-service';
 
 // Initialize OpenAI client for whisper
 const openai = new OpenAI({

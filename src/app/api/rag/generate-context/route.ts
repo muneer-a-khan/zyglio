@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
 import { verifySession } from '@/lib/auth';
-import { createSession } from '@/lib/rag-service';
+import { createSession } from '@/lib/session-service';
 import { enhanceInitialContext } from '@/lib/agents/rag-agent';
 
 /**
@@ -33,7 +33,7 @@ export async function POST(request: Request) {
     // Generate a session ID
     const sessionId = uuidv4();
     
-    // Use the RAG agent to enhance the initial context
+    // Use DeepSeek to generate context based on the task definition
     const ragResult = await enhanceInitialContext(taskDefinition);
     
     // Create a combined context with both the enhanced context and additional information

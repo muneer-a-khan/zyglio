@@ -1,5 +1,4 @@
 import OpenAI from 'openai';
-import { retrieveRelevantContext } from '@/lib/rag-service';
 
 // Initialize DeepSeek client
 const deepseek = new OpenAI({
@@ -14,7 +13,7 @@ interface RagAgentResult {
 }
 
 /**
- * RAG agent retrieves relevant background knowledge and enhances the initial context
+ * Context agent that uses DeepSeek's built-in knowledge to generate context
  */
 export async function enhanceInitialContext(
   taskDefinition: {
@@ -23,13 +22,12 @@ export async function enhanceInitialContext(
     goal?: string;
   }
 ): Promise<RagAgentResult> {
-  // 1. First, gather RAG context based on the task definition
-  const searchQuery = `${taskDefinition.title} ${taskDefinition.description || ''} ${taskDefinition.goal || ''}`;
-  const ragResult = await retrieveRelevantContext(searchQuery, 5); // Get top 5 relevant chunks
+  // Create a query based on the task definition
+  const topic = `${taskDefinition.title} ${taskDefinition.description || ''} ${taskDefinition.goal || ''}`;
   
-  // 2. Now use DeepSeek to synthesize and enhance this context
+  // Use DeepSeek to directly generate knowledge about the topic
   const systemPrompt = `You are an expert medical/technical knowledge synthesizer.
-Your task is to analyze information about a medical/technical procedure and create an enhanced context that will be useful for interviewing a subject matter expert.
+Your task is to use your built-in knowledge to create a comprehensive context about a medical/technical procedure.
 Focus on:
 1. Key technical aspects of the procedure
 2. Common challenges or complications
@@ -45,11 +43,8 @@ Title: ${taskDefinition.title}
 ${taskDefinition.description ? `Description: ${taskDefinition.description}` : ''}
 ${taskDefinition.goal ? `Goal: ${taskDefinition.goal}` : ''}
 
-## Retrieved Background Knowledge:
-${ragResult.context}
-
 Please:
-1. Synthesize this information into a comprehensive, factual context about this procedure (500-800 words)
+1. Using your built-in knowledge, generate a comprehensive, factual context about this procedure (500-800 words)
 2. Identify 3-5 key topics that should be explored during the interview
 3. List 3-5 specific factors that might affect this procedure's execution or outcome
 
@@ -71,7 +66,7 @@ Format your response as a JSON object with these fields: enhancedContext, sugges
     const responseContent = completion.choices[0].message.content || "{}";
     return JSON.parse(responseContent) as RagAgentResult;
   } catch (error) {
-    console.error('Error enhancing context with RAG agent:', error);
+    console.error('Error generating context with DeepSeek:', error);
     return {
       enhancedContext: `${taskDefinition.title}. ${taskDefinition.description || ''} ${taskDefinition.goal || ''}`,
       suggestedTopics: [],

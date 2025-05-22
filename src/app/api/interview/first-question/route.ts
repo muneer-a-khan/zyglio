@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import OpenAI from 'openai';
 import { generateSpeech } from '@/lib/tts-service';
 import { verifySession } from '@/lib/auth';
-import { getSession, updateConversationHistory } from '@/lib/rag-service';
+import { getSession, updateConversationHistory } from '@/lib/session-service';
 
 // Initialize DeepSeek client
 const deepseek = new OpenAI({
