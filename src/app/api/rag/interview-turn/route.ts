@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server';
 import { generateEmbedding, getSession, retrieveRelevantContext, updateConversationHistory } from '@/lib/rag-service';
+import { generateSpeech } from '@/lib/tts-service';
 import { verifySession } from '@/lib/auth'; // Assuming you have a session verification function
 import OpenAI from 'openai';
 
-// Initialize OpenAI client for whisper and TTS
+// Initialize OpenAI client for whisper
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
@@ -76,14 +77,8 @@ export async function POST(request: Request) {
       smeResponseText
     );
     
-    // 5. Convert AI question to speech
-    const speechResponse = await openai.audio.speech.create({
-      model: 'tts-1',
-      voice: 'alloy',
-      input: aiQuestionText,
-    });
-    
-    const audioArrayBuffer = await speechResponse.arrayBuffer();
+    // 5. Convert AI question to speech using ElevenLabs
+    const audioArrayBuffer = await generateSpeech(aiQuestionText);
     
     // 6. Update conversation history with AI question
     await updateConversationHistory(sessionId, {

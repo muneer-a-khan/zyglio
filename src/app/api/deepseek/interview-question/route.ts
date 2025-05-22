@@ -1,17 +1,13 @@
 import { NextResponse } from 'next/server';
 import OpenAI from 'openai';
 import { getSession } from '@/lib/rag-service';
+import { generateSpeech } from '@/lib/tts-service';
 import { verifySession } from '@/lib/auth';
 
 // Initialize DeepSeek client
 const deepseek = new OpenAI({
   baseURL: 'https://api.deepseek.com/v1',
   apiKey: process.env.DEEPSEEK_API_KEY,
-});
-
-// Initialize OpenAI client for TTS
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
 });
 
 /**
@@ -61,14 +57,8 @@ export async function POST(request: Request) {
       );
     }
 
-    // Generate speech
-    const speechResponse = await openai.audio.speech.create({
-      model: 'tts-1',
-      voice: 'alloy',
-      input: aiQuestionText,
-    });
-    
-    const audioArrayBuffer = await speechResponse.arrayBuffer();
+    // Generate speech with ElevenLabs
+    const audioArrayBuffer = await generateSpeech(aiQuestionText);
     const audioBase64 = Buffer.from(audioArrayBuffer).toString('base64');
     
     return NextResponse.json({

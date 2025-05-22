@@ -16,6 +16,7 @@ import TranscriptEditor from "@/components/TranscriptEditor";
 import FlowchartViewer from "@/components/FlowchartViewer";
 import YamlGenerator from "@/components/YamlGenerator";
 import SimulationBuilder from "@/components/SimulationBuilder";
+import VoiceInterview from "@/components/VoiceInterview";
 import { procedureService, TaskDefinition, Step, MediaItem, SimulationSettings } from "@/lib/ProcedureService";
 import { v4 as uuidv4 } from 'uuid';
 import { generateYamlFromSteps as generateYamlFromStepsViaAPI } from "@/lib/deepseek";
@@ -35,6 +36,8 @@ export default function CreateProcedure() {
   const [simulationSettings, setSimulationSettings] = useState<SimulationSettings | null>(null);
   const [loading, setLoading] = useState(false);
   const [isGeneratingYaml, setIsGeneratingYaml] = useState(false);
+  const [interviewSessionId, setInterviewSessionId] = useState<string | null>(null);
+  const [interviewConversation, setInterviewConversation] = useState<Array<{role: 'ai'|'user', content: string}>>([]);
 
   // Redirect to sign-in if not authenticated
   useEffect(() => {
@@ -197,7 +200,8 @@ export default function CreateProcedure() {
 
   const handleNextTab = () => {
     if (activeTab === "task") handleTabChange("media");
-    else if (activeTab === "media") handleTabChange("dictation");
+    else if (activeTab === "media") handleTabChange("interview");
+    else if (activeTab === "interview") handleTabChange("dictation");
     else if (activeTab === "dictation") handleTabChange("yaml");
     else if (activeTab === "yaml") handleTabChange("flowchart");
     else if (activeTab === "flowchart") handleTabChange("simulation");
@@ -205,7 +209,8 @@ export default function CreateProcedure() {
 
   const handlePreviousTab = () => {
     if (activeTab === "media") handleTabChange("task");
-    else if (activeTab === "dictation") handleTabChange("media");
+    else if (activeTab === "interview") handleTabChange("media");
+    else if (activeTab === "dictation") handleTabChange("interview");
     else if (activeTab === "yaml") handleTabChange("dictation");
     else if (activeTab === "flowchart") handleTabChange("yaml");
     else if (activeTab === "simulation") handleTabChange("flowchart");
@@ -255,6 +260,21 @@ export default function CreateProcedure() {
       console.error("Error publishing procedure:", error);
       toast.error("Failed to publish procedure");
     }
+  };
+
+  const handleInterviewComplete = (conversationHistory: Array<{role: 'ai'|'user', content: string}>) => {
+    setInterviewConversation(conversationHistory);
+    
+    const userResponses = conversationHistory
+      .filter(entry => entry.role === 'user')
+      .map(entry => entry.content)
+      .join('\n\n');
+    
+    if (userResponses && !transcript) {
+      handleTranscriptChange(userResponses);
+    }
+    
+    handleNextTab();
   };
 
   if (status === "loading" || loading) {
@@ -343,13 +363,14 @@ export default function CreateProcedure() {
           onValueChange={handleTabChange}
         >
           <div className="mb-8">
-            <TabsList className="grid w-full grid-cols-6">
+            <TabsList className="grid w-full grid-cols-7">
               <TabsTrigger value="task">1. Define Task</TabsTrigger>
               <TabsTrigger value="media">2. Media</TabsTrigger>
-              <TabsTrigger value="dictation">3. Dictation</TabsTrigger>
-              <TabsTrigger value="yaml">4. YAML</TabsTrigger>
-              <TabsTrigger value="flowchart">5. Flowchart</TabsTrigger>
-              <TabsTrigger value="simulation">6. Simulation</TabsTrigger>
+              <TabsTrigger value="interview">3. Interview</TabsTrigger>
+              <TabsTrigger value="dictation">4. Dictation</TabsTrigger>
+              <TabsTrigger value="yaml">5. YAML</TabsTrigger>
+              <TabsTrigger value="flowchart">6. Flowchart</TabsTrigger>
+              <TabsTrigger value="simulation">7. Simulation</TabsTrigger>
             </TabsList>
           </div>
 
@@ -383,6 +404,35 @@ export default function CreateProcedure() {
                 className="bg-blue-600 hover:bg-blue-700"
               >
                 Next Step <ChevronRight className="ml-2 h-4 w-4" />
+              </Button>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="interview">
+            <Card>
+              <CardContent className="pt-6">
+                <VoiceInterview
+                  procedureId={procedureService.currentProcedureId || ""}
+                  initialSessionId={interviewSessionId}
+                  taskDefinition={{
+                    title: taskDefinition?.name || "Procedure",
+                    description: taskDefinition?.description,
+                    goal: taskDefinition?.goal
+                  }}
+                  onInterviewComplete={handleInterviewComplete}
+                />
+              </CardContent>
+            </Card>
+
+            <div className="flex justify-between mt-6">
+              <Button variant="outline" onClick={handlePreviousTab}>
+                <ChevronLeft className="mr-2 h-4 w-4" /> Previous Step
+              </Button>
+              <Button
+                onClick={handleNextTab}
+                className="bg-blue-600 hover:bg-blue-700"
+              >
+                Skip Interview <ChevronRight className="ml-2 h-4 w-4" />
               </Button>
             </div>
           </TabsContent>
