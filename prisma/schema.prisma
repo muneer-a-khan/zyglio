@@ -170,7 +170,6 @@ model Chunk {
   updatedAt      DateTime    @updatedAt @db.Timestamptz(6)
 
   @@index([documentId])
-  @@index([embedding(ops: "vector_cosine_ops")]) 
 }
 
 enum MediaType {
