@@ -85,7 +85,8 @@ async function generateFirstQuestion(initialContext: string): Promise<string> {
   const systemPrompt = `You are an expert interviewer. Your goal is to ask an informed, insightful, and open-ended initial question to a Subject Matter Expert (SME) about a technical or medical procedure.
 Based on the context provided, ask a broad opening question that will help you understand the procedure better.
 Your question should be concise (1-2 sentences) but specific enough to show you have some background knowledge.
-Maintain a professional, curious tone.`;
+Maintain a professional, curious tone.
+IMPORTANT: Only return the question itself, with no additional explanation, asterisks, formatting or commentary. Do not include any text like "Question:" or "My question is:" or any other prefixes.`;
 
   const userPrompt = `
 ## Context:
@@ -93,6 +94,7 @@ ${initialContext}
 
 Generate an opening question for a Subject Matter Expert interview about the procedure described in the context above. 
 The question should be specific enough to show you have some background knowledge but open-ended enough to let the expert elaborate.
+IMPORTANT: Return ONLY the question itself - no explanation, no commentary, no formatting. Just the plain question text.
 `;
 
   try {
@@ -106,7 +108,17 @@ The question should be specific enough to show you have some background knowledg
       max_tokens: 300
     });
 
-    return completion.choices[0].message.content || "Could you walk me through this procedure and explain the key steps involved?";
+    // Extract just the question, removing any explanatory text
+    let questionText = completion.choices[0].message.content || "Could you walk me through this procedure and explain the key steps involved?";
+    
+    // Clean up any potential formatting or explanations
+    questionText = questionText
+      .replace(/^(Question:|My question is:|Here's my question:|I would ask:)?\s*/i, '')
+      .replace(/\*\*(.*?)\*\*/g, '$1')  // Remove markdown bold
+      .replace(/^\s*["'](.*)["']\s*$/, '$1')  // Remove quotes
+      .trim();
+
+    return questionText;
   } catch (error) {
     console.error('Error generating first question:', error);
     return "Could you walk me through this procedure and explain the key steps involved?";

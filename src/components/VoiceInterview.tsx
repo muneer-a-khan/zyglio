@@ -1,9 +1,9 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Mic, MicOff, Loader2, Volume2 } from "lucide-react";
+import { Mic, MicOff, Loader2, Volume2, FileText, ArrowRight } from "lucide-react";
 import { toast } from "sonner";
 
 interface ConversationEntry {
@@ -273,7 +273,10 @@ export default function VoiceInterview({
   // Complete the interview
   const completeInterview = () => {
     if (onInterviewComplete && conversationHistory.length > 0) {
+      toast.success("Interview complete! Generating transcript and procedure steps...");
       onInterviewComplete(conversationHistory);
+    } else {
+      toast.error("Cannot complete interview. Please ensure you have answered at least one question.");
     }
   };
   
@@ -282,6 +285,9 @@ export default function VoiceInterview({
     <Card className="w-full">
       <CardHeader>
         <CardTitle className="text-xl">Voice Interview</CardTitle>
+        <CardDescription>
+          Answer the AI interviewer's questions to create a transcript for your procedure
+        </CardDescription>
       </CardHeader>
       <CardContent>
         {isInitializing ? (
@@ -359,14 +365,23 @@ export default function VoiceInterview({
                   : "Click the microphone to start recording your answer"}
               </p>
               
-              <Button
-                variant="outline"
-                onClick={completeInterview}
-                disabled={isRecording || isProcessing || conversationHistory.length < 2}
-                className="mt-4"
-              >
-                Complete Interview
-              </Button>
+              <div className="flex flex-col sm:flex-row items-center gap-3 mt-4">
+                <Button
+                  variant="outline"
+                  onClick={completeInterview}
+                  disabled={isRecording || isProcessing || conversationHistory.length < 2}
+                >
+                  <FileText className="h-4 w-4 mr-1" /> Generate Transcript & Steps
+                </Button>
+                
+                <Button
+                  onClick={completeInterview}
+                  disabled={isRecording || isProcessing || conversationHistory.length < 2}
+                  className="bg-blue-600 hover:bg-blue-700"
+                >
+                  <ArrowRight className="h-4 w-4 mr-1" /> Complete Interview
+                </Button>
+              </div>
             </div>
           </>
         )}

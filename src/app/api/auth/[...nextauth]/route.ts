@@ -35,33 +35,36 @@ export const authOptions: NextAuthOptions = {
             return null;
           }
 
-          // Check if user exists in Prisma
-          let user = await prisma.user.findUnique({
-            where: { id: data.user.id }
+          // Ensure the user exists in our database
+          let user = await prisma.users.findUnique({
+            where: { email: credentials.email }
           });
 
-          // If user doesn't exist in Prisma but exists in Supabase Auth, create the user in Prisma
+          // If user doesn't exist in our database, create them
           if (!user) {
             try {
-              user = await prisma.user.create({
+              user = await prisma.users.create({
                 data: {
-                  id: data.user.id,
-                  email: data.user.email!,
-                  name: data.user.user_metadata?.name || data.user.email?.split('@')[0] || 'User',
+                  id: data.user.id,  // Use the Supabase user ID
+                  email: credentials.email,
+                  name: data.user.user_metadata?.name || credentials.email.split('@')[0] || 'User',
                 }
               });
-              console.log("Created new user in Prisma:", user.id);
+              console.log("Created new user in database:", user.id);
             } catch (createError) {
-              console.error("Error creating user in Prisma:", createError);
-              // Continue with auth even if Prisma creation fails
+              console.error("Error creating user in database:", createError);
+              // If we can't create the user, we still want to continue with the auth flow
+              // We'll just return the Supabase user and hope for the best
             }
+          } else {
+            console.log("Found existing user in database:", user.id);
           }
 
           // Return the user for NextAuth
           return {
             id: data.user.id,
             email: data.user.email,
-            name: user?.name || data.user.user_metadata?.name || data.user.email?.split('@')[0] || 'User',
+            name: data.user.user_metadata?.name || data.user.email?.split('@')[0] || 'User',
           };
         } catch (error) {
           console.error("Authentication error:", error);

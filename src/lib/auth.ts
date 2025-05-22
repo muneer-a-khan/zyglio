@@ -1,11 +1,13 @@
 import { NextAuthOptions } from "next-auth";
 import { PrismaAdapter } from "@auth/prisma-adapter";
-import { prisma } from "@/lib/prisma";
+import prisma from "@/lib/prisma";
 import CredentialsProvider from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import { getServerSession } from 'next-auth/next';
 import { cookies, headers } from 'next/headers';
 import { createClient } from '@supabase/supabase-js';
+import { authOptions } from '@/app/api/auth/[...nextauth]/route';
+import { supabase } from '@/integrations/supabase/client';
 
 export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma),
@@ -116,12 +118,12 @@ export const authOptions: NextAuthOptions = {
 export async function verifySession(request: Request) {
   try {
     // Get session from Next-Auth
-    const session = await getServerSession();
+    const session = await getServerSession(authOptions);
     if (session) {
       return session;
     }
 
-    // Fallback to checking auth cookie or header
+    // Fallback to checking auth header
     const authHeader = request.headers.get('Authorization');
     if (authHeader && authHeader.startsWith('Bearer ')) {
       const token = authHeader.substring(7);
@@ -141,11 +143,6 @@ export async function verifySession(request: Request) {
  */
 async function verifyToken(token: string) {
   try {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
-    
-    const supabase = createClient(supabaseUrl, supabaseAnonKey);
-    
     const { data, error } = await supabase.auth.getUser(token);
     
     if (error || !data.user) {
