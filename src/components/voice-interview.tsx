@@ -31,6 +31,7 @@ export default function VoiceInterview({
 }: VoiceInterviewProps) {
   // States
   const [isInitializing, setIsInitializing] = useState(true);
+  const [isBatchGenerating, setIsBatchGenerating] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(initialSessionId || null);
   const [isRecording, setIsRecording] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -41,6 +42,9 @@ export default function VoiceInterview({
   const [validationIssues, setValidationIssues] = useState<string[]>([]);
   const [clarificationsMade, setClarificationsMade] = useState(false);
   const [followUpChosen, setFollowUpChosen] = useState(false);
+  const [interviewCompleted, setInterviewCompleted] = useState(false);
+  const [questionsAsked, setQuestionsAsked] = useState(0);
+  const [assessment, setAssessment] = useState<any>(null);
   
   // Refs
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -99,6 +103,7 @@ export default function VoiceInterview({
       setSessionId(data.sessionId);
       
       // Start the interview by generating the first AI question
+      setIsBatchGenerating(true);
       startInterviewWithFirstQuestion();
     } catch (error) {
       console.error('Error initializing interview session:', error);
@@ -115,13 +120,15 @@ export default function VoiceInterview({
     try {
       setIsProcessing(true);
       
-      const response = await fetch('/api/interview/first-question', {
+      // Use the new deepseek interview-question endpoint that generates batched questions
+      const response = await fetch('/api/deepseek/interview-question', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           sessionId,
+          isFirstQuestion: true
         }),
       });
       
@@ -132,15 +139,29 @@ export default function VoiceInterview({
       
       const data = await response.json();
       
+      // Add the AI question to the conversation history
+      const updatedHistory = [...conversationHistory];
+      updatedHistory.push({
+        role: 'ai',
+        content: data.aiQuestionText
+      });
+      
       // Update conversation history
-      setConversationHistory(data.conversationHistory);
-      setCurrentAIQuestion(data.questionText);
+      setConversationHistory(updatedHistory);
+      setCurrentAIQuestion(data.aiQuestionText);
+      setQuestionsAsked(1);
       
       // Play audio if available
-      if (data.questionAudio) {
-        const audioBlob = base64ToBlob(data.questionAudio, 'audio/mp3');
+      if (data.aiQuestionAudio) {
+        const audioBlob = base64ToBlob(data.aiQuestionAudio, 'audio/mp3');
         playAudio(audioBlob);
       }
+      
+      // Wait a bit for the batch to be generated
+      setTimeout(() => {
+        setIsBatchGenerating(false);
+      }, 2000);
+      
     } catch (error) {
       console.error('Error generating first question:', error);
       toast.error('Failed to start interview. Please try again.');
@@ -186,7 +207,7 @@ export default function VoiceInterview({
     }
   };
   
-  // Submit the recording to the orchestrator API
+  // Submit the recording to the interview-turn API
   const submitRecording = async () => {
     if (audioChunksRef.current.length === 0 || !sessionId) return;
     
@@ -198,7 +219,8 @@ export default function VoiceInterview({
       formData.append('sessionId', sessionId);
       formData.append('audioBlob', audioBlob);
       
-      const response = await fetch('/api/interview/orchestrate', {
+      // Use the new interview-turn API that uses batched questions
+      const response = await fetch('/api/rag/interview-turn', {
         method: 'POST',
         body: formData,
       });
@@ -212,18 +234,25 @@ export default function VoiceInterview({
       
       // Update conversation history
       setConversationHistory(data.conversationHistory);
-      setCurrentAIQuestion(data.aiResponse);
+      setCurrentAIQuestion(data.aiQuestionText);
+      setQuestionsAsked(data.questionsAsked || (questionsAsked + 1));
       
-      // Set agent feedback states
-      setValidationIssues(data.validationIssues || []);
-      setClarificationsMade(data.clarificationsMade || false);
-      setFollowUpChosen(data.followUpChosen || false);
+      // Check if the interview is completed
+      if (data.interviewCompleted) {
+        setInterviewCompleted(true);
+        setAssessment(data.assessment);
+        
+        if (onInterviewComplete) {
+          onInterviewComplete(data.conversationHistory);
+        }
+      }
       
-      // Play audio response
-      if (data.aiResponseAudio) {
-        const audioBlob = base64ToBlob(data.aiResponseAudio, 'audio/mp3');
+      // Play audio response if not completed
+      if (data.aiQuestionAudio && !data.interviewCompleted) {
+        const audioBlob = base64ToBlob(data.aiQuestionAudio, 'audio/mp3');
         playAudio(audioBlob);
       }
+      
     } catch (error) {
       console.error('Error processing interview turn:', error);
       toast.error('Failed to process your response. Please try again.');
@@ -278,10 +307,43 @@ export default function VoiceInterview({
     return new Blob(byteArrays, { type: mimeType });
   };
   
-  // Complete the interview
-  const completeInterview = () => {
-    if (onInterviewComplete && conversationHistory.length > 0) {
-      onInterviewComplete(conversationHistory);
+  // Force end the interview
+  const forceEndInterview = async () => {
+    if (!sessionId) return;
+    
+    try {
+      setIsProcessing(true);
+      
+      const formData = new FormData();
+      formData.append('sessionId', sessionId);
+      formData.append('audioBlob', new Blob([''], { type: 'audio/webm' })); // Empty blob
+      formData.append('forceEndInterview', 'true');
+      
+      const response = await fetch('/api/rag/interview-turn', {
+        method: 'POST',
+        body: formData,
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to end interview');
+      }
+      
+      const data = await response.json();
+      
+      // Update state
+      setConversationHistory(data.conversationHistory);
+      setInterviewCompleted(true);
+      
+      if (onInterviewComplete) {
+        onInterviewComplete(data.conversationHistory);
+      }
+      
+    } catch (error) {
+      console.error('Error ending interview:', error);
+      toast.error('Failed to end interview. Please try again.');
+    } finally {
+      setIsProcessing(false);
     }
   };
   
@@ -292,19 +354,14 @@ export default function VoiceInterview({
         <CardTitle className="text-xl flex items-center justify-between">
           Voice Interview
           <div className="flex gap-2">
-            {validationIssues.length > 0 && (
-              <Badge variant="destructive" className="flex items-center gap-1">
-                <AlertCircle className="h-3 w-3" /> Validation
+            {!interviewCompleted && questionsAsked > 0 && (
+              <Badge variant="outline" className="flex items-center gap-1">
+                {questionsAsked} Questions Asked
               </Badge>
             )}
-            {clarificationsMade && (
+            {interviewCompleted && (
               <Badge variant="secondary" className="flex items-center gap-1">
-                <AlertCircle className="h-3 w-3" /> Clarification
-              </Badge>
-            )}
-            {followUpChosen && (
-              <Badge variant="default" className="flex items-center gap-1">
-                <CheckCircle className="h-3 w-3" /> Follow-up
+                <CheckCircle className="h-3 w-3" /> Interview Complete
               </Badge>
             )}
           </div>
@@ -345,69 +402,90 @@ export default function VoiceInterview({
               </div>
             </div>
             
-            {validationIssues.length > 0 && (
-              <div className="mb-4 p-3 border border-destructive/50 bg-destructive/10 rounded-md">
-                <h4 className="font-medium text-destructive flex items-center gap-1">
-                  <AlertCircle className="h-4 w-4" /> Validation Issues
+            {interviewCompleted ? (
+              <div className="mb-4 p-4 border border-green-200 bg-green-50 rounded-md">
+                <h4 className="font-medium text-green-800 flex items-center gap-2 mb-2">
+                  <CheckCircle className="h-5 w-5" /> Interview Complete
                 </h4>
-                <ul className="list-disc list-inside mt-1 text-sm">
-                  {validationIssues.map((issue, index) => (
-                    <li key={index}>{issue}</li>
-                  ))}
-                </ul>
+                {assessment && (
+                  <div className="space-y-2 text-sm">
+                    <p><strong>Analysis:</strong> {assessment.reasoning}</p>
+                    {assessment.coveredAreas && assessment.coveredAreas.length > 0 && (
+                      <div>
+                        <p><strong>Covered Areas:</strong></p>
+                        <ul className="list-disc list-inside ml-2">
+                          {assessment.coveredAreas.map((area: string, i: number) => (
+                            <li key={i}>{area}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
-            )}
-            
-            <div className="flex flex-col items-center justify-center space-y-4">
-              {currentAIQuestion && (
-                <div className="w-full text-center p-4 bg-primary/10 rounded-md">
-                  <p className="font-semibold mb-2">Current question:</p>
-                  <p>{currentAIQuestion}</p>
-                  <Button 
-                    onClick={replayLastQuestion}
+            ) : (
+              <>
+                {isBatchGenerating && (
+                  <div className="mb-4 p-3 border border-blue-200 bg-blue-50 rounded-md flex items-center">
+                    <Loader2 className="h-4 w-4 animate-spin text-blue-600 mr-2" />
+                    <p className="text-blue-700 text-sm">Generating batch of questions...</p>
+                  </div>
+                )}
+                
+                {currentAIQuestion && (
+                  <div className="w-full text-center p-4 bg-primary/10 rounded-md">
+                    <p className="font-semibold mb-2">Current question:</p>
+                    <p>{currentAIQuestion}</p>
+                    <Button 
+                      onClick={replayLastQuestion}
+                      variant="outline"
+                      size="sm"
+                      className="mt-2"
+                      disabled={isPlaying || isRecording || isProcessing}
+                    >
+                      <Volume2 className="h-4 w-4 mr-1" /> Replay Audio
+                    </Button>
+                  </div>
+                )}
+                
+                <div className="flex flex-col items-center justify-center space-y-4 mt-4">
+                  <div className="flex items-center justify-center gap-4">
+                    <Button
+                      size="lg"
+                      variant={isRecording ? "destructive" : "default"}
+                      onClick={isRecording ? stopRecording : startRecording}
+                      disabled={isProcessing || isPlaying || !sessionId || isBatchGenerating}
+                      className="rounded-full h-16 w-16 p-0"
+                    >
+                      {isRecording ? (
+                        <MicOff className="h-6 w-6" />
+                      ) : (
+                        <Mic className="h-6 w-6" />
+                      )}
+                    </Button>
+                  </div>
+                  
+                  <p className="text-sm text-muted-foreground">
+                    {isRecording
+                      ? "Recording... Click the button to stop"
+                      : isProcessing
+                      ? "Processing your response..."
+                      : isBatchGenerating
+                      ? "Preparing interview questions..."
+                      : "Click the microphone to start recording your answer"}
+                  </p>
+                  
+                  <Button
                     variant="outline"
-                    size="sm"
-                    className="mt-2"
-                    disabled={isPlaying || isRecording || isProcessing}
+                    onClick={forceEndInterview}
+                    disabled={isRecording || isProcessing || isBatchGenerating || conversationHistory.length < 2}
+                    className="mt-4"
                   >
-                    <Volume2 className="h-4 w-4 mr-1" /> Replay Audio
+                    End Interview
                   </Button>
                 </div>
-              )}
-              
-              <div className="flex items-center justify-center gap-4">
-                <Button
-                  size="lg"
-                  variant={isRecording ? "destructive" : "default"}
-                  onClick={isRecording ? stopRecording : startRecording}
-                  disabled={isProcessing || isPlaying || !sessionId}
-                  className="rounded-full h-16 w-16 p-0"
-                >
-                  {isRecording ? (
-                    <MicOff className="h-6 w-6" />
-                  ) : (
-                    <Mic className="h-6 w-6" />
-                  )}
-                </Button>
-              </div>
-              
-              <p className="text-sm text-muted-foreground">
-                {isRecording
-                  ? "Recording... Click the button to stop"
-                  : isProcessing
-                  ? "Processing your response..."
-                  : "Click the microphone to start recording your answer"}
-              </p>
-              
-              <Button
-                variant="outline"
-                onClick={completeInterview}
-                disabled={isRecording || isProcessing || conversationHistory.length < 2}
-                className="mt-4"
-              >
-                Complete Interview
-              </Button>
-            </div>
+              </>
+            )}
           </>
         )}
       </CardContent>
