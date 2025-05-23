@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { generateEmbedding, getSession, retrieveRelevantContext, updateConversationHistory } from '@/lib/rag-service';
+import { getSession, updateConversationHistory } from '@/lib/rag-service';
 import { generateSpeech } from '@/lib/tts-service';
 import { verifySession } from '@/lib/auth';
 import { selectNextQuestion, incrementQuestionsAsked, markInterviewCompleted, addBatchedQuestions } from '@/lib/session-service';
@@ -29,6 +29,7 @@ export async function POST(request: Request) {
     const formData = await request.formData();
     const sessionId = formData.get('sessionId') as string;
     const audioBlob = formData.get('audioBlob') as Blob;
+    const forceEndInterview = formData.get('forceEndInterview') === 'true';
     
     if (!sessionId || !audioBlob) {
       return NextResponse.json(
@@ -54,6 +55,24 @@ export async function POST(request: Request) {
       );
     }
 
+    // Force end interview if requested
+    if (forceEndInterview) {
+      await markInterviewCompleted(sessionId);
+      
+      // Return the conversation history without processing audio
+      return NextResponse.json({
+        success: true,
+        interviewCompleted: true,
+        assessment: {
+          reasoning: 'Interview manually ended by user',
+          confidence: 100,
+          coveredAreas: [],
+          missingAreas: []
+        },
+        conversationHistory: sessionData.conversationHistory
+      });
+    }
+
     // 1. Speech-to-Text using Whisper API
     const audioBuffer = Buffer.from(await audioBlob.arrayBuffer());
     const transcription = await openai.audio.transcriptions.create({
@@ -74,7 +93,7 @@ export async function POST(request: Request) {
     
     // 4. Check if interview should end (after at least 3 questions)
     if (questionsAsked >= 3) {
-      const assessmentResponse = await fetch(`${process.env.NEXTAUTH_URL}/api/deepseek/interview-assessment`, {
+      const assessmentResponse = await fetch(new URL('/api/deepseek/interview-assessment', process.env.NEXTAUTH_URL).toString(), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sessionId })
@@ -105,7 +124,9 @@ export async function POST(request: Request) {
     // 5. Check if we need to generate more questions (every 5 questions after initial batch)
     const unusedQuestions = sessionData.batchedQuestions.filter(q => !q.used).length;
     if (questionsAsked > 0 && questionsAsked % 5 === 0 && unusedQuestions < 3) {
-      const batchResponse = await fetch(`${process.env.NEXTAUTH_URL}/api/deepseek/batch-questions`, {
+      console.log(`Generating batch of questions after ${questionsAsked} questions (unused: ${unusedQuestions})`);
+      
+      const batchResponse = await fetch(new URL('/api/deepseek/batch-questions', process.env.NEXTAUTH_URL).toString(), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
@@ -118,6 +139,7 @@ export async function POST(request: Request) {
       if (batchResponse.ok) {
         const batchData = await batchResponse.json();
         await addBatchedQuestions(sessionId, batchData.batchedQuestions);
+        console.log(`Added ${batchData.batchedQuestions.length} questions to the session`);
       }
     }
     
