@@ -16,9 +16,12 @@ const deepseek = new OpenAI({
  */
 export async function POST(request: Request) {
   try {
+    console.log('[interview-question] Generating interview question');
+    
     // Basic auth verification
     const session = await verifySession(request);
     if (!session) {
+      console.error('[interview-question] Unauthorized access attempt');
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
@@ -27,8 +30,10 @@ export async function POST(request: Request) {
 
     // Parse request data
     const { sessionId, isFirstQuestion = false } = await request.json();
+    console.log(`[interview-question] Request for ${isFirstQuestion ? 'first' : 'follow-up'} question, sessionId: ${sessionId}`);
     
     if (!sessionId) {
+      console.error('[interview-question] Missing sessionId');
       return NextResponse.json(
         { error: 'Missing required fields: sessionId' },
         { status: 400 }
@@ -38,6 +43,7 @@ export async function POST(request: Request) {
     // Get the session data
     const sessionData = await getSession(sessionId);
     if (!sessionData) {
+      console.error(`[interview-question] Session ${sessionId} not found`);
       return NextResponse.json(
         { error: 'Session not found' },
         { status: 404 }
@@ -48,15 +54,19 @@ export async function POST(request: Request) {
     let aiQuestionText;
     
     if (isFirstQuestion) {
+      console.log('[interview-question] Generating first question');
       // Generate the first question
       aiQuestionText = await generateFirstQuestion(sessionData.initialContext);
+      console.log(`[interview-question] First question generated: "${aiQuestionText.substring(0, 50)}..."`);
       
       // Also generate the initial batch of questions in parallel
       // We don't await this, as we want to return the first question quickly
       generateInitialBatchOfQuestions(sessionId, sessionData.initialContext)
-        .catch(error => console.error('Error generating initial batch:', error));
+        .then(() => console.log('[interview-question] Initial batch generation completed'))
+        .catch(error => console.error('[interview-question] Error generating initial batch:', error));
     } else {
       // This branch is used by the interview-turn API which manages its own logic
+      console.warn('[interview-question] Non-first question requested - should use interview-turn API');
       return NextResponse.json(
         { error: 'For non-first questions, use the interview-turn API' },
         { status: 400 }
@@ -64,9 +74,11 @@ export async function POST(request: Request) {
     }
 
     // Generate speech with ElevenLabs
+    console.log('[interview-question] Converting question to speech');
     const audioArrayBuffer = await generateSpeech(aiQuestionText);
     const audioBase64 = Buffer.from(audioArrayBuffer).toString('base64');
     
+    console.log('[interview-question] Successfully generated question and audio');
     return NextResponse.json({
       success: true,
       aiQuestionText,
@@ -136,8 +148,13 @@ IMPORTANT: Return ONLY the question itself - no explanation, no commentary, no f
  */
 async function generateInitialBatchOfQuestions(sessionId: string, initialContext: string): Promise<void> {
   try {
+    console.log('[generateInitialBatch] Starting batch generation for session', sessionId);
+    
+    // Wait a short delay to ensure the first question has been processed
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
     // Call the batch-questions API
-    const response = await fetch(`${process.env.NEXTAUTH_URL}/api/deepseek/batch-questions`, {
+    const response = await fetch(new URL('/api/deepseek/batch-questions', process.env.NEXTAUTH_URL).toString(), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ 
@@ -148,17 +165,30 @@ async function generateInitialBatchOfQuestions(sessionId: string, initialContext
     });
     
     if (!response.ok) {
+      const errorData = await response.json();
+      console.error(`[generateInitialBatch] API error: ${response.status}`, errorData);
       throw new Error(`Failed to generate initial batch: ${response.status}`);
     }
     
     const batchData = await response.json();
     
     // Add the batched questions to the session
-    await addBatchedQuestions(sessionId, batchData.batchedQuestions);
+    const success = await addBatchedQuestions(sessionId, batchData.batchedQuestions);
     
-    console.log(`Generated initial batch of ${batchData.count} questions`);
+    if (success) {
+      console.log(`[generateInitialBatch] Added ${batchData.count} questions to session ${sessionId}`);
+    } else {
+      console.error(`[generateInitialBatch] Failed to add questions to session ${sessionId}`);
+      throw new Error('Failed to add questions to session');
+    }
+    
+    // Get session again to verify questions were added
+    const updatedSession = await getSession(sessionId);
+    console.log(`[generateInitialBatch] Session now has ${updatedSession?.batchedQuestions?.length || 0} batched questions`);
+    
+    return;
   } catch (error) {
-    console.error('Error generating initial batch of questions:', error);
+    console.error('[generateInitialBatch] Error generating initial batch of questions:', error);
     throw error;
   }
 } 

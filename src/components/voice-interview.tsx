@@ -119,6 +119,7 @@ export default function VoiceInterview({
     
     try {
       setIsProcessing(true);
+      setIsBatchGenerating(true);
       
       // Use the new deepseek interview-question endpoint that generates batched questions
       const response = await fetch('/api/deepseek/interview-question', {
@@ -157,14 +158,39 @@ export default function VoiceInterview({
         playAudio(audioBlob);
       }
       
-      // Wait a bit for the batch to be generated
-      setTimeout(() => {
-        setIsBatchGenerating(false);
-      }, 2000);
+      // Explicitly call the batch-questions API to ensure they're ready
+      // This will wait for the batch to be fully generated before allowing responses
+      try {
+        const batchResponse = await fetch('/api/deepseek/batch-questions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            sessionId,
+            isInitialBatch: true,
+            numberOfQuestions: 20
+          }),
+        });
+        
+        if (batchResponse.ok) {
+          console.log('Successfully generated initial batch of questions');
+          // Add a short delay to ensure questions are properly saved to session
+          await new Promise(resolve => setTimeout(resolve, 500));
+        } else {
+          console.error('Failed to generate batch questions');
+        }
+      } catch (batchError) {
+        console.error('Error generating batch questions:', batchError);
+      }
+      
+      // Done with batch generation
+      setIsBatchGenerating(false);
       
     } catch (error) {
       console.error('Error generating first question:', error);
       toast.error('Failed to start interview. Please try again.');
+      setIsBatchGenerating(false);
     } finally {
       setIsProcessing(false);
     }

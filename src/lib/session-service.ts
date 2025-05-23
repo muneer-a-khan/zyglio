@@ -105,31 +105,52 @@ export async function selectNextQuestion(
 ): Promise<BatchedQuestion | null> {
   const session = sessionStore.get(sessionId);
   if (!session) {
+    console.error(`[selectNextQuestion] Session ${sessionId} not found`);
     return null;
   }
   
   // Get unused questions
   const unusedQuestions = session.batchedQuestions.filter(q => !q.used);
+  console.log(`[selectNextQuestion] Found ${unusedQuestions.length} unused questions out of ${session.batchedQuestions.length} total`);
   
   if (unusedQuestions.length === 0) {
+    console.warn('[selectNextQuestion] No unused questions available');
     return null;
   }
   
   // Simple keyword matching to find most relevant question
   const userWords = userResponse.toLowerCase().split(/\s+/);
   
+  // Track scores for all questions for debugging
+  const questionScores: {question: BatchedQuestion, score: number, matches: string[]}[] = [];
+  
+  // Default to first question if no matches are found
   let bestQuestion = unusedQuestions[0];
   let bestScore = 0;
   
   for (const question of unusedQuestions) {
     let score = 0;
+    const matches: string[] = [];
     
     // Score based on keyword matches
     for (const keyword of question.keywords) {
-      if (userWords.some(word => word.includes(keyword.toLowerCase()) || keyword.toLowerCase().includes(word))) {
+      const keywordLower = keyword.toLowerCase();
+      const foundMatch = userWords.some(word => {
+        const hasMatch = word.includes(keywordLower) || keywordLower.includes(word);
+        if (hasMatch && word.length > 2) { // Only count substantial words
+          return true;
+        }
+        return false;
+      });
+      
+      if (foundMatch) {
         score += 1;
+        matches.push(keyword);
       }
     }
+    
+    // Add to score tracking
+    questionScores.push({question, score, matches});
     
     if (score > bestScore) {
       bestScore = score;
@@ -137,11 +158,27 @@ export async function selectNextQuestion(
     }
   }
   
+  // Sort and log scores for debugging
+  questionScores.sort((a, b) => b.score - a.score);
+  console.log(`[selectNextQuestion] Top scoring questions:`);
+  questionScores.slice(0, 3).forEach(qs => {
+    console.log(`- Score ${qs.score}: "${qs.question.question.substring(0, 30)}..." (matches: ${qs.matches.join(', ')})`);
+  });
+  
+  // If we didn't find any good matches, just take the first unused question
+  if (bestScore === 0) {
+    console.log('[selectNextQuestion] No keyword matches found, using random question');
+    bestQuestion = unusedQuestions[Math.floor(Math.random() * unusedQuestions.length)];
+  }
+  
   // Mark the selected question as used
   const questionIndex = session.batchedQuestions.findIndex(q => q.id === bestQuestion.id);
   if (questionIndex !== -1) {
     session.batchedQuestions[questionIndex].used = true;
     sessionStore.set(sessionId, session);
+    console.log(`[selectNextQuestion] Selected question from category: ${bestQuestion.category}`);
+  } else {
+    console.error('[selectNextQuestion] Failed to mark question as used');
   }
   
   return bestQuestion;
