@@ -1,18 +1,13 @@
 import { NextResponse } from 'next/server';
 import { generateEmbedding, getSession, retrieveRelevantContext, updateConversationHistory } from '@/lib/rag-service';
 import { generateSpeech } from '@/lib/tts-service';
-import { verifySession } from '@/lib/auth'; // Assuming you have a session verification function
+import { verifySession } from '@/lib/auth';
+import { selectNextQuestion, incrementQuestionsAsked, markInterviewCompleted, addBatchedQuestions } from '@/lib/session-service';
 import OpenAI from 'openai';
 
 // Initialize OpenAI client for whisper
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
-});
-
-// Initialize DeepSeek client
-const deepseek = new OpenAI({
-  baseURL: 'https://api.deepseek.com/v1',
-  apiKey: process.env.DEEPSEEK_API_KEY,
 });
 
 /**
@@ -51,6 +46,14 @@ export async function POST(request: Request) {
       );
     }
 
+    // Check if interview is already completed
+    if (sessionData.interviewCompleted) {
+      return NextResponse.json(
+        { error: 'Interview has already been completed' },
+        { status: 400 }
+      );
+    }
+
     // 1. Speech-to-Text using Whisper API
     const audioBuffer = Buffer.from(await audioBlob.arrayBuffer());
     const transcription = await openai.audio.transcriptions.create({
@@ -60,35 +63,95 @@ export async function POST(request: Request) {
     
     const smeResponseText = transcription.text;
     
-    // 2. Dynamic retrieval for this turn
-    const dynamicContext = await getDynamicContext(smeResponseText);
-    
-    // 3. Update conversation history with user response
+    // 2. Update conversation history with user response
     await updateConversationHistory(sessionId, {
       role: 'user',
       content: smeResponseText
     });
     
-    // 4. Generate AI follow-up question
-    const aiQuestionText = await generateInterviewQuestion(
-      sessionData.initialContext,
-      dynamicContext,
-      sessionData.conversationHistory,
-      smeResponseText
-    );
+    // 3. Increment questions asked counter
+    const questionsAsked = await incrementQuestionsAsked(sessionId);
     
-    // 5. Convert AI question to speech using ElevenLabs
+    // 4. Check if interview should end (after at least 3 questions)
+    if (questionsAsked >= 3) {
+      const assessmentResponse = await fetch(`${process.env.NEXTAUTH_URL}/api/deepseek/interview-assessment`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId })
+      });
+      
+      if (assessmentResponse.ok) {
+        const assessment = await assessmentResponse.json();
+        
+        if (assessment.shouldEndInterview) {
+          await markInterviewCompleted(sessionId);
+          
+          return NextResponse.json({
+            success: true,
+            smeResponseText,
+            interviewCompleted: true,
+            assessment: {
+              reasoning: assessment.reasoning,
+              confidence: assessment.confidence,
+              coveredAreas: assessment.coveredAreas,
+              missingAreas: assessment.missingAreas
+            },
+            conversationHistory: sessionData.conversationHistory
+          });
+        }
+      }
+    }
+    
+    // 5. Check if we need to generate more questions (every 5 questions after initial batch)
+    const unusedQuestions = sessionData.batchedQuestions.filter(q => !q.used).length;
+    if (questionsAsked > 0 && questionsAsked % 5 === 0 && unusedQuestions < 3) {
+      const batchResponse = await fetch(`${process.env.NEXTAUTH_URL}/api/deepseek/batch-questions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          sessionId, 
+          isInitialBatch: false, 
+          numberOfQuestions: 5 
+        })
+      });
+      
+      if (batchResponse.ok) {
+        const batchData = await batchResponse.json();
+        await addBatchedQuestions(sessionId, batchData.batchedQuestions);
+      }
+    }
+    
+    // 6. Select the next question from batched questions
+    const nextQuestion = await selectNextQuestion(sessionId, smeResponseText);
+    
+    if (!nextQuestion) {
+      // Fallback if no questions available
+      await markInterviewCompleted(sessionId);
+      
+      return NextResponse.json({
+        success: true,
+        smeResponseText,
+        interviewCompleted: true,
+        assessment: {
+          reasoning: 'No more questions available',
+          confidence: 50,
+          coveredAreas: ['Basic information gathered'],
+          missingAreas: []
+        },
+        conversationHistory: sessionData.conversationHistory
+      });
+    }
+    
+    const aiQuestionText = nextQuestion.question;
+    
+    // 7. Convert AI question to speech
     const audioArrayBuffer = await generateSpeech(aiQuestionText);
     
-    // 6. Update conversation history with AI question
+    // 8. Update conversation history with AI question
     await updateConversationHistory(sessionId, {
       role: 'ai',
       content: aiQuestionText
     });
-    
-    // Create response headers and construct a Response object
-    const headers = new Headers();
-    headers.set('Content-Type', 'application/json');
     
     // Convert audio ArrayBuffer to base64 for JSON transport
     const audioBase64 = Buffer.from(audioArrayBuffer).toString('base64');
@@ -98,6 +161,9 @@ export async function POST(request: Request) {
       smeResponseText,
       aiQuestionText,
       aiQuestionAudio: audioBase64,
+      interviewCompleted: false,
+      questionsAsked,
+      questionCategory: nextQuestion.category,
       conversationHistory: sessionData.conversationHistory
     });
 
@@ -109,86 +175,5 @@ export async function POST(request: Request) {
       { error: 'Failed to process interview turn', details: errorMessage },
       { status: 500 }
     );
-  }
-}
-
-/**
- * Helper function to get dynamic context based on user's response
- */
-async function getDynamicContext(userResponse: string): Promise<string> {
-  // Get relevant chunks for the user response
-  const ragResult = await retrieveRelevantContext(userResponse, 3);
-  return ragResult.context;
-}
-
-/**
- * Generate an interview question using DeepSeek
- */
-async function generateInterviewQuestion(
-  initialContext: string,
-  dynamicContext: string, 
-  conversationHistory: Array<{role: 'ai'|'user', content: string}>,
-  latestUserResponse: string
-): Promise<string> {
-  // Format the conversation history text
-  const conversationHistoryText = conversationHistory
-    .map(entry => `${entry.role === 'user' ? 'SME' : 'AI'}: ${entry.content}`)
-    .join('\n');
-  
-  // Create system prompt
-  const systemPrompt = `You are an expert interviewer. Your goal is to ask informed, insightful, and open-ended follow-up questions to a Subject Matter Expert (SME) on a technical or medical procedure. 
-You have comprehensive background knowledge provided below.
-Maintain a professional, curious, and empathetic tone.
-Focus on probing deeper, seeking clarification, and exploring nuances based on the SME's last statement and the context.
-Do NOT simply rephrase or summarize the SME's previous answer.
-Do NOT ask generic questions already covered by the context unless specifically for clarification.
-Keep your questions concise.
-IMPORTANT: Only return the question itself, with no additional explanation, asterisks, formatting, or commentary. Do not include any text like "Question:" or "My question is:" or any other prefixes.`;
-
-  // Full context combining initial and dynamic contexts
-  const fullContext = `
-## Broad Topic Context:
-${initialContext}
-
-## Current Turn's Dynamic Context:
-${dynamicContext}
-`;
-
-  // User prompt with conversation history and latest response
-  const userPrompt = `
-## Conversation So Far:
-${conversationHistoryText}
-SME's last statement: "${latestUserResponse}"
-
-Given the conversation history and all provided background information, what is your next insightful question for the SME?
-IMPORTANT: Return ONLY the question itself - no explanation, no commentary, no formatting. Just the plain question text.
-`;
-
-  // Call DeepSeek model
-  try {
-    const completion = await deepseek.chat.completions.create({
-      model: "deepseek-chat", // Use deepseek-chat model
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: fullContext + '\n\n' + userPrompt }
-      ],
-      temperature: 0.7,
-      max_tokens: 300
-    });
-
-    // Extract just the question, removing any explanatory text
-    let questionText = completion.choices[0].message.content || "What more can you tell me about this procedure?";
-    
-    // Clean up any potential formatting or explanations
-    questionText = questionText
-      .replace(/^(Question:|My question is:|Here's my question:|I would ask:)?\s*/i, '')
-      .replace(/\*\*(.*?)\*\*/g, '$1')  // Remove markdown bold
-      .replace(/^\s*["'](.*)["']\s*$/, '$1')  // Remove quotes
-      .trim();
-
-    return questionText;
-  } catch (error) {
-    console.error('Error generating interview question:', error);
-    return "Could you elaborate further on what you just explained?";
   }
 } 
