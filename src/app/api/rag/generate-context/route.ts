@@ -57,7 +57,10 @@ ${ragResult.relevantFactors.map((factor, i) => `${i+1}. ${factor}`).join('\n')}
     await createSession(sessionId, {
       procedureId,
       initialContext: combinedContext,
-      conversationHistory: []
+      conversationHistory: [],
+      batchedQuestions: [],
+      questionsAsked: 0,
+      interviewCompleted: false
     });
     
     return NextResponse.json({
