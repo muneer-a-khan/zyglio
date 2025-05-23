@@ -11,11 +11,22 @@ export interface SessionData {
   procedureId: string;
   initialContext: string;
   conversationHistory: ConversationEntry[];
+  batchedQuestions: BatchedQuestion[];
+  questionsAsked: number;
+  interviewCompleted: boolean;
 }
 
 export interface ConversationEntry {
   role: 'ai' | 'user';
   content: string;
+}
+
+export interface BatchedQuestion {
+  id: string;
+  question: string;
+  category: string;
+  keywords: string[];
+  used: boolean;
 }
 
 // In-memory session store
