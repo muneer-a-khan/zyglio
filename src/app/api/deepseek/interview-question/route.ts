@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import OpenAI from 'openai';
-import { getSession } from '@/lib/session-service';
+import { getSession, addBatchedQuestions } from '@/lib/session-service';
 import { generateSpeech } from '@/lib/tts-service';
 import { verifySession } from '@/lib/auth';
 
@@ -48,7 +48,13 @@ export async function POST(request: Request) {
     let aiQuestionText;
     
     if (isFirstQuestion) {
+      // Generate the first question
       aiQuestionText = await generateFirstQuestion(sessionData.initialContext);
+      
+      // Also generate the initial batch of questions in parallel
+      // We don't await this, as we want to return the first question quickly
+      generateInitialBatchOfQuestions(sessionId, sessionData.initialContext)
+        .catch(error => console.error('Error generating initial batch:', error));
     } else {
       // This branch is used by the interview-turn API which manages its own logic
       return NextResponse.json(
@@ -122,5 +128,37 @@ IMPORTANT: Return ONLY the question itself - no explanation, no commentary, no f
   } catch (error) {
     console.error('Error generating first question:', error);
     return "Could you walk me through this procedure and explain the key steps involved?";
+  }
+}
+
+/**
+ * Generate the initial batch of questions
+ */
+async function generateInitialBatchOfQuestions(sessionId: string, initialContext: string): Promise<void> {
+  try {
+    // Call the batch-questions API
+    const response = await fetch(`${process.env.NEXTAUTH_URL}/api/deepseek/batch-questions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 
+        sessionId, 
+        isInitialBatch: true, 
+        numberOfQuestions: 20
+      })
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to generate initial batch: ${response.status}`);
+    }
+    
+    const batchData = await response.json();
+    
+    // Add the batched questions to the session
+    await addBatchedQuestions(sessionId, batchData.batchedQuestions);
+    
+    console.log(`Generated initial batch of ${batchData.count} questions`);
+  } catch (error) {
+    console.error('Error generating initial batch of questions:', error);
+    throw error;
   }
 } 
