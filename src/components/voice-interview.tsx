@@ -135,7 +135,8 @@ export default function VoiceInterview({
       
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to generate first question');
+        console.error('Error from interview-question API:', errorData);
+        throw new Error(errorData.error || errorData.details || 'Failed to generate first question');
       }
       
       const data = await response.json();
@@ -158,38 +159,16 @@ export default function VoiceInterview({
         playAudio(audioBlob);
       }
       
-      // Explicitly call the batch-questions API to ensure they're ready
-      // This will wait for the batch to be fully generated before allowing responses
-      try {
-        const batchResponse = await fetch('/api/deepseek/batch-questions', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            sessionId,
-            isInitialBatch: true,
-            numberOfQuestions: 20
-          }),
-        });
-        
-        if (batchResponse.ok) {
-          console.log('Successfully generated initial batch of questions');
-          // Add a short delay to ensure questions are properly saved to session
-          await new Promise(resolve => setTimeout(resolve, 500));
-        } else {
-          console.error('Failed to generate batch questions');
-        }
-      } catch (batchError) {
-        console.error('Error generating batch questions:', batchError);
-      }
+      // The generateInitialBatchOfQuestions function now generates questions directly
+      // Just wait for a short time to make sure everything is initialized properly
+      await new Promise(resolve => setTimeout(resolve, 2000));
       
-      // Done with batch generation
+      // Set batch generation to false to allow recording
       setIsBatchGenerating(false);
       
     } catch (error) {
       console.error('Error generating first question:', error);
-      toast.error('Failed to start interview. Please try again.');
+      toast.error(`Failed to start interview: ${error instanceof Error ? error.message : 'Unknown error'}`);
       setIsBatchGenerating(false);
     } finally {
       setIsProcessing(false);

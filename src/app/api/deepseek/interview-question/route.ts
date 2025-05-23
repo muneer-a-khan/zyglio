@@ -153,30 +153,80 @@ async function generateInitialBatchOfQuestions(sessionId: string, initialContext
     // Wait a short delay to ensure the first question has been processed
     await new Promise(resolve => setTimeout(resolve, 500));
     
-    // Call the batch-questions API
-    const response = await fetch(new URL('/api/deepseek/batch-questions', process.env.NEXTAUTH_URL).toString(), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
-        sessionId, 
-        isInitialBatch: true, 
-        numberOfQuestions: 20
-      })
-    });
+    // Generate directly in this function instead of calling another API endpoint
+    // This avoids the authentication issues when making API calls from server components
+    console.log('[generateInitialBatch] Generating questions directly');
     
-    if (!response.ok) {
-      const errorData = await response.json();
-      console.error(`[generateInitialBatch] API error: ${response.status}`, errorData);
-      throw new Error(`Failed to generate initial batch: ${response.status}`);
+    // Generate batch of 20 questions
+    const systemPrompt = `You are an expert interviewer preparing questions for a comprehensive interview with a Subject Matter Expert (SME) about a technical or medical procedure.
+
+Your goal is to generate 20 diverse, insightful questions that will help extract thorough knowledge to create training modules.
+
+This is the initial batch - cover broad aspects of the procedure including: preparation, execution, troubleshooting, best practices, common mistakes, variations, and edge cases.
+
+For each question, also provide:
+1. A category (e.g., "preparation", "execution", "troubleshooting", "best-practices", etc.)
+2. 3-5 keywords that would indicate this question is relevant to ask
+
+Format your response as a JSON array where each object has:
+{
+  "question": "the actual question text",
+  "category": "category name", 
+  "keywords": ["keyword1", "keyword2", "keyword3"]
+}
+
+IMPORTANT: Return ONLY the JSON array - no explanation, no commentary, no formatting. Just the plain JSON.`;
+
+    const userPrompt = `
+## Procedure Context:
+${initialContext}
+
+Generate 20 comprehensive questions to thoroughly understand this procedure for training module creation.
+`;
+
+    const { v4: uuidv4 } = await import('uuid');
+    
+    // Call DeepSeek directly
+    const completion = await deepseek.chat.completions.create({
+      model: "deepseek-chat",
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt }
+      ],
+      temperature: 0.8,
+      max_tokens: 2000
+    });
+
+    const responseText = completion.choices[0].message.content;
+    if (!responseText) {
+      throw new Error('No response from DeepSeek');
+    }
+
+    // Parse the JSON response
+    let questionsData;
+    try {
+      questionsData = JSON.parse(responseText);
+      console.log(`[generateInitialBatch] Successfully parsed ${questionsData.length} questions`);
+    } catch (parseError) {
+      console.error('[generateInitialBatch] Failed to parse JSON response', parseError);
+      console.log('[generateInitialBatch] Response text:', responseText.substring(0, 200) + '...');
+      throw new Error('Failed to parse batch questions response');
     }
     
-    const batchData = await response.json();
-    
+    // Convert to BatchedQuestion objects
+    const batchedQuestions = questionsData.map((q: any) => ({
+      id: uuidv4(),
+      question: q.question,
+      category: q.category,
+      keywords: q.keywords,
+      used: false
+    }));
+
     // Add the batched questions to the session
-    const success = await addBatchedQuestions(sessionId, batchData.batchedQuestions);
+    const success = await addBatchedQuestions(sessionId, batchedQuestions);
     
     if (success) {
-      console.log(`[generateInitialBatch] Added ${batchData.count} questions to session ${sessionId}`);
+      console.log(`[generateInitialBatch] Added ${batchedQuestions.length} questions to session ${sessionId}`);
     } else {
       console.error(`[generateInitialBatch] Failed to add questions to session ${sessionId}`);
       throw new Error('Failed to add questions to session');

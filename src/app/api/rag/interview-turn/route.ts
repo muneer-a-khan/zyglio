@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
-import { getSession, updateConversationHistory } from '@/lib/rag-service';
+import { getSession, updateConversationHistory } from '@/lib/session-service';
 import { generateSpeech } from '@/lib/tts-service';
 import { verifySession } from '@/lib/auth';
-import { selectNextQuestion, incrementQuestionsAsked, markInterviewCompleted, addBatchedQuestions } from '@/lib/session-service';
+import { selectNextQuestion, incrementQuestionsAsked, markInterviewCompleted, addBatchedQuestions, BatchedQuestion } from '@/lib/session-service';
 import OpenAI from 'openai';
 
 // Initialize OpenAI client for whisper
@@ -139,7 +139,7 @@ export async function POST(request: Request) {
     }
     
     // 5. Check if we need to generate more questions (every 5 questions after initial batch)
-    const unusedQuestions = sessionData.batchedQuestions.filter(q => !q.used).length;
+    const unusedQuestions = sessionData.batchedQuestions.filter((q: BatchedQuestion) => !q.used).length;
     console.log(`[interview-turn] Questions remaining: ${unusedQuestions} unused of ${sessionData.batchedQuestions.length} total`);
     
     if (questionsAsked > 0 && questionsAsked % 5 === 0 && unusedQuestions < 3) {
