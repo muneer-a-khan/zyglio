@@ -1,0 +1,99 @@
+import { NextRequest, NextResponse } from 'next/server';
+import OpenAI from 'openai';
+import { getAuthSession } from '@/lib/auth';
+
+const deepseek = new OpenAI({
+  baseURL: 'https://api.deepseek.com/v1',
+  apiKey: process.env.DEEPSEEK_API_KEY,
+});
+
+export async function POST(request: NextRequest) {
+  try {
+    const session = await getAuthSession();
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const { procedureTitle, initialContext } = await request.json();
+
+    if (!procedureTitle) {
+      return NextResponse.json({ error: 'Procedure title is required' }, { status: 400 });
+    }
+
+    const systemPrompt = `You are an expert instructional designer specializing in procedural training. Your job is to generate comprehensive topics that would be essential for teaching someone else to perform a given procedure competently and safely.
+
+Focus on generating topics that would be REQUIRED for effective teaching, covering:
+- Safety considerations and precautions
+- Equipment and tools needed
+- Preparation steps
+- Core techniques and methods
+- Quality control and validation
+- Common issues and troubleshooting
+- Theoretical background (when needed)
+
+Organize topics into logical categories and provide detailed descriptions to guide interview questions.`;
+
+    const userPrompt = `Procedure Title: "${procedureTitle}"
+Initial Context: "${initialContext || 'No additional context provided'}"
+
+Generate a comprehensive list of required topics that would be essential for someone to learn in order to teach this procedure to others. Consider what knowledge, skills, and understanding would be necessary for effective instruction.
+
+Return a JSON object with this structure:
+{
+  "topics": [
+    {
+      "name": "Topic Name",
+      "category": "Safety" | "Equipment" | "Technique" | "Preparation" | "Theory" | "Troubleshooting" | "Quality Control" | "Other",
+      "isRequired": true,
+      "keywords": ["keyword1", "keyword2", "keyword3"],
+      "description": "Detailed description of what this topic should cover for teaching purposes"
+    }
+  ]
+}
+
+Aim for 8-15 comprehensive topics that cover all essential aspects of the procedure.`;
+
+    const completion = await deepseek.chat.completions.create({
+      model: "deepseek-chat",
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt }
+      ],
+      temperature: 0.4,
+      max_tokens: 3000,
+    });
+
+    const responseContent = completion.choices[0]?.message?.content;
+    if (!responseContent) {
+      throw new Error('No response from DeepSeek');
+    }
+
+    let topicsResult;
+    try {
+      topicsResult = JSON.parse(responseContent);
+    } catch (parseError) {
+      console.error('Failed to parse DeepSeek response:', responseContent);
+      throw new Error('Invalid JSON response from DeepSeek');
+    }
+
+    // Add IDs and initial status to topics
+    const topicsWithMetadata = topicsResult.topics.map((topic: any, index: number) => ({
+      ...topic,
+      id: `topic_${Date.now()}_${index}`,
+      status: 'not-discussed' as const,
+      coverageScore: 0
+    }));
+
+    return NextResponse.json({
+      success: true,
+      topics: topicsWithMetadata
+    });
+
+  } catch (error) {
+    console.error('Error generating initial topics:', error);
+    return NextResponse.json({
+      error: 'Failed to generate initial topics',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    }, { status: 500 });
+  }
+} 

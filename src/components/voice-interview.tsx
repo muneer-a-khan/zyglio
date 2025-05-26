@@ -3,13 +3,34 @@
 import { useState, useRef, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Mic, MicOff, Loader2, Volume2, AlertCircle, CheckCircle } from "lucide-react";
+import { Mic, MicOff, Loader2, Volume2, AlertCircle, CheckCircle, Play, Pause, StopCircle, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
+import TopicChecklist from "@/components/topic-checklist";
+import ConversationChat from "@/components/conversation-chat";
 
 interface ConversationEntry {
   role: "ai" | "user";
   content: string;
+  timestamp?: Date;
+}
+
+interface TopicItem {
+  id: string;
+  name: string;
+  category: string;
+  status: 'not-discussed' | 'briefly-discussed' | 'thoroughly-covered';
+  isRequired: boolean;
+  keywords: string[];
+  description?: string;
+  coverageScore: number;
+}
+
+interface SessionData {
+  topics: TopicItem[];
+  topicStats: any;
+  topicsByCategory: Record<string, TopicItem[]>;
+  interviewCompleted: boolean;
 }
 
 interface VoiceInterviewProps {
@@ -31,16 +52,16 @@ export default function VoiceInterview({
 }: VoiceInterviewProps) {
   // States
   const [isInitializing, setIsInitializing] = useState(true);
-  const [sessionId, setSessionId] = useState<string | null>(initialSessionId || null);
   const [isRecording, setIsRecording] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [conversationHistory, setConversationHistory] = useState<ConversationEntry[]>([]);
   const [currentAIQuestion, setCurrentAIQuestion] = useState<string | null>(null);
   const [audioContext, setAudioContext] = useState<AudioContext | null>(null);
-  const [validationIssues, setValidationIssues] = useState<string[]>([]);
-  const [clarificationsMade, setClarificationsMade] = useState(false);
-  const [followUpChosen, setFollowUpChosen] = useState(false);
+  const [interviewCompleted, setInterviewCompleted] = useState(false);
+  const [questionsAsked, setQuestionsAsked] = useState(0);
+  const [sessionData, setSessionData] = useState<SessionData | null>(null);
+  const [isGeneratingQuestions, setIsGeneratingQuestions] = useState(false);
   
   // Refs
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -49,20 +70,13 @@ export default function VoiceInterview({
   
   // Initialize the interview session
   useEffect(() => {
-    if (!sessionId) {
-      initializeSession();
-    } else {
-      setIsInitializing(false);
-      // If we have a session ID but no conversation history, we need to ask for a first question
-      if (conversationHistory.length === 0) {
-        startInterviewWithFirstQuestion();
-      }
-    }
+    initializeSession();
+    
     // Initialize audio context
     if (!audioContext) {
       setAudioContext(new (window.AudioContext || (window as any).webkitAudioContext)());
     }
-  }, [sessionId]);
+  }, []);
   
   // Initialize audio player
   useEffect(() => {
@@ -74,19 +88,21 @@ export default function VoiceInterview({
     }
   }, []);
   
-  // Initialize the session with RAG context
+  // Initialize the session
   const initializeSession = async () => {
     try {
       setIsInitializing(true);
       
-      const response = await fetch('/api/rag/generate-context', {
+      // Start with the first question
+      const response = await fetch('/api/interview/interview-question', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           procedureId,
-          taskDefinition,
+          initialContext: taskDefinition.description || '',
+          procedureTitle: taskDefinition.title
         }),
       });
       
@@ -96,56 +112,18 @@ export default function VoiceInterview({
       }
       
       const data = await response.json();
-      setSessionId(data.sessionId);
       
-      // Start the interview by generating the first AI question
-      startInterviewWithFirstQuestion();
+      setCurrentAIQuestion(data.question);
+      setQuestionsAsked(data.questionNumber);
+      setSessionData(data.sessionData);
+      
+      toast.success('Interview session initialized successfully!');
+      
     } catch (error) {
       console.error('Error initializing interview session:', error);
       toast.error('Failed to initialize interview. Please try again.');
     } finally {
       setIsInitializing(false);
-    }
-  };
-  
-  // Start interview with first question
-  const startInterviewWithFirstQuestion = async () => {
-    if (!sessionId) return;
-    
-    try {
-      setIsProcessing(true);
-      
-      const response = await fetch('/api/interview/first-question', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          sessionId,
-        }),
-      });
-      
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to generate first question');
-      }
-      
-      const data = await response.json();
-      
-      // Update conversation history
-      setConversationHistory(data.conversationHistory);
-      setCurrentAIQuestion(data.questionText);
-      
-      // Play audio if available
-      if (data.questionAudio) {
-        const audioBlob = base64ToBlob(data.questionAudio, 'audio/mp3');
-        playAudio(audioBlob);
-      }
-    } catch (error) {
-      console.error('Error generating first question:', error);
-      toast.error('Failed to start interview. Please try again.');
-    } finally {
-      setIsProcessing(false);
     }
   };
   
@@ -168,13 +146,9 @@ export default function VoiceInterview({
       mediaRecorderRef.current.start();
       setIsRecording(true);
       
-      // Reset agent feedback states
-      setValidationIssues([]);
-      setClarificationsMade(false);
-      setFollowUpChosen(false);
     } catch (error) {
       console.error('Error starting recording:', error);
-      toast.error('Failed to access microphone. Please check permissions.');
+      toast.error('Unable to access microphone. Please check permissions.');
     }
   };
   
@@ -186,231 +160,394 @@ export default function VoiceInterview({
     }
   };
   
-  // Submit the recording to the orchestrator API
+  // Submit the recording for processing
   const submitRecording = async () => {
-    if (audioChunksRef.current.length === 0 || !sessionId) return;
+    if (audioChunksRef.current.length === 0) {
+      toast.error('No audio recorded');
+      return;
+    }
     
     try {
       setIsProcessing(true);
       
-      const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+      const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/wav' });
       const formData = new FormData();
-      formData.append('sessionId', sessionId);
-      formData.append('audioBlob', audioBlob);
+      formData.append('audio', audioBlob, 'recording.wav');
+      formData.append('procedureId', procedureId);
       
-      const response = await fetch('/api/interview/orchestrate', {
+      // Transcribe the audio
+      const transcribeResponse = await fetch('/api/speech/transcribe', {
         method: 'POST',
         body: formData,
       });
       
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to process interview turn');
+      if (!transcribeResponse.ok) {
+        throw new Error('Failed to transcribe audio');
       }
       
-      const data = await response.json();
+      const transcribeData = await transcribeResponse.json();
+      const userResponse = transcribeData.text;
+      
+      if (!userResponse?.trim()) {
+        toast.error('No speech detected. Please try again.');
+        return;
+      }
+      
+      // Process the turn (analyze topics, generate next question, etc.)
+      const turnResponse = await fetch('/api/interview/interview-turn', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          procedureId,
+          smeResponse: userResponse,
+          currentQuestion: currentAIQuestion
+        }),
+      });
+      
+      if (!turnResponse.ok) {
+        throw new Error('Failed to process interview turn');
+      }
+      
+      const turnData = await turnResponse.json();
       
       // Update conversation history
-      setConversationHistory(data.conversationHistory);
-      setCurrentAIQuestion(data.aiResponse);
-      
-      // Set agent feedback states
-      setValidationIssues(data.validationIssues || []);
-      setClarificationsMade(data.clarificationsMade || false);
-      setFollowUpChosen(data.followUpChosen || false);
-      
-      // Play audio response
-      if (data.aiResponseAudio) {
-        const audioBlob = base64ToBlob(data.aiResponseAudio, 'audio/mp3');
-        playAudio(audioBlob);
+      const newHistory = [...conversationHistory];
+      if (currentAIQuestion) {
+        newHistory.push({ role: 'ai', content: currentAIQuestion, timestamp: new Date() });
       }
+      newHistory.push({ role: 'user', content: turnData.processedResponse || userResponse, timestamp: new Date() });
+      setConversationHistory(newHistory);
+      
+      // Update session data
+      setSessionData(turnData.sessionData);
+      
+      // Check if interview is completed
+      if (turnData.interviewCompleted) {
+        setInterviewCompleted(true);
+        setCurrentAIQuestion(null);
+        toast.success(turnData.message || 'Interview completed successfully!');
+        if (onInterviewComplete) {
+          onInterviewComplete(newHistory);
+        }
+        return;
+      }
+      
+      // Set flag for generating questions
+      setIsGeneratingQuestions(true);
+      
+      // Get next question
+      const nextQuestionResponse = await fetch('/api/interview/interview-question', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          procedureId,
+          initialContext: taskDefinition.description || '',
+          procedureTitle: taskDefinition.title
+        }),
+      });
+      
+      if (nextQuestionResponse.ok) {
+        const nextQuestionData = await nextQuestionResponse.json();
+        setCurrentAIQuestion(nextQuestionData.question);
+        setQuestionsAsked(nextQuestionData.questionNumber);
+        
+        // Update session data if provided
+        if (nextQuestionData.sessionData) {
+          setSessionData(nextQuestionData.sessionData);
+        }
+      }
+
+      // Turn off generating questions flag
+      setIsGeneratingQuestions(false);
+      
     } catch (error) {
-      console.error('Error processing interview turn:', error);
+      console.error('Error processing recording:', error);
       toast.error('Failed to process your response. Please try again.');
+      setIsGeneratingQuestions(false);
     } finally {
       setIsProcessing(false);
       audioChunksRef.current = [];
     }
   };
   
-  // Play audio response
+  // Text to speech for AI questions
+  const speakQuestion = async (text: string) => {
+    try {
+      setIsProcessing(true);
+      
+      const response = await fetch('/api/speech/synthesize', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ text }),
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        if (data.audioBase64) {
+          const audioBlob = base64ToBlob(data.audioBase64, 'audio/mp3');
+          playAudio(audioBlob);
+        }
+      }
+    } catch (error) {
+      console.error('Error synthesizing speech:', error);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+  
+  // Play audio blob
   const playAudio = (audioBlob: Blob) => {
-    if (!audioPlayerRef.current) return;
-    
-    const audioUrl = URL.createObjectURL(audioBlob);
-    audioPlayerRef.current.src = audioUrl;
-    audioPlayerRef.current.play().catch(err => {
-      console.error('Error playing audio:', err);
-    });
-    
-    setIsPlaying(true);
+    if (audioPlayerRef.current) {
+      const audioUrl = URL.createObjectURL(audioBlob);
+      audioPlayerRef.current.src = audioUrl;
+      audioPlayerRef.current.play();
+      setIsPlaying(true);
+    }
   };
   
-  // Replay the last AI question
-  const replayLastQuestion = () => {
-    if (!audioPlayerRef.current) return;
-    
-    audioPlayerRef.current.currentTime = 0;
-    audioPlayerRef.current.play().catch(err => {
-      console.error('Error replaying audio:', err);
-    });
-    
-    setIsPlaying(true);
-  };
-  
-  // Convert base64 to Blob
+  // Convert base64 to blob
   const base64ToBlob = (base64: string, mimeType: string): Blob => {
     const byteCharacters = atob(base64);
-    const byteArrays = [];
+    const byteNumbers = new Array(byteCharacters.length);
     
-    for (let offset = 0; offset < byteCharacters.length; offset += 512) {
-      const slice = byteCharacters.slice(offset, offset + 512);
-      
-      const byteNumbers = new Array(slice.length);
-      for (let i = 0; i < slice.length; i++) {
-        byteNumbers[i] = slice.charCodeAt(i);
-      }
-      
-      const byteArray = new Uint8Array(byteNumbers);
-      byteArrays.push(byteArray);
+    for (let i = 0; i < byteCharacters.length; i++) {
+      byteNumbers[i] = byteCharacters.charCodeAt(i);
     }
     
-    return new Blob(byteArrays, { type: mimeType });
+    const byteArray = new Uint8Array(byteNumbers);
+    return new Blob([byteArray], { type: mimeType });
   };
   
-  // Complete the interview
-  const completeInterview = () => {
-    if (onInterviewComplete && conversationHistory.length > 0) {
+  // Force end interview
+  const forceEndInterview = () => {
+    setInterviewCompleted(true);
+    setCurrentAIQuestion(null);
+    if (onInterviewComplete) {
       onInterviewComplete(conversationHistory);
     }
+    toast.success('Interview ended manually.');
   };
-  
-  // Render
+
+  if (isInitializing) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="text-center">
+          <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4" />
+          <h3 className="text-lg font-semibold mb-2">Initializing Interview Session</h3>
+          <p className="text-gray-600">Generating initial topics and preparing questions...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <Card className="w-full">
-      <CardHeader>
-        <CardTitle className="text-xl flex items-center justify-between">
-          Voice Interview
-          <div className="flex gap-2">
-            {validationIssues.length > 0 && (
-              <Badge variant="destructive" className="flex items-center gap-1">
-                <AlertCircle className="h-3 w-3" /> Validation
+    <div className="max-w-7xl mx-auto p-6 space-y-6">
+      {/* Header */}
+      <div className="text-center">
+        <h1 className="text-3xl font-bold text-gray-900 mb-2">
+          Interview Session: {taskDefinition.title}
+        </h1>
+        <p className="text-gray-600 mb-4">
+          {taskDefinition.description}
+        </p>
+        
+        {sessionData && (
+          <div className="flex justify-center gap-4 text-sm">
+            <Badge variant="outline">
+              Questions Asked: {questionsAsked}
+            </Badge>
+            <Badge variant="outline">
+              Required Topics: {sessionData.topicStats?.requiredCovered || 0} / {sessionData.topicStats?.required || 0}
+            </Badge>
+            {isGeneratingQuestions ? (
+              <Badge variant="outline" className="flex items-center gap-1 bg-blue-50 text-blue-700">
+                <Sparkles className="w-3 h-3 animate-pulse" />
+                Generating Questions...
               </Badge>
-            )}
-            {clarificationsMade && (
-              <Badge variant="secondary" className="flex items-center gap-1">
-                <AlertCircle className="h-3 w-3" /> Clarification
-              </Badge>
-            )}
-            {followUpChosen && (
-              <Badge variant="default" className="flex items-center gap-1">
-                <CheckCircle className="h-3 w-3" /> Follow-up
+            ) : (
+              <Badge 
+                variant={interviewCompleted ? "default" : "secondary"}
+                className={interviewCompleted ? "bg-green-600" : ""}
+              >
+                {interviewCompleted ? "Completed" : "In Progress"}
               </Badge>
             )}
           </div>
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        {isInitializing ? (
-          <div className="flex justify-center items-center py-10">
-            <Loader2 className="h-8 w-8 animate-spin text-primary" />
-            <span className="ml-2">Initializing interview...</span>
-          </div>
-        ) : (
-          <>
-            <div className="mb-6 space-y-4">
-              <h3 className="text-lg font-medium">Conversation</h3>
-              <div className="border rounded-md p-4 max-h-96 overflow-y-auto space-y-3">
-                {conversationHistory.length === 0 ? (
-                  <p className="text-muted-foreground italic">
-                    Interview will begin once initialized...
-                  </p>
-                ) : (
-                  conversationHistory.map((entry, index) => (
+        )}
+      </div>
+
+      {/* Main Interview Interface */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Left Side - Topic Checklist */}
+        <div className="space-y-4">
+          {sessionData?.topics && (
+            <TopicChecklist 
+              topics={sessionData.topics}
+              topicsByCategory={sessionData.topicsByCategory}
+              className="h-fit"
+            />
+          )}
+          
+          {/* Interview Progress Card */}
+          {sessionData && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm">Interview Progress</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="text-sm text-gray-600">
+                  <div className="flex justify-between">
+                    <span>Total Topics:</span>
+                    <span>{sessionData.topicStats?.total || 0}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Required Topics:</span>
+                    <span>{sessionData.topicStats?.required || 0}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Thoroughly Covered:</span>
+                    <span>{sessionData.topicStats?.thoroughlyCovered || 0}</span>
+                  </div>
+                </div>
+                
+                {sessionData.topicStats && (
+                  <div className="w-full bg-gray-200 rounded-full h-2">
                     <div 
-                      key={index} 
-                      className={`p-3 rounded-lg ${
-                        entry.role === 'ai' 
-                          ? 'bg-secondary text-secondary-foreground ml-10' 
-                          : 'bg-muted mr-10'
-                      }`}
-                    >
-                      <p className="font-semibold mb-1">
-                        {entry.role === 'ai' ? 'AI' : 'You'}:
-                      </p>
-                      <p>{entry.content}</p>
-                    </div>
-                  ))
+                      className="bg-green-600 h-2 rounded-full transition-all duration-500"
+                      style={{ 
+                        width: `${sessionData.topicStats.required > 0 
+                          ? (sessionData.topicStats.requiredCovered / sessionData.topicStats.required) * 100 
+                          : 0}%` 
+                      }}
+                    />
+                  </div>
                 )}
-              </div>
-            </div>
-            
-            {validationIssues.length > 0 && (
-              <div className="mb-4 p-3 border border-destructive/50 bg-destructive/10 rounded-md">
-                <h4 className="font-medium text-destructive flex items-center gap-1">
-                  <AlertCircle className="h-4 w-4" /> Validation Issues
-                </h4>
-                <ul className="list-disc list-inside mt-1 text-sm">
-                  {validationIssues.map((issue, index) => (
-                    <li key={index}>{issue}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            
-            <div className="flex flex-col items-center justify-center space-y-4">
-              {currentAIQuestion && (
-                <div className="w-full text-center p-4 bg-primary/10 rounded-md">
-                  <p className="font-semibold mb-2">Current question:</p>
-                  <p>{currentAIQuestion}</p>
-                  <Button 
-                    onClick={replayLastQuestion}
-                    variant="outline"
-                    size="sm"
-                    className="mt-2"
-                    disabled={isPlaying || isRecording || isProcessing}
+                
+                {isGeneratingQuestions && (
+                  <div className="mt-2 px-3 py-2 bg-blue-50 border border-blue-100 rounded-md">
+                    <div className="flex items-center gap-2 text-xs text-blue-700">
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                      <span>Analyzing responses and generating targeted questions...</span>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+        </div>
+
+        {/* Right Side - Conversation and Controls */}
+        <div className="space-y-4">
+          {/* Conversation Chat */}
+          <ConversationChat 
+            conversationHistory={conversationHistory}
+            currentQuestion={currentAIQuestion}
+            className="h-fit"
+          />
+          
+          {/* Recording Controls */}
+          {!interviewCompleted && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm">Voice Recording</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {currentAIQuestion && (
+                  <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
+                    <p className="text-sm font-medium text-blue-900 mb-2">Current Question:</p>
+                    <p className="text-sm text-blue-800">{currentAIQuestion}</p>
+                    
+                    <div className="mt-3 flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => speakQuestion(currentAIQuestion!)}
+                        disabled={isProcessing}
+                      >
+                        <Volume2 className="w-4 h-4 mr-1" />
+                        Listen
+                      </Button>
+                    </div>
+                  </div>
+                )}
+                
+                <div className="flex justify-center gap-4">
+                  {!isRecording ? (
+                    <Button
+                      onClick={startRecording}
+                      disabled={isProcessing || isGeneratingQuestions || interviewCompleted}
+                      className="bg-red-600 hover:bg-red-700"
+                      size="lg"
+                    >
+                      <Mic className="w-5 h-5 mr-2" />
+                      Start Recording
+                    </Button>
+                  ) : (
+                    <Button
+                      onClick={stopRecording}
+                      variant="outline"
+                      size="lg"
+                      className="border-red-600 text-red-600 hover:bg-red-50"
+                    >
+                      <MicOff className="w-5 h-5 mr-2" />
+                      Stop Recording
+                    </Button>
+                  )}
+                  
+                  <Button
+                    onClick={forceEndInterview}
+                    variant="destructive"
+                    size="lg"
+                    disabled={isProcessing || isGeneratingQuestions}
                   >
-                    <Volume2 className="h-4 w-4 mr-1" /> Replay Audio
+                    <StopCircle className="w-5 h-5 mr-2" />
+                    End Interview
                   </Button>
                 </div>
-              )}
-              
-              <div className="flex items-center justify-center gap-4">
-                <Button
-                  size="lg"
-                  variant={isRecording ? "destructive" : "default"}
-                  onClick={isRecording ? stopRecording : startRecording}
-                  disabled={isProcessing || isPlaying || !sessionId}
-                  className="rounded-full h-16 w-16 p-0"
-                >
-                  {isRecording ? (
-                    <MicOff className="h-6 w-6" />
-                  ) : (
-                    <Mic className="h-6 w-6" />
+                
+                {(isProcessing || isGeneratingQuestions) && (
+                  <div className="text-center">
+                    <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
+                    <p className="text-sm text-gray-600">
+                      {isProcessing ? "Processing your response..." : 
+                       isGeneratingQuestions ? "Generating follow-up questions..." : ""}
+                    </p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+          
+          {/* Interview Complete Card */}
+          {interviewCompleted && (
+            <Card className="border-green-200 bg-green-50">
+              <CardContent className="pt-6">
+                <div className="text-center">
+                  <CheckCircle className="w-12 h-12 text-green-600 mx-auto mb-4" />
+                  <h3 className="text-lg font-semibold text-green-900 mb-2">
+                    Interview Completed!
+                  </h3>
+                  <p className="text-green-800 mb-4">
+                    You've successfully covered all required topics. Your knowledge has been captured for the training module.
+                  </p>
+                  {sessionData && (
+                    <div className="text-sm text-green-700">
+                      <p>Topics covered: {sessionData.topicStats?.thoroughlyCovered || 0}</p>
+                      <p>Questions answered: {questionsAsked}</p>
+                    </div>
                   )}
-                </Button>
-              </div>
-              
-              <p className="text-sm text-muted-foreground">
-                {isRecording
-                  ? "Recording... Click the button to stop"
-                  : isProcessing
-                  ? "Processing your response..."
-                  : "Click the microphone to start recording your answer"}
-              </p>
-              
-              <Button
-                variant="outline"
-                onClick={completeInterview}
-                disabled={isRecording || isProcessing || conversationHistory.length < 2}
-                className="mt-4"
-              >
-                Complete Interview
-              </Button>
-            </div>
-          </>
-        )}
-      </CardContent>
-    </Card>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      </div>
+    </div>
   );
 } 
