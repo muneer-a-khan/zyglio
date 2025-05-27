@@ -36,8 +36,11 @@ export async function POST(request: NextRequest) {
 
     // Generate first question if this is the start
     if (sessionData.questionsAsked === 0) {
-      const customFirstQuestion = await generateCustomFirstQuestion(procedureTitle, initialContext);
+      // Create the first question - "Tell me about X" format
+      const customFirstQuestion = generateCustomFirstQuestion(procedureTitle, initialContext);
       
+      console.log('Generated first question:', customFirstQuestion);
+
       // Generate initial batch of questions
       const batchedQuestions = await generateBatchedQuestions(
         procedureTitle,
@@ -67,7 +70,8 @@ export async function POST(request: NextRequest) {
     // For subsequent questions, select from batched questions
     const availableQuestions = sessionData.batchedQuestions.filter(q => !q.used);
     
-    if (availableQuestions.length === 0) {
+    // Generate more questions if we're running low (when only 2 left instead of 5)
+    if (availableQuestions.length <= 2) {
       // Generate more questions if we're running low
       const newQuestions = await generateBatchedQuestions(
         procedureTitle,
@@ -121,9 +125,9 @@ export async function POST(request: NextRequest) {
   }
 }
 
-async function generateCustomFirstQuestion(procedureTitle: string, initialContext: string): Promise<string> {
-  // Always return the simple, open-ended first question format that the user prefers
-  return `Tell me about ${procedureTitle} as if you were teaching it to someone else. Walk me through the different steps, any potential complications or challenges they might face, and what the main goals or objectives are.`;
+function generateCustomFirstQuestion(procedureTitle: string, initialContext: string): string {
+  // Always return the simple, open-ended first question about the topic
+  return `Tell me about ${procedureTitle}. Please provide an overview of this topic, including any key concepts, processes, or challenges you think are important.`;
 }
 
 function selectBestQuestion(questions: any[], topics: any[]): any | null {

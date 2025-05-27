@@ -39,7 +39,9 @@ export default function Home() {
             </Link>
           </nav>
           <div>
-            <Button variant="default">Sign In</Button>
+            <Button variant="default" asChild>
+              <Link href="/auth/signin">Sign In</Link>
+            </Button>
           </div>
         </div>
       </header>

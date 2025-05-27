@@ -109,33 +109,40 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    // First, fetch procedures with non-null simulationSettings
+    console.log("Fetching all procedures (from any user)");
+
+    // First, fetch ALL procedures
     const procedures = await prisma.procedure.findMany({
       orderBy: { 
         id: 'desc' 
-      },
-      where: {
-        simulationSettings: {
-          not: null
-        }
       }
     });
     
-    // Filter procedures to only include those with valid simulationSettings 
-    // (must have a name property)
-    const validProcedures = procedures.filter(procedure => {
-      const settings = procedure.simulationSettings as any;
-      return settings && typeof settings === 'object' && 'name' in settings;
-    });
+    console.log(`Found ${procedures.length} total procedures`);
+
+    // Filter out procedures without simulationSettings separately for debugging
+    const proceduresWithSettings = procedures.filter(p => p.simulationSettings !== null);
+    console.log(`Found ${proceduresWithSettings.length} procedures with non-null settings`);
     
-    // Now fetch the associated learning tasks separately
-    const taskIds = validProcedures.map(p => p.taskId).filter(Boolean);
+    // Get the associated learning tasks for all procedures, regardless of user
+    const taskIds = procedures.map(p => p.taskId).filter(Boolean);
+    
+    if (taskIds.length === 0) {
+      console.log("No task IDs found, returning empty list");
+      return NextResponse.json({
+        success: true,
+        procedures: []
+      });
+    }
+    
     const learningTasks = await prisma.learningTask.findMany({
       where: {
-        id: { in: taskIds },
-        userId: session.user.id // Make sure we only get tasks owned by this user
+        id: { in: taskIds }
+        // Removed userId filter to get tasks from all users
       }
     });
+    
+    console.log(`Found ${learningTasks.length} learning tasks`);
     
     // Create a map for quick lookups
     const taskMap = new Map();
@@ -143,24 +150,37 @@ export async function GET(req: NextRequest) {
       taskMap.set(task.id, task);
     });
 
-    // Format procedures with their associated tasks
-    const formattedProcedures = validProcedures
-      .filter(procedure => taskMap.has(procedure.taskId)) // Only include procedures with tasks owned by the user
+    // Format all procedures with their associated tasks
+    const formattedProcedures = procedures
+      .filter(procedure => taskMap.has(procedure.taskId)) // Only include procedures with matching tasks
       .map(procedure => {
         const task = taskMap.get(procedure.taskId);
+        
+        // Split kpiTech and kpiConcept strings into arrays if they exist
+        const kpiTech = task?.kpiTech ? 
+          task.kpiTech.split(',').map((tag: string) => tag.trim()).filter(Boolean) : 
+          [];
+          
+        const kpiConcept = task?.kpiConcept ? 
+          task.kpiConcept.split(',').map((tag: string) => tag.trim()).filter(Boolean) : 
+          [];
+          
         return {
           id: procedure.id,
-          title: procedure.title,
-          description: procedure.title, // Assuming no separate description field
+          title: procedure.title || task?.title || 'Untitled Procedure',
+          description: procedure.title || task?.title || 'No description available', 
           presenter: task?.presenter || '',
           affiliation: task?.affiliation || '',
-          kpiTech: task?.kpiTech ? [task.kpiTech] : [],
-          kpiConcept: task?.kpiConcept ? [task.kpiConcept] : [],
+          kpiTech: kpiTech,
+          kpiConcept: kpiConcept,
           date: task?.date?.toISOString() || new Date().toISOString(),
           steps: [],
-          mediaItems: []
+          mediaItems: [],
+          simulationSettings: procedure.simulationSettings || {}
         };
       });
+
+    console.log(`Returning ${formattedProcedures.length} formatted procedures`);
 
     return NextResponse.json({
       success: true,

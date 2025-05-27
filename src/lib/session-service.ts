@@ -6,6 +6,16 @@ const deepseek = new OpenAI({
   apiKey: process.env.DEEPSEEK_API_KEY,
 });
 
+// Get the base URL for API calls from environment variables or use a default
+const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 
+                 process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 
+                 'http://localhost:3000';
+
+// Helper function to get absolute URL
+const getApiUrl = (path: string) => {
+  return `${BASE_URL}${path.startsWith('/') ? path : `/${path}`}`;
+};
+
 // Types
 export interface SessionData {
   procedureId: string;
@@ -232,32 +242,90 @@ export async function incrementQuestionsAsked(sessionId: string): Promise<number
 
 // Session management functions
 export async function initializeSession(procedureId: string, initialContext: string, procedureTitle: string): Promise<SessionData> {
-  // Generate initial topics
-  const topicsResponse = await fetch('/api/deepseek/generate-initial-topics', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ procedureTitle, initialContext })
-  });
+  try {
+    // Generate initial topics
+    const topicsResponse = await fetch(getApiUrl('/api/deepseek/generate-initial-topics'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ procedureTitle, initialContext })
+    });
 
-  let initialTopics: TopicItem[] = [];
-  if (topicsResponse.ok) {
-    const topicsResult = await topicsResponse.json();
-    initialTopics = topicsResult.topics || [];
+    let initialTopics: TopicItem[] = [];
+    if (topicsResponse.ok) {
+      const topicsResult = await topicsResponse.json();
+      initialTopics = topicsResult.topics || [];
+    } else {
+      console.error(`Failed to generate initial topics: ${topicsResponse.status} ${topicsResponse.statusText}`);
+      // Create some default topics instead of failing completely
+      initialTopics = generateDefaultTopics(procedureTitle);
+    }
+
+    const sessionData: SessionData = {
+      procedureId,
+      initialContext,
+      conversationHistory: [],
+      batchedQuestions: [],
+      questionsAsked: 0,
+      interviewCompleted: false,
+      topics: initialTopics,
+      firstOverviewGiven: false,
+    };
+
+    await setSessionData(procedureId, sessionData);
+    return sessionData;
+  } catch (error) {
+    console.error("Error initializing session:", error);
+    // Create a session with default topics even if there's an error
+    const sessionData: SessionData = {
+      procedureId,
+      initialContext,
+      conversationHistory: [],
+      batchedQuestions: [],
+      questionsAsked: 0,
+      interviewCompleted: false,
+      topics: generateDefaultTopics(procedureTitle),
+      firstOverviewGiven: false,
+    };
+    await setSessionData(procedureId, sessionData);
+    return sessionData;
   }
+}
 
-  const sessionData: SessionData = {
-    procedureId,
-    initialContext,
-    conversationHistory: [],
-    batchedQuestions: [],
-    questionsAsked: 0,
-    interviewCompleted: false,
-    topics: initialTopics,
-    firstOverviewGiven: false,
-  };
-
-  await setSessionData(procedureId, sessionData);
-  return sessionData;
+// Function to generate default topics if API fails
+function generateDefaultTopics(procedureTitle: string): TopicItem[] {
+  const title = procedureTitle.toLowerCase();
+  return [
+    {
+      id: `default_${Date.now()}_1`,
+      name: `${procedureTitle} Overview`,
+      category: 'General',
+      status: 'not-discussed',
+      isRequired: true,
+      keywords: [title, 'overview', 'introduction', 'basics'],
+      description: 'General overview of the procedure',
+      coverageScore: 0
+    },
+    {
+      id: `default_${Date.now()}_2`,
+      name: 'Steps and Processes',
+      category: 'Process',
+      status: 'not-discussed',
+      isRequired: true,
+      keywords: ['steps', 'process', 'procedure', 'how to', 'instructions'],
+      description: 'Step-by-step walkthrough of the procedure',
+      coverageScore: 0
+    },
+    {
+      id: `default_${Date.now()}_3`,
+      name: 'Safety Considerations',
+      category: 'Safety',
+      status: 'not-discussed',
+      isRequired: true,
+      keywords: ['safety', 'precautions', 'warnings', 'hazards'],
+      description: 'Safety measures and precautions',
+      coverageScore: 0
+    }
+  ];
 }
 
 export async function updateTopicCoverage(
@@ -270,7 +338,7 @@ export async function updateTopicCoverage(
   }
 
   // Analyze topic coverage
-  const analysisResponse = await fetch('/api/deepseek/analyze-topics', {
+  const analysisResponse = await fetch(getApiUrl('/api/deepseek/analyze-topics'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -300,7 +368,7 @@ export async function updateTopicCoverage(
   }
 
   // Discover new topics
-  const discoveryResponse = await fetch('/api/deepseek/discover-topics', {
+  const discoveryResponse = await fetch(getApiUrl('/api/deepseek/discover-topics'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -386,59 +454,84 @@ export async function generateBatchedQuestions(
   count: number = 5
 ): Promise<BatchedQuestion[]> {
   try {
-    // Analyze which topics need more coverage
-    const topicsNeedingAttention = topics.filter(topic => 
-      topic.isRequired && topic.status !== 'thoroughly-covered'
-    );
+    // Special case for initial questions (1-3 general questions)
+    if (conversationHistory.length === 0) {
+      // Generate 1-3 initial general questions
+      return generateInitialGeneralQuestions(procedureTitle, initialContext, topics);
+    }
 
-    const recentConversation = conversationHistory.slice(-6).map(entry => 
-      `${entry.role}: ${entry.content}`
-    ).join('\n');
+    // For subsequent questions, use the full context to generate more specific questions
+    const topicsToFocus = topics
+      .filter(t => t.status !== 'thoroughly-covered')
+      .sort((a, b) => {
+        // Prioritize required topics
+        if (a.isRequired && !b.isRequired) return -1;
+        if (!a.isRequired && b.isRequired) return 1;
+        
+        // Then prioritize by coverage
+        return a.coverageScore - b.coverageScore;
+      })
+      .slice(0, 5);
+    
+    const topicFocusText = topicsToFocus.map(t => `${t.name} (${t.keywords.join(', ')})`).join('\n- ');
+    
+    // Format conversation history
+    const recentConversation = conversationHistory
+      .slice(-8) // Take last 8 exchanges to avoid exceeding token limits
+      .map(entry => `${entry.role === 'ai' ? 'Question' : 'Answer'}: ${entry.content}`)
+      .join('\n\n');
+    
+    // Generate increasingly specific questions based on the conversation history
+    let specificityLevel = "general";
+    if (conversationHistory.length >= 6) {
+      specificityLevel = "detailed";
+    } else if (conversationHistory.length >= 2) {
+      specificityLevel = "moderate";
+    }
+    
+    const systemPrompt = `You are an expert interviewer gathering detailed information about a procedure or process from a subject matter expert (SME).
+    
+Generate ${count} follow-up questions for the SME based on their previous answers. These questions should help extract deeper information about the procedure.
 
-    const systemPrompt = `You are an expert interviewer conducting knowledge capture sessions with SMEs. Your goal is to generate targeted questions that will help cover specific topics thoroughly for teaching purposes.
+Current interview phase: ${specificityLevel} (as the interview progresses, questions should become more specific and detailed)
 
-Focus on:
-1. Filling gaps in topic coverage
-2. Getting deeper into areas that were only briefly mentioned
-3. Exploring practical aspects, challenges, and nuances
-4. Ensuring comprehensive understanding for teaching others
+Focus on uncovering information about these topics that need more coverage:
+- ${topicFocusText}
 
-Generate questions that are:
-- Specific and actionable
-- Build on previous conversation
-- Target areas needing more coverage
-- Encourage detailed explanations
-- Focus on teaching-relevant information`;
+Question Guidelines:
+- Questions should flow naturally from the conversation
+- ${specificityLevel === "general" ? "Ask broad, open-ended questions about the general topic" : 
+   specificityLevel === "moderate" ? "Focus on moderately specific aspects mentioned in previous answers" : 
+   "Ask for specific details, edge cases, and advanced concepts"}
+- Avoid repeating questions already asked
+- Each question should target a specific aspect of the procedure
+- Ask about challenges, exceptions, and best practices
+- Questions should be clear and conversational
+- Don't ask multiple questions in one prompt
 
-    const topicGuidance = topicsNeedingAttention.length > 0 
-      ? `\n\nTopics that need more coverage:\n${topicsNeedingAttention.map(topic => 
-          `- ${topic.name} (${topic.category}): ${topic.description || 'No description'} [Status: ${topic.status}]`
-        ).join('\n')}`
-      : '\n\nAll required topics are well covered. Focus on depth and practical details.';
+Return the questions in valid JSON format:
+[
+  {
+    "question": "question text",
+    "category": "general topic area",
+    "keywords": ["keyword1", "keyword2"],
+    "priority": 1-5 (1 being highest priority),
+    "relatedTopics": ["topicId1", "topicId2"]
+  }
+]`;
 
-    const userPrompt = `Procedure: "${procedureTitle}"
-Context: "${initialContext}"
+    const userPrompt = `Procedure Title: ${procedureTitle}
+
+Initial Context:
+${initialContext}
+
+Topics that need coverage:
+${topics.filter(t => t.status !== 'thoroughly-covered').map(t => `- ${t.name}`).join('\n')}
 
 Recent Conversation:
-${recentConversation || 'No previous conversation'}
+${recentConversation}
 
-${topicGuidance}
-
-Generate ${count} targeted interview questions that will help gather comprehensive information for teaching this procedure. Each question should target specific knowledge gaps or build on previous responses.
-
-Return a JSON object with this structure:
-{
-  "questions": [
-    {
-      "question": "Specific question text",
-      "category": "Safety" | "Equipment" | "Technique" | "Preparation" | "Theory" | "Troubleshooting" | "Quality Control" | "Other",
-      "keywords": ["keyword1", "keyword2"],
-      "priority": 1-5,
-      "relatedTopics": ["topic_id1", "topic_id2"],
-      "reasoning": "Why this question is important for teaching"
-    }
-  ]
-}`;
+Generate ${count} follow-up questions for the SME, with increasing specificity based on the conversation progress.`;
 
     const completion = await deepseek.chat.completions.create({
       model: "deepseek-chat",
@@ -446,71 +539,222 @@ Return a JSON object with this structure:
         { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt }
       ],
-      temperature: 0.6,
-      max_tokens: 2500,
+      temperature: 0.7,
+      max_tokens: 1500,
+      response_format: { type: "json_object" }
     });
 
-    const responseContent = completion.choices[0]?.message?.content;
-    if (!responseContent) {
-      throw new Error('No response from DeepSeek');
-    }
-
-    let questionsResult;
+    const responseText = completion.choices[0]?.message?.content?.trim() || '';
+    let parsedResponse: any = [];
+    
     try {
-      questionsResult = JSON.parse(responseContent);
+      // Handle both array and object wrapper formats
+      const jsonMatch = responseText.match(/\[\s*\{.*\}\s*\]/s);
+      if (jsonMatch) {
+        parsedResponse = JSON.parse(jsonMatch[0]);
+      } else {
+        const parsed = JSON.parse(responseText);
+        parsedResponse = Array.isArray(parsed) ? parsed : parsed.questions || [];
+      }
     } catch (parseError) {
-      console.error('Failed to parse DeepSeek response:', responseContent);
-      throw new Error('Invalid JSON response from DeepSeek');
+      console.error('Error parsing questions JSON:', parseError);
+      console.log('Raw response:', responseText);
+      
+      // Fallback questions if parsing fails
+      return [
+        {
+          id: `fallback-1-${Date.now()}`,
+          question: `Could you elaborate more on the ${procedureTitle} process?`,
+          category: 'General',
+          keywords: [procedureTitle.toLowerCase()],
+          used: false,
+          priority: 1,
+          relatedTopics: []
+        },
+        {
+          id: `fallback-2-${Date.now()}`,
+          question: `What challenges might someone face when working with ${procedureTitle}?`,
+          category: 'Challenges',
+          keywords: ['challenges', 'problems', 'issues'],
+          used: false,
+          priority: 2,
+          relatedTopics: []
+        }
+      ];
     }
-
-    // Transform to BatchedQuestion format
-    const batchedQuestions: BatchedQuestion[] = questionsResult.questions.map((q: any, index: number) => ({
-      id: `q_${Date.now()}_${index}`,
-      question: q.question,
-      category: q.category || 'Other',
-      keywords: q.keywords || [],
+    
+    // Ensure all questions have IDs and set used flag to false
+    return parsedResponse.map((q: any, index: number) => ({
+      ...q,
+      id: `question-${Date.now()}-${index}`,
       used: false,
-      priority: q.priority || 3,
+      priority: q.priority || index + 1,
       relatedTopics: q.relatedTopics || []
     }));
-
-    return batchedQuestions;
-
+    
   } catch (error) {
     console.error('Error generating batched questions:', error);
     
-    // Fallback questions
-    const fallbackQuestions: BatchedQuestion[] = [
+    // Return fallback questions
+    return [
       {
-        id: `fallback_${Date.now()}_1`,
-        question: "What are the most critical safety considerations someone should know?",
-        category: "Safety",
-        keywords: ["safety", "precautions", "risks"],
+        id: `error-fallback-1-${Date.now()}`,
+        question: `Can you tell me more about ${procedureTitle}?`,
+        category: 'General',
+        keywords: [procedureTitle.toLowerCase()],
         used: false,
         priority: 1,
         relatedTopics: []
       },
       {
-        id: `fallback_${Date.now()}_2`,
-        question: "Can you walk me through the key equipment or tools needed?",
-        category: "Equipment",
-        keywords: ["equipment", "tools", "materials"],
-        used: false,
-        priority: 2,
-        relatedTopics: []
-      },
-      {
-        id: `fallback_${Date.now()}_3`,
-        question: "What are the most common mistakes or challenges people face?",
-        category: "Troubleshooting",
-        keywords: ["mistakes", "challenges", "problems"],
+        id: `error-fallback-2-${Date.now()}`,
+        question: 'What are the most important aspects of this procedure that someone should understand?',
+        category: 'Key Concepts',
+        keywords: ['important', 'key', 'understand'],
         used: false,
         priority: 2,
         relatedTopics: []
       }
     ];
+  }
+}
 
-    return fallbackQuestions.slice(0, count);
+// New function to generate the initial 1-3 general questions
+async function generateInitialGeneralQuestions(
+  procedureTitle: string,
+  initialContext: string,
+  topics: TopicItem[]
+): Promise<BatchedQuestion[]> {
+  try {
+    const systemPrompt = `You are an expert interviewer gathering detailed information about a procedure or process from a subject matter expert (SME).
+    
+Generate 3 initial general, open-ended questions for the SME about the topic "${procedureTitle}". These should be broad questions that allow the SME to share their general knowledge before getting into specifics.
+
+Question Guidelines:
+- Questions should be general and open-ended
+- Each question should approach the topic from a different angle
+- Questions should encourage detailed responses
+- Questions should help establish the SME's level of expertise
+- Questions should be clear and conversational
+
+Return the questions in valid JSON format:
+[
+  {
+    "question": "question text",
+    "category": "general topic area",
+    "keywords": ["keyword1", "keyword2"],
+    "priority": 1-3 (1 being highest priority),
+    "relatedTopics": []
+  }
+]`;
+
+    const userPrompt = `Procedure Title: ${procedureTitle}
+
+Initial Context:
+${initialContext}
+
+Generate 3 general, open-ended questions to start the interview about "${procedureTitle}".`;
+
+    const completion = await deepseek.chat.completions.create({
+      model: "deepseek-chat",
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt }
+      ],
+      temperature: 0.7,
+      max_tokens: 1000,
+      response_format: { type: "json_object" }
+    });
+
+    const responseText = completion.choices[0]?.message?.content?.trim() || '';
+    let parsedResponse: any = [];
+    
+    try {
+      // Handle both array and object wrapper formats
+      const jsonMatch = responseText.match(/\[\s*\{.*\}\s*\]/s);
+      if (jsonMatch) {
+        parsedResponse = JSON.parse(jsonMatch[0]);
+      } else {
+        const parsed = JSON.parse(responseText);
+        parsedResponse = Array.isArray(parsed) ? parsed : parsed.questions || [];
+      }
+    } catch (parseError) {
+      console.error('Error parsing initial questions JSON:', parseError);
+      
+      // Default general questions if parsing fails
+      return [
+        {
+          id: `initial-1-${Date.now()}`,
+          question: `Could you describe ${procedureTitle} in your own words and explain why it's important?`,
+          category: 'General Overview',
+          keywords: [procedureTitle.toLowerCase(), 'overview', 'importance'],
+          used: false,
+          priority: 1,
+          relatedTopics: []
+        },
+        {
+          id: `initial-2-${Date.now()}`,
+          question: `What are the main components or steps involved in ${procedureTitle}?`,
+          category: 'Process Steps',
+          keywords: ['steps', 'components', 'process'],
+          used: false,
+          priority: 2,
+          relatedTopics: []
+        },
+        {
+          id: `initial-3-${Date.now()}`,
+          question: `What common challenges or misconceptions do people have about ${procedureTitle}?`,
+          category: 'Challenges',
+          keywords: ['challenges', 'misconceptions', 'problems'],
+          used: false,
+          priority: 3,
+          relatedTopics: []
+        }
+      ];
+    }
+    
+    // Ensure all questions have IDs and set used flag to false
+    return parsedResponse.map((q: any, index: number) => ({
+      ...q,
+      id: `initial-${Date.now()}-${index}`,
+      used: false,
+      priority: q.priority || index + 1,
+      relatedTopics: q.relatedTopics || []
+    }));
+    
+  } catch (error) {
+    console.error('Error generating initial general questions:', error);
+    
+    // Return default general questions
+    return [
+      {
+        id: `initial-fallback-1-${Date.now()}`,
+        question: `Could you describe ${procedureTitle} in your own words and explain why it's important?`,
+        category: 'General Overview',
+        keywords: [procedureTitle.toLowerCase(), 'overview', 'importance'],
+        used: false,
+        priority: 1,
+        relatedTopics: []
+      },
+      {
+        id: `initial-fallback-2-${Date.now()}`,
+        question: `What are the main components or steps involved in ${procedureTitle}?`,
+        category: 'Process Steps',
+        keywords: ['steps', 'components', 'process'],
+        used: false,
+        priority: 2,
+        relatedTopics: []
+      },
+      {
+        id: `initial-fallback-3-${Date.now()}`,
+        question: `What common challenges or misconceptions do people have about ${procedureTitle}?`,
+        category: 'Challenges',
+        keywords: ['challenges', 'misconceptions', 'problems'],
+        used: false,
+        priority: 3,
+        relatedTopics: []
+      }
+    ];
   }
 }
 
