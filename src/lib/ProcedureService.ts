@@ -805,9 +805,6 @@ class ProcedureService {
   }
 
   /**
-   * Clears the current procedure context
-   */
-  /**
    * Attempts to recover the task ID from the current procedure ID
    */
   private async recoverTaskId(): Promise<void> {
@@ -843,6 +840,23 @@ class ProcedureService {
     }
   }
 
+  /**
+   * Get the current task ID
+   */
+  getCurrentTaskId(): string | null {
+    return this.currentTaskId;
+  }
+
+  /**
+   * Get the current procedure ID
+   */
+  getCurrentProcedureId(): string | null {
+    return this.currentProcedureId;
+  }
+
+  /**
+   * Clear the current procedure and task data
+   */
   clearCurrentProcedure(): void {
     this.currentProcedureId = null;
     this.currentTaskId = null;

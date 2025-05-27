@@ -6,7 +6,7 @@ export async function GET() {
   try {
     const tasks = await prisma.learningTask.findMany({
       include: {
-        user: true,
+        users: true,
       },
     });
     

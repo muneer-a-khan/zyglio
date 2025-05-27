@@ -2,15 +2,15 @@ import { NextAuthOptions } from "next-auth";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import prisma from "@/lib/prisma";
 import CredentialsProvider from "next-auth/providers/credentials";
-import bcrypt from "bcryptjs";
 import { getServerSession } from 'next-auth/next';
-import { cookies, headers } from 'next/headers';
 import { createClient } from '@supabase/supabase-js';
-import { authOptions } from '@/app/api/auth/[...nextauth]/route';
-import { supabase } from '@/integrations/supabase/client';
+
+// Create Supabase client
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 export const authOptions: NextAuthOptions = {
-  adapter: PrismaAdapter(prisma),
   session: {
     strategy: "jwt",
     maxAge: 30 * 24 * 60 * 60, // 30 days
@@ -33,86 +33,71 @@ export const authOptions: NextAuthOptions = {
         }
 
         try {
-          const user = await prisma.user.findUnique({
-            where: {
-              email: credentials.email,
-            },
+          // Authenticate with Supabase
+          const { data, error } = await supabase.auth.signInWithPassword({
+            email: credentials.email,
+            password: credentials.password,
           });
 
-          if (!user || !user.password) {
+          if (error) {
+            console.error("Supabase auth error:", error);
             return null;
           }
 
-          const isPasswordValid = await bcrypt.compare(
-            credentials.password,
-            user.password
-          );
-
-          if (!isPasswordValid) {
+          if (!data?.user) {
+            console.error("No user data returned from Supabase");
             return null;
           }
 
+          // Ensure the user exists in our database
+          let user = await prisma.users.findUnique({
+            where: { email: credentials.email }
+          });
+
+          // If user doesn't exist in our database, create them
+          if (!user) {
+            try {
+              user = await prisma.users.create({
+                data: {
+                  id: data.user.id,  // Use the Supabase user ID
+                  email: credentials.email,
+                  name: data.user.user_metadata?.name || credentials.email.split('@')[0] || 'User',
+                }
+              });
+              console.log("Created new user in database:", user.id);
+            } catch (createError) {
+              console.error("Error creating user in database:", createError);
+              // If we can't create the user, we still want to continue with the auth flow
+            }
+          } else {
+            console.log("Found existing user in database:", user.id);
+          }
+
+          // Return the user for NextAuth
           return {
-            id: user.id,
-            email: user.email,
-            name: user.name,
+            id: data.user.id,
+            email: data.user.email,
+            name: data.user.user_metadata?.name || data.user.email?.split('@')[0] || 'User',
           };
         } catch (error) {
-          console.error("Error in credentials authorization:", error);
-          // Return null instead of throwing an error
+          console.error("Authentication error:", error);
           return null;
         }
       },
     }),
   ],
   callbacks: {
-    async session({ token, session }) {
-      if (token && session.user) {
+    async jwt({ token, user }) {
+      if (user) {
+        token.id = user.id;
+      }
+      return token;
+    },
+    async session({ session, token }) {
+      if (session.user) {
         session.user.id = token.id as string;
-        session.user.name = token.name;
-        session.user.email = token.email;
       }
       return session;
-    },
-    async jwt({ token, user, trigger, session: newSessionData }) {
-      try {
-        if (user) {
-          return {
-            ...token,
-            id: user.id,
-            name: user.name,
-            email: user.email,
-          };
-        }
-
-        // Only attempt to fetch user if we have an ID and prisma is available
-        if ((token?.sub || token?.id) && prisma && typeof prisma.user?.findUnique === 'function') {
-          const userIdToFetch = token.id || token.sub;
-          try {
-            const dbUser = await prisma.user.findUnique({
-              where: { id: userIdToFetch as string },
-            });
-
-            if (dbUser) {
-              return {
-                ...token,
-                id: dbUser.id,
-                name: dbUser.name,
-                email: dbUser.email,
-              };
-            }
-          } catch (error) {
-            console.error("Error fetching user in JWT callback:", error);
-            // Continue with the existing token if DB lookup fails
-          }
-        }
-        
-        return token;
-      } catch (error) {
-        console.error("JWT callback error:", error);
-        // Return the token as is in case of error
-        return token;
-      }
     },
   },
   debug: process.env.NODE_ENV === "development",
