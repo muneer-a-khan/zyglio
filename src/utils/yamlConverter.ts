@@ -93,24 +93,24 @@ interface MindMapData {
   edges: any[];
 }
 
-// Improved tree layout configuration for left-to-right flow
+// Improved tree layout configuration for left-to-right flow - Made more compact
 const layoutConfig = {
   horizontalSpacing: {
-    0: 350, // Root level has wider spacing
-    1: 300, // First level
-    2: 260, // Second level
-    3: 230, // Third level
-    default: 200 // Default for deeper levels
+    0: 200, // Root level - reduced from 350 to 200
+    1: 180, // First level - reduced from 300 to 180
+    2: 160, // Second level - reduced from 260 to 160
+    3: 140, // Third level - reduced from 230 to 140
+    default: 120 // Default for deeper levels - reduced from 200 to 120
   },
   verticalSpacing: {
-    0: 180, // Root level has wider vertical spacing
-    1: 140, // First level spacing between siblings
-    2: 100, // Second level
-    3: 80,  // Third level
-    default: 70 // Default for deeper levels
+    0: 100, // Root level - reduced from 180 to 100
+    1: 80, // First level spacing between siblings - reduced from 140 to 80
+    2: 60, // Second level - reduced from 100 to 60
+    3: 50,  // Third level - reduced from 80 to 50
+    default: 40 // Default for deeper levels - reduced from 70 to 40
   },
-  subtreeSpacing: 200, // Space between subtrees
-  depthMultiplier: 1.4 // Used to visually separate depth levels
+  subtreeSpacing: 120, // Space between subtrees - reduced from 200 to 120
+  depthMultiplier: 1.2 // Used to visually separate depth levels - reduced from 1.4 to 1.2
 };
 
 // Convert YAML to a hierarchical data structure for mind mapping
@@ -528,7 +528,7 @@ const buildProcedureLayout = (procedureData: any): MindMapData => {
     // Increase spacing if there are decision nodes
     const baseSpacing = layoutConfig.horizontalSpacing[Math.min(depth, 3) as keyof typeof layoutConfig.horizontalSpacing] || layoutConfig.horizontalSpacing.default;
     const nodeSpacing = layoutConfig.verticalSpacing[Math.min(depth, 3) as keyof typeof layoutConfig.verticalSpacing] || layoutConfig.verticalSpacing.default;
-    const extraSpacing = decisionNodesCount > 0 ? 50 : 0;
+    const extraSpacing = decisionNodesCount > 0 ? 20 : 0;
     
     const levelHeight = nodesInLevel.length * (nodeSpacing + extraSpacing) - extraSpacing;
     let startY = -levelHeight / 2;

@@ -60,8 +60,8 @@ interface ReactFlowElements {
 const MAX_LABEL_LENGTH = 50; // Increased max label length for better readability
 const NODE_WIDTH = 280; // Wider nodes for better content display
 const NODE_HEIGHT = 'auto'; // Auto height based on content
-const LEVEL_Y_SPACING = 200; // More vertical spacing
-const LEVEL_X_SPACING = 100; // More horizontal spacing
+const LEVEL_Y_SPACING = 120; // Reduced from 200 to 120 for more compact vertical spacing
+const LEVEL_X_SPACING = 60; // Reduced from 100 to 60 for more compact horizontal spacing
 
 /**
  * Extracts a meaningful string from a value that might be a string or an object.
@@ -240,7 +240,7 @@ function processYamlData(yamlData: YamlProcedure): ReactFlowElements {
     }).length;
     
     // Increase spacing if there are decision nodes
-    const nodeSpacing = LEVEL_X_SPACING + (decisionNodesCount > 0 ? 50 : 0);
+    const nodeSpacing = LEVEL_X_SPACING + (decisionNodesCount > 0 ? 30 : 0);
     const levelWidth = nodesInLevel.length * (NODE_WIDTH + nodeSpacing) - nodeSpacing;
     let startX = (1400 - levelWidth) / 2; // Wider canvas for better spacing
     if (startX < 50) startX = 50;
