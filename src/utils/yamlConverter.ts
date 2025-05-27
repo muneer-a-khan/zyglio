@@ -117,6 +117,13 @@ const layoutConfig = {
 export const yamlToMindMap = (yamlString: string): MindMapData => {
   try {
     const parsed = YAML.parse(yamlString);
+    
+    // Check if this is a procedure YAML with steps
+    if (parsed && parsed.steps && Array.isArray(parsed.steps)) {
+      return buildProcedureLayout(parsed);
+    }
+    
+    // Fall back to the original hierarchical layout for other YAML structures
     return buildHierarchicalLayout(parsed);
   } catch (error) {
     console.error('Error parsing YAML:', error);
@@ -391,4 +398,369 @@ export const parseYaml = (yamlString: string): any => {
     console.error('Error parsing YAML:', error);
     return {};
   }
+};
+
+// Build layout specifically for procedure YAML with steps
+const buildProcedureLayout = (procedureData: any): MindMapData => {
+  const nodes: any[] = [];
+  const edges: any[] = [];
+  
+  // Create root node with procedure name
+  const procedureName = procedureData.procedure_name || procedureData.name || 'Procedure';
+  nodes.push({
+    id: 'root',
+    type: 'mindMapNode',
+    data: { 
+      label: procedureName,
+      description: procedureData.purpose || 'Medical procedure flowchart',
+      depth: 0,
+      metadata: {
+        type: 'procedure_root',
+        purpose: procedureData.purpose,
+        goals: procedureData.goals || [],
+        considerations: procedureData.considerations || {}
+      }
+    },
+    position: { x: 0, y: 0 },
+    style: { zIndex: 1000 }
+  });
+  
+  const steps = procedureData.steps || [];
+  if (steps.length === 0) {
+    return { nodes, edges };
+  }
+  
+  // Build adjacency list and in-degree map for topological sorting
+  const adj: { [key: string]: string[] } = {};
+  const inDegree: { [key: string]: number } = {};
+  const allNodeIds = new Set<string>();
+  
+  // Initialize adjacency list and in-degree map
+  steps.forEach((step: any) => {
+    const stepId = step.id || `step_${steps.indexOf(step) + 1}`;
+    allNodeIds.add(stepId);
+    adj[stepId] = [];
+    inDegree[stepId] = 0;
+  });
+  
+  // Build connections
+  steps.forEach((step: any) => {
+    const stepId = step.id || `step_${steps.indexOf(step) + 1}`;
+    const targets: string[] = [];
+    
+    // Add regular next step
+    if (step.next && allNodeIds.has(step.next)) {
+      targets.push(step.next);
+    }
+    
+    // Add decision option targets
+    if (step.options && Array.isArray(step.options)) {
+      step.options.forEach((opt: any) => {
+        if (opt.next && allNodeIds.has(opt.next)) {
+          targets.push(opt.next);
+        }
+      });
+    }
+    
+    // Update adjacency list and in-degree
+    targets.forEach(target => {
+      if (!adj[stepId].includes(target)) {
+        adj[stepId].push(target);
+        inDegree[target] = (inDegree[target] || 0) + 1;
+      }
+    });
+  });
+  
+  // Topological sort to determine depths (levels)
+  const queue: string[] = [];
+  const nodeDepths = new Map<string, number>();
+  const nodesAtDepth: { [key: number]: string[] } = {};
+  
+  // Find starting nodes (no incoming edges)
+  steps.forEach((step: any) => {
+    const stepId = step.id || `step_${steps.indexOf(step) + 1}`;
+    if (inDegree[stepId] === 0) {
+      queue.push(stepId);
+      nodeDepths.set(stepId, 1); // Start at depth 1 (root is 0)
+      if (!nodesAtDepth[1]) nodesAtDepth[1] = [];
+      nodesAtDepth[1].push(stepId);
+    }
+  });
+  
+  // If no starting nodes found, use the first step
+  if (queue.length === 0 && steps.length > 0) {
+    const firstStepId = steps[0].id || 'step_1';
+    queue.push(firstStepId);
+    nodeDepths.set(firstStepId, 1);
+    if (!nodesAtDepth[1]) nodesAtDepth[1] = [];
+    nodesAtDepth[1].push(firstStepId);
+  }
+  
+  // Process queue for topological sorting
+  let head = 0;
+  while (head < queue.length) {
+    const currentStepId = queue[head++];
+    const currentDepth = nodeDepths.get(currentStepId) || 1;
+    
+    (adj[currentStepId] || []).forEach(targetStepId => {
+      inDegree[targetStepId]--;
+      if (inDegree[targetStepId] === 0) {
+        const newDepth = currentDepth + 1;
+        nodeDepths.set(targetStepId, newDepth);
+        if (!nodesAtDepth[newDepth]) nodesAtDepth[newDepth] = [];
+        nodesAtDepth[newDepth].push(targetStepId);
+        queue.push(targetStepId);
+      }
+    });
+  }
+  
+  // Position nodes based on depth and order within depth
+  Object.keys(nodesAtDepth).sort((a, b) => Number(a) - Number(b)).forEach(depthKey => {
+    const depth = Number(depthKey);
+    const nodesInLevel = nodesAtDepth[depth];
+    
+    // Calculate spacing based on node types at this level
+    const decisionNodesCount = nodesInLevel.filter(stepId => {
+      const step = steps.find((s: any) => (s.id || `step_${steps.indexOf(s) + 1}`) === stepId);
+      return step && step.decision_point && step.options && step.options.length > 0;
+    }).length;
+    
+    // Increase spacing if there are decision nodes
+    const baseSpacing = layoutConfig.horizontalSpacing[Math.min(depth, 3) as keyof typeof layoutConfig.horizontalSpacing] || layoutConfig.horizontalSpacing.default;
+    const nodeSpacing = layoutConfig.verticalSpacing[Math.min(depth, 3) as keyof typeof layoutConfig.verticalSpacing] || layoutConfig.verticalSpacing.default;
+    const extraSpacing = decisionNodesCount > 0 ? 50 : 0;
+    
+    const levelHeight = nodesInLevel.length * (nodeSpacing + extraSpacing) - extraSpacing;
+    let startY = -levelHeight / 2;
+    
+    nodesInLevel.forEach((stepId, index) => {
+      const step = steps.find((s: any) => (s.id || `step_${steps.indexOf(s) + 1}`) === stepId);
+      if (!step) return;
+      
+      const isDecision = step.decision_point === true;
+      const isTerminal = step.is_terminal === true;
+      const stepTitle = step.title || `Step ${steps.indexOf(step) + 1}`;
+      const stepDescription = step.description || '';
+      
+      // Calculate position
+      const x = baseSpacing * depth;
+      const y = startY + index * (nodeSpacing + extraSpacing);
+      
+      // Create comprehensive step node
+      nodes.push({
+        id: stepId,
+        type: 'mindMapNode',
+        data: { 
+          label: stepTitle,
+          description: stepDescription,
+          depth: depth,
+          isDecision: isDecision,
+          isTerminal: isTerminal,
+          hasChildren: adj[stepId] && adj[stepId].length > 0,
+          decisionOptions: isDecision && step.options ? step.options.map((opt: any) => ({
+            label: opt.choice || 'Option',
+            description: opt.condition || 'Decision path',
+            nodeId: opt.next
+          })) : [],
+          metadata: {
+            type: isDecision ? 'decision_step' : (isTerminal ? 'terminal_step' : 'regular_step'),
+            stepId: stepId,
+            hasNext: !!step.next,
+            nextStep: step.next,
+            options: step.options || [],
+            originalStep: step
+          }
+        },
+        position: { x, y },
+        style: { zIndex: 1000 - depth }
+      });
+    });
+  });
+  
+  // Connect root to first steps
+  if (nodesAtDepth[1] && nodesAtDepth[1].length > 0) {
+    nodesAtDepth[1].forEach(stepId => {
+      edges.push({
+        id: `e-root-${stepId}`,
+        source: 'root',
+        target: stepId,
+        animated: true,
+        style: { stroke: getColorByDepth(1), strokeWidth: 2 },
+        data: { label: 'Start', isInitialEdge: true }
+      });
+    });
+  }
+  
+  // Create comprehensive edges between steps
+  steps.forEach((step: any) => {
+    const stepId = step.id || `step_${steps.indexOf(step) + 1}`;
+    const isDecision = step.decision_point === true;
+    
+    // Handle regular next edge (non-decision or fallback)
+    if (step.next && allNodeIds.has(step.next) && (!isDecision || !step.options || step.options.length === 0)) {
+      edges.push({
+        id: `e-${stepId}-to-${step.next}`,
+        source: stepId,
+        target: step.next,
+        type: 'decisionEdge',
+        animated: false,
+        style: { 
+          stroke: '#3b82f6', 
+          strokeWidth: 2,
+        },
+        data: {
+          label: 'Next',
+          isDecisionEdge: false
+        }
+      });
+    }
+    
+    // Handle decision point edges
+    if (isDecision && step.options && Array.isArray(step.options) && step.options.length > 0) {
+      step.options.forEach((option: any, index: number) => {
+        if (option.next && allNodeIds.has(option.next)) {
+          const choiceLabel = option.choice || `Option ${index + 1}`;
+          
+          // Determine if this is a yes/no decision
+          const isYesNo = step.options.length === 2 && 
+            step.options.some((opt: any) => (opt.choice || '').toLowerCase().includes('yes')) &&
+            step.options.some((opt: any) => (opt.choice || '').toLowerCase().includes('no'));
+          
+          const isYesOption = isYesNo && (
+            choiceLabel.toLowerCase().includes('yes') || 
+            choiceLabel.toLowerCase().includes('true') ||
+            choiceLabel.toLowerCase().includes('proceed') ||
+            choiceLabel.toLowerCase().includes('continue') ||
+            choiceLabel.toLowerCase().includes('normal')
+          );
+          
+          const isNoOption = isYesNo && (
+            choiceLabel.toLowerCase().includes('no') || 
+            choiceLabel.toLowerCase().includes('false') ||
+            choiceLabel.toLowerCase().includes('stop') ||
+            choiceLabel.toLowerCase().includes('abort') ||
+            choiceLabel.toLowerCase().includes('elevated') ||
+            choiceLabel.toLowerCase().includes('severe')
+          );
+          
+          edges.push({
+            id: `e-${stepId}-option-${index}-to-${option.next}`,
+            source: stepId,
+            target: option.next,
+            type: 'decisionEdge',
+            animated: false,
+            style: { 
+              stroke: isYesOption ? '#10b981' : (isNoOption ? '#ef4444' : '#f59e0b'),
+              strokeWidth: 2,
+              strokeDasharray: isYesNo ? '5,5' : '8,4',
+            },
+            data: {
+              label: choiceLabel,
+              isDecisionEdge: true,
+              isYes: isYesOption,
+              isNo: isNoOption,
+              choice: choiceLabel,
+              condition: option.condition,
+              optionIndex: index
+            }
+          });
+        }
+      });
+      
+      // Add fallback edge if there's a next step defined for the decision node itself
+      if (step.next && allNodeIds.has(step.next)) {
+        const optionTargets = step.options.map((opt: any) => opt.next).filter(Boolean);
+        if (!optionTargets.includes(step.next)) {
+          edges.push({
+            id: `e-${stepId}-fallback-to-${step.next}`,
+            source: stepId,
+            target: step.next,
+            type: 'decisionEdge',
+            animated: false,
+            style: { 
+              stroke: '#9ca3af', 
+              strokeWidth: 1,
+              strokeDasharray: '10,5',
+            },
+            data: {
+              label: 'Default',
+              isDecisionEdge: false,
+              isFallback: true
+            }
+          });
+        }
+      }
+    }
+  });
+  
+  // Add comprehensive metadata nodes
+  const maxDepth = Math.max(...Object.keys(nodesAtDepth).map(Number));
+  const metadataX = layoutConfig.horizontalSpacing[Math.min(maxDepth + 1, 3) as keyof typeof layoutConfig.horizontalSpacing] || layoutConfig.horizontalSpacing.default;
+  let metadataY = -200;
+  
+  // Add considerations node
+  if (procedureData.considerations) {
+    const considerationsId = 'considerations';
+    nodes.push({
+      id: considerationsId,
+      type: 'mindMapNode',
+      data: {
+        label: 'Considerations',
+        description: 'Pre, intra, and post-operative considerations',
+        depth: maxDepth + 1,
+        metadata: {
+          type: 'considerations',
+          data: procedureData.considerations,
+          preOperative: procedureData.considerations['pre-operative'] || [],
+          intraOperative: procedureData.considerations['intra-operative'] || [],
+          postOperative: procedureData.considerations['post-operative'] || []
+        }
+      },
+      position: { x: metadataX, y: metadataY },
+      style: { zIndex: 700 }
+    });
+    
+    edges.push({
+      id: `e-root-${considerationsId}`,
+      source: 'root',
+      target: considerationsId,
+      animated: true,
+      style: { stroke: '#6b7280', strokeDasharray: '3,3', strokeWidth: 1 },
+      data: { label: 'Info', isMetadataEdge: true }
+    });
+    
+    metadataY += layoutConfig.verticalSpacing[1];
+  }
+  
+  // Add goals node
+  if (procedureData.goals && Array.isArray(procedureData.goals) && procedureData.goals.length > 0) {
+    const goalsId = 'goals';
+    nodes.push({
+      id: goalsId,
+      type: 'mindMapNode',
+      data: {
+        label: 'Goals',
+        description: `${procedureData.goals.length} primary objectives`,
+        depth: maxDepth + 1,
+        metadata: {
+          type: 'goals',
+          data: procedureData.goals,
+          objectives: procedureData.goals
+        }
+      },
+      position: { x: metadataX, y: metadataY },
+      style: { zIndex: 700 }
+    });
+    
+    edges.push({
+      id: `e-root-${goalsId}`,
+      source: 'root',
+      target: goalsId,
+      animated: true,
+      style: { stroke: '#6b7280', strokeDasharray: '3,3', strokeWidth: 1 },
+      data: { label: 'Info', isMetadataEdge: true }
+    });
+  }
+  
+  return { nodes, edges };
 }; 
