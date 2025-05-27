@@ -61,10 +61,28 @@ const MindMapContent: React.FC<MindMapProps> = ({ nodes, edges, onSaveNodeData }
   // Initialize all root nodes AND category nodes as expanded on first load
   useEffect(() => {
     if (nodes.length > 0 && expandedNodes.size === 0) {
-      // Find root nodes (depth 0 nodes) and also include depth 1 nodes (categories)
-      const initialExpandNodes = nodes
-        .filter(node => node.data.depth === 0 || node.data.depth === 1)
-        .map(node => node.id);
+      // For procedure flowcharts, expand ALL nodes by default to show complete flow
+      // Check if this looks like a procedure (has step nodes)
+      const hasProcedureSteps = nodes.some(node => 
+        node.data.metadata?.type === 'decision_step' || 
+        node.data.metadata?.type === 'regular_step' || 
+        node.data.metadata?.type === 'terminal_step' ||
+        node.id.startsWith('step_')
+      );
+      
+      let initialExpandNodes: string[];
+      
+      if (hasProcedureSteps) {
+        // For procedures, expand ALL nodes to show complete workflow
+        initialExpandNodes = nodes.map(node => node.id);
+        console.log("Procedure detected: Expanding all nodes for complete workflow visibility");
+      } else {
+        // For mind maps, only expand root and category nodes
+        initialExpandNodes = nodes
+          .filter(node => node.data.depth === 0 || node.data.depth === 1)
+          .map(node => node.id);
+        console.log("Mind map detected: Expanding root and category nodes only");
+      }
       
       console.log("Initializing nodes as expanded:", initialExpandNodes);
       setExpandedNodes(new Set(initialExpandNodes));
@@ -154,6 +172,8 @@ const MindMapContent: React.FC<MindMapProps> = ({ nodes, edges, onSaveNodeData }
 
   // Handle saving node data
   const handleSaveNodeData = useCallback((nodeId: string, updatedData: Partial<MindMapNodeData>) => {
+    console.log('Saving node data:', nodeId, updatedData);
+    
     // First update local state
     setNodes((currentNodes) => {
       return currentNodes.map(node => {
@@ -175,22 +195,35 @@ const MindMapContent: React.FC<MindMapProps> = ({ nodes, edges, onSaveNodeData }
       });
     });
     
+    // Update the selected node to reflect changes immediately
+    if (selectedNode && selectedNode.id === nodeId) {
+      setSelectedNode(prevNode => ({
+        ...prevNode!,
+        data: {
+          ...prevNode!.data,
+          ...updatedData
+        }
+      }));
+    }
+    
     // Then call the parent's onSaveNodeData if provided
     if (onSaveNodeData) {
       onSaveNodeData(nodeId, updatedData);
     }
     
+    // Close edit mode and show success
     setEditingMode('view');
+    setIsEditing(false);
+    
     toast({
       title: "Node updated",
       description: "Your node changes have been saved successfully.",
     });
-    
-    setIsEditing(false);
-  }, [setNodes, toast, onSaveNodeData, setIsEditing]);
+  }, [setNodes, toast, onSaveNodeData, selectedNode, setIsEditing]);
 
   // Handle opening the editor
   const handleEditClick = () => {
+    setEditingMode('edit');
     setIsEditing(true);
   };
 
@@ -239,7 +272,7 @@ const MindMapContent: React.FC<MindMapProps> = ({ nodes, edges, onSaveNodeData }
             zoomOnScroll={true}
             panOnScroll={false}
             panOnDrag={true}
-            defaultViewport={{ x: 0, y: 0, zoom: 0.4 }} // Adjusted default zoom for better overview
+            defaultViewport={{ x: 0, y: 0, zoom: 0.6 }} // Increased from 0.4 to 0.6 for better readability with compact layout
           >
             <Background color="#94a3b8" gap={16} size={1} />
             <Controls className="bg-white shadow-md rounded border border-gray-200" />
@@ -289,6 +322,7 @@ const MindMapContent: React.FC<MindMapProps> = ({ nodes, edges, onSaveNodeData }
               } : null}
               onClose={handleCloseSidePanel}
               onSaveNodeData={handleSaveNodeData}
+              onEdit={handleEditClick}
             />
           )}
         </ResizablePanel>
