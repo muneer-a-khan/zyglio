@@ -25,9 +25,11 @@ export async function POST(request: NextRequest) {
       throw new Error('ELEVENLABS_API_KEY is not configured');
     }
 
-    // Voice ID to use (default to "premade/adam" if not specified)
-    // You can replace this with other voice IDs from ElevenLabs
-    const voiceId = process.env.ELEVENLABS_VOICE_ID || 'premade/adam';
+    // Voice ID to use - using a standard ElevenLabs voice ID (e.g. "21m00Tcm4TlvDq8ikWAM")
+    // Check the ElevenLabs documentation for a list of available voices
+    const voiceId = process.env.ELEVENLABS_VOICE_ID || '21m00Tcm4TlvDq8ikWAM'; // Default to "Rachel" voice
+
+    console.log(`Using ElevenLabs voice ID: ${voiceId}`);
 
     // Call ElevenLabs TTS API
     const response = await fetch(`${ELEVENLABS_API_URL}/text-to-speech/${voiceId}`, {

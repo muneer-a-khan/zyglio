@@ -356,102 +356,87 @@ export default function VoiceInterview({
         <p className="text-gray-600 mb-4">
           {taskDefinition.description}
         </p>
-        
-        {sessionData && (
-          <div className="flex justify-center gap-4 text-sm">
-            <Badge variant="outline">
-              Questions Asked: {questionsAsked}
-            </Badge>
-            <Badge variant="outline">
-              Required Topics: {sessionData.topicStats?.requiredCovered || 0} / {sessionData.topicStats?.required || 0}
-            </Badge>
-            {isGeneratingQuestions ? (
-              <Badge variant="outline" className="flex items-center gap-1 bg-blue-50 text-blue-700">
-                <Sparkles className="w-3 h-3 animate-pulse" />
-                Generating Questions...
-              </Badge>
-            ) : (
-              <Badge 
-                variant={interviewCompleted ? "default" : "secondary"}
-                className={interviewCompleted ? "bg-green-600" : ""}
-              >
-                {interviewCompleted ? "Completed" : "In Progress"}
-              </Badge>
-            )}
-          </div>
-        )}
       </div>
-
-      {/* Topic Checklist - Display prominently at the top */}
-      {sessionData?.topics && (
-        <div className="w-full mb-4">
-          <TopicChecklist 
-            topics={sessionData.topics}
-            topicsByCategory={sessionData.topicsByCategory}
-            className="w-full"
-          />
+      
+      {/* Progress Bar */}
+      {sessionData?.topicStats && (
+        <div className="w-full mb-6">
+          <div className="flex justify-between mb-2">
+            <span className="text-sm font-medium">Interview Progress</span>
+            <span className="text-sm font-medium">
+              {Math.round((sessionData.topicStats.thoroughlyCovered / sessionData.topicStats.total) * 100)}% Complete
+            </span>
+          </div>
+          <div className="w-full h-4 bg-gray-200 rounded-full overflow-hidden">
+            <div 
+              className="h-full bg-gradient-to-r from-blue-500 to-green-500 transition-all duration-500"
+              style={{ 
+                width: `${(sessionData.topicStats.thoroughlyCovered / sessionData.topicStats.total) * 100}%` 
+              }}
+            />
+          </div>
+          <div className="flex justify-between mt-2 text-xs text-gray-500">
+            <div className="flex items-center gap-1">
+              <span className="w-2 h-2 bg-red-500 rounded-full"></span>
+              <span>Not Discussed: {sessionData.topicStats.total - sessionData.topicStats.brieflyDiscussed - sessionData.topicStats.thoroughlyCovered}</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <span className="w-2 h-2 bg-yellow-500 rounded-full"></span>
+              <span>Briefly Discussed: {sessionData.topicStats.brieflyDiscussed}</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <span className="w-2 h-2 bg-green-500 rounded-full"></span>
+              <span>Thoroughly Covered: {sessionData.topicStats.thoroughlyCovered}</span>
+            </div>
+          </div>
         </div>
       )}
 
-      {/* Main Interview Interface */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Left Side - Progress & Stats */}
-        <div className="space-y-4">
-          {/* Interview Progress Card */}
-          {sessionData && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-sm">Interview Progress</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="text-sm text-gray-600">
-                  <div className="flex justify-between">
-                    <span>Total Topics:</span>
-                    <span>{sessionData.topicStats?.total || 0}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Required Topics:</span>
-                    <span>{sessionData.topicStats?.required || 0}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Thoroughly Covered:</span>
-                    <span>{sessionData.topicStats?.thoroughlyCovered || 0}</span>
-                  </div>
-                </div>
-                
-                {sessionData.topicStats && (
-                  <div className="w-full bg-gray-200 rounded-full h-2">
-                    <div 
-                      className="bg-green-600 h-2 rounded-full transition-all duration-500"
-                      style={{ 
-                        width: `${sessionData.topicStats.required > 0 
-                          ? (sessionData.topicStats.requiredCovered / sessionData.topicStats.required) * 100 
-                          : 0}%` 
-                      }}
-                    />
-                  </div>
-                )}
-                
-                {isGeneratingQuestions && (
-                  <div className="mt-2 px-3 py-2 bg-blue-50 border border-blue-100 rounded-md">
-                    <div className="flex items-center gap-2 text-xs text-blue-700">
-                      <Loader2 className="w-3 h-3 animate-spin" />
-                      <span>Analyzing responses and generating targeted questions...</span>
-                    </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+      {/* Interview Status Badges */}
+      {sessionData && (
+        <div className="flex justify-center gap-4 text-sm mb-6">
+          <Badge variant="outline">
+            Questions Asked: {questionsAsked}
+          </Badge>
+          <Badge variant="outline">
+            Required Topics: {sessionData.topicStats?.requiredCovered || 0} / {sessionData.topicStats?.required || 0}
+          </Badge>
+          {isGeneratingQuestions ? (
+            <Badge variant="outline" className="flex items-center gap-1 bg-blue-50 text-blue-700">
+              <Sparkles className="w-3 h-3 animate-pulse" />
+              Generating Questions...
+            </Badge>
+          ) : (
+            <Badge 
+              variant={interviewCompleted ? "default" : "secondary"}
+              className={interviewCompleted ? "bg-green-600" : ""}
+            >
+              {interviewCompleted ? "Completed" : "In Progress"}
+            </Badge>
           )}
         </div>
+      )}
+
+      {/* Main Interview Interface - 2 column layout with sidebar */}
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 min-h-[600px]">
+        {/* Left Sidebar - Topic Checklist */}
+        {sessionData?.topics && (
+          <div className="lg:col-span-1 h-full">
+            <TopicChecklist 
+              topics={sessionData.topics}
+              topicsByCategory={sessionData.topicsByCategory}
+              className="sticky top-6 max-h-[calc(100vh-200px)]"
+            />
+          </div>
+        )}
 
         {/* Right Side - Conversation and Controls */}
-        <div className="space-y-4">
+        <div className="lg:col-span-3 space-y-4">
           {/* Conversation Chat */}
           <ConversationChat 
             conversationHistory={conversationHistory}
             currentQuestion={currentAIQuestion}
-            className="h-fit"
+            className="min-h-[400px]"
           />
           
           {/* Recording Controls */}

@@ -1,6 +1,7 @@
 'use client';
 
-import { CheckCircle, Circle, AlertCircle, Clock } from 'lucide-react';
+import { CheckCircle, Circle, AlertCircle, Clock, ChevronDown, ChevronRight } from 'lucide-react';
+import { useState } from 'react';
 
 interface TopicItem {
   id: string;
@@ -11,6 +12,7 @@ interface TopicItem {
   keywords: string[];
   description?: string;
   coverageScore: number;
+  subtopics?: TopicItem[]; // Add subtopics property
 }
 
 interface TopicChecklistProps {
@@ -20,6 +22,32 @@ interface TopicChecklistProps {
 }
 
 export default function TopicChecklist({ topics, topicsByCategory, className = '' }: TopicChecklistProps) {
+  // State to track which categories are expanded
+  const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>(() => {
+    const initial: Record<string, boolean> = {};
+    Object.keys(topicsByCategory).forEach(category => {
+      initial[category] = true; // Default to expanded
+    });
+    return initial;
+  });
+
+  // State to track which topics have expanded subtopics
+  const [expandedTopics, setExpandedTopics] = useState<Record<string, boolean>>({});
+
+  const toggleCategory = (category: string) => {
+    setExpandedCategories(prev => ({
+      ...prev,
+      [category]: !prev[category]
+    }));
+  };
+
+  const toggleTopic = (topicId: string) => {
+    setExpandedTopics(prev => ({
+      ...prev,
+      [topicId]: !prev[topicId]
+    }));
+  };
+
   const getStatusIcon = (status: string, isRequired: boolean) => {
     switch (status) {
       case 'thoroughly-covered':
@@ -51,6 +79,18 @@ export default function TopicChecklist({ topics, topicsByCategory, className = '
 
   const categories = Object.keys(topicsByCategory).sort();
 
+  // Function to determine if a topic has subtopics
+  const hasSubtopics = (topic: TopicItem) => {
+    return topic.subtopics && topic.subtopics.length > 0;
+  };
+
+  // Group topics by parent/child relationship if not already done
+  const organizeTopicHierarchy = (topicsInCategory: TopicItem[]) => {
+    // Implementation would depend on how your data is structured
+    // This is a simple example that assumes subtopics are already defined
+    return topicsInCategory;
+  };
+
   return (
     <div className={`bg-white rounded-lg shadow-md border border-gray-200 ${className}`}>
       <div className="p-4 border-b border-gray-200 bg-blue-50">
@@ -76,10 +116,13 @@ export default function TopicChecklist({ topics, topicsByCategory, className = '
         </div>
       </div>
 
-      <div className="max-h-96 overflow-y-auto">
+      <div className="max-h-[calc(100vh-200px)] overflow-y-auto">
         {categories.map((category) => (
           <div key={category} className="border-b border-gray-100 last:border-b-0">
-            <div className="p-3 bg-gray-50">
+            <button 
+              onClick={() => toggleCategory(category)}
+              className="w-full p-3 bg-gray-50 flex items-center justify-between hover:bg-gray-100 transition-colors"
+            >
               <h3 className="font-medium text-gray-900 text-sm flex items-center gap-2">
                 {getCategoryIcon(category)}
                 {category}
@@ -87,78 +130,154 @@ export default function TopicChecklist({ topics, topicsByCategory, className = '
                   ({topicsByCategory[category].length} topics)
                 </span>
               </h3>
-            </div>
+              {expandedCategories[category] ? 
+                <ChevronDown className="w-4 h-4 text-gray-500" /> : 
+                <ChevronRight className="w-4 h-4 text-gray-500" />
+              }
+            </button>
             
-            <div className="p-2 space-y-2">
-              {topicsByCategory[category].map((topic) => (
-                <div
-                  key={topic.id}
-                  className={`p-3 rounded-lg border transition-all duration-200 ${getStatusColor(topic.status)}`}
-                >
-                  <div className="flex items-start gap-3">
-                    {getStatusIcon(topic.status, topic.isRequired)}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-start justify-between">
-                        <h4 className="font-medium text-sm leading-tight">
-                          {topic.name}
-                          {topic.isRequired && (
-                            <span className="ml-1 text-xs font-normal text-gray-600">
-                              (Required)
-                            </span>
-                          )}
-                        </h4>
-                      </div>
-                      
-                      {topic.description && (
-                        <p className="mt-1 text-xs text-gray-600 leading-relaxed">
-                          {topic.description}
-                        </p>
-                      )}
-                      
-                      {topic.keywords.length > 0 && (
-                        <div className="mt-2 flex flex-wrap gap-1">
-                          {topic.keywords.slice(0, 3).map((keyword, index) => (
-                            <span
-                              key={index}
-                              className="inline-block px-2 py-1 text-xs bg-white bg-opacity-60 rounded-full"
-                            >
-                              {keyword}
-                            </span>
-                          ))}
-                          {topic.keywords.length > 3 && (
-                            <span className="text-xs text-gray-500">
-                              +{topic.keywords.length - 3} more
-                            </span>
-                          )}
-                        </div>
-                      )}
-                      
-                      {topic.coverageScore > 0 && (
-                        <div className="mt-2">
-                          <div className="flex items-center gap-2">
-                            <div className="flex-1 bg-white bg-opacity-60 rounded-full h-2">
-                              <div
-                                className={`h-2 rounded-full ${
-                                  topic.coverageScore >= 70 
-                                    ? 'bg-green-400' 
-                                    : topic.coverageScore >= 30 
-                                    ? 'bg-yellow-400' 
-                                    : 'bg-red-400'
-                                }`}
-                                style={{ width: `${topic.coverageScore}%` }}
-                              />
-                            </div>
-                            <span className="text-xs font-medium">
-                              {topic.coverageScore}%
-                            </span>
+            {expandedCategories[category] && (
+              <div className="p-2 space-y-2">
+                {organizeTopicHierarchy(topicsByCategory[category]).map((topic) => (
+                  <div key={topic.id}>
+                    <div
+                      className={`p-3 rounded-lg border transition-all duration-200 ${getStatusColor(topic.status)}`}
+                    >
+                      <div className="flex items-start gap-3">
+                        {getStatusIcon(topic.status, topic.isRequired)}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between">
+                            <h4 className="font-medium text-sm leading-tight flex items-center">
+                              {topic.name}
+                              {topic.isRequired && (
+                                <span className="ml-1 text-xs font-normal text-gray-600">
+                                  (Required)
+                                </span>
+                              )}
+                            </h4>
+                            
+                            {hasSubtopics(topic) && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  toggleTopic(topic.id);
+                                }}
+                                className="p-1 rounded-full hover:bg-white/30"
+                              >
+                                {expandedTopics[topic.id] ? 
+                                  <ChevronDown className="w-4 h-4" /> : 
+                                  <ChevronRight className="w-4 h-4" />
+                                }
+                              </button>
+                            )}
                           </div>
+                          
+                          {topic.description && (
+                            <p className="mt-1 text-xs text-gray-600 leading-relaxed">
+                              {topic.description}
+                            </p>
+                          )}
+                          
+                          {topic.keywords.length > 0 && (
+                            <div className="mt-2 flex flex-wrap gap-1">
+                              {topic.keywords.slice(0, 3).map((keyword, index) => (
+                                <span
+                                  key={index}
+                                  className="inline-block px-2 py-1 text-xs bg-white bg-opacity-60 rounded-full"
+                                >
+                                  {keyword}
+                                </span>
+                              ))}
+                              {topic.keywords.length > 3 && (
+                                <span className="text-xs text-gray-500">
+                                  +{topic.keywords.length - 3} more
+                                </span>
+                              )}
+                            </div>
+                          )}
+                          
+                          {topic.coverageScore > 0 && (
+                            <div className="mt-2">
+                              <div className="flex items-center gap-2">
+                                <div className="flex-1 bg-white bg-opacity-60 rounded-full h-2">
+                                  <div
+                                    className={`h-2 rounded-full ${
+                                      topic.coverageScore >= 70 
+                                        ? 'bg-green-400' 
+                                        : topic.coverageScore >= 30 
+                                        ? 'bg-yellow-400' 
+                                        : 'bg-red-400'
+                                    }`}
+                                    style={{ width: `${topic.coverageScore}%` }}
+                                  />
+                                </div>
+                                <span className="text-xs font-medium">
+                                  {topic.coverageScore}%
+                                </span>
+                              </div>
+                            </div>
+                          )}
                         </div>
-                      )}
+                      </div>
                     </div>
+                    
+                    {/* Subtopics (if any and if expanded) */}
+                    {hasSubtopics(topic) && expandedTopics[topic.id] && (
+                      <div className="ml-8 mt-2 space-y-2">
+                        {topic.subtopics?.map((subtopic) => (
+                          <div
+                            key={subtopic.id}
+                            className={`p-3 rounded-lg border transition-all duration-200 ${getStatusColor(subtopic.status)}`}
+                          >
+                            <div className="flex items-start gap-3">
+                              {getStatusIcon(subtopic.status, subtopic.isRequired)}
+                              <div className="flex-1 min-w-0">
+                                <h4 className="font-medium text-sm leading-tight">
+                                  {subtopic.name}
+                                  {subtopic.isRequired && (
+                                    <span className="ml-1 text-xs font-normal text-gray-600">
+                                      (Required)
+                                    </span>
+                                  )}
+                                </h4>
+                                
+                                {subtopic.description && (
+                                  <p className="mt-1 text-xs text-gray-600 leading-relaxed">
+                                    {subtopic.description}
+                                  </p>
+                                )}
+                                
+                                {subtopic.coverageScore > 0 && (
+                                  <div className="mt-2">
+                                    <div className="flex items-center gap-2">
+                                      <div className="flex-1 bg-white bg-opacity-60 rounded-full h-2">
+                                        <div
+                                          className={`h-2 rounded-full ${
+                                            subtopic.coverageScore >= 70 
+                                              ? 'bg-green-400' 
+                                              : subtopic.coverageScore >= 30 
+                                              ? 'bg-yellow-400' 
+                                              : 'bg-red-400'
+                                          }`}
+                                          style={{ width: `${subtopic.coverageScore}%` }}
+                                        />
+                                      </div>
+                                      <span className="text-xs font-medium">
+                                        {subtopic.coverageScore}%
+                                      </span>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
         ))}
       </div>
