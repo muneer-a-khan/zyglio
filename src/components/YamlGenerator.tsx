@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Check, Copy, Download, RefreshCw, HelpCircle } from "lucide-react";
+import { Check, Copy, Download, RefreshCw, HelpCircle, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   Tooltip,
@@ -112,6 +112,9 @@ const YamlGenerator = ({
     toast.success("YAML file downloaded");
   };
 
+  const isLoading = isLoadingExternal || isLocallyGenerating;
+  const isEmpty = !yamlOutput && steps.length > 0;
+
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -139,14 +142,14 @@ const YamlGenerator = ({
             variant="outline"
             size="sm"
             onClick={generateYaml}
-            disabled={isLoadingExternal || isLocallyGenerating || steps.length === 0}
+            disabled={isLoading || steps.length === 0}
           >
             <RefreshCw
               className={`mr-1 h-4 w-4 ${
-                isLoadingExternal || isLocallyGenerating ? "animate-spin" : ""
+                isLoading ? "animate-spin" : ""
               }`}
             />
-            {isLoadingExternal || isLocallyGenerating ? "Generating..." : "Regenerate"}
+            {isLoading ? "Generating..." : "Regenerate"}
           </Button>
         </div>
       </CardHeader>
@@ -170,32 +173,57 @@ const YamlGenerator = ({
               </TabsList>
 
               <TabsContent value="preview">
-                <div className="bg-gray-50 rounded-lg p-4 relative">
-                  <div className="absolute top-3 right-3 flex space-x-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={copyToClipboard}
-                    >
-                      {copySuccess ? (
-                        <>
-                          <Check className="mr-1 h-4 w-4 text-green-500" />{" "}
-                          Copied
-                        </>
-                      ) : (
-                        <>
-                          <Copy className="mr-1 h-4 w-4" /> Copy
-                        </>
-                      )}
-                    </Button>
-                    <Button variant="outline" size="sm" onClick={downloadYaml}>
-                      <Download className="mr-1 h-4 w-4" /> Download
-                    </Button>
+                {isLoading || isEmpty ? (
+                  <div className="bg-gray-50 rounded-lg p-4 min-h-[400px] flex flex-col items-center justify-center">
+                    {isLoading ? (
+                      <>
+                        <Loader2 className="h-10 w-10 text-blue-500 animate-spin mb-4" />
+                        <h3 className="text-lg font-medium text-gray-700 mb-2">Generating YAML Schema</h3>
+                        <p className="text-sm text-gray-500">
+                          This may take a moment as we analyze your procedure steps...
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <RefreshCw className="h-10 w-10 text-gray-400 mb-4" />
+                        <h3 className="text-lg font-medium text-gray-700 mb-2">No YAML Schema Yet</h3>
+                        <p className="text-sm text-gray-500 mb-4">
+                          Click the "Regenerate" button to create a YAML schema from your procedure steps.
+                        </p>
+                        <Button onClick={generateYaml} disabled={isLoading}>
+                          Generate YAML
+                        </Button>
+                      </>
+                    )}
                   </div>
-                  <pre className="text-xs overflow-auto max-h-[400px] pt-10 font-mono">
-                    {yamlOutput}
-                  </pre>
-                </div>
+                ) : (
+                  <div className="bg-gray-50 rounded-lg p-4 relative">
+                    <div className="absolute top-3 right-3 flex space-x-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={copyToClipboard}
+                      >
+                        {copySuccess ? (
+                          <>
+                            <Check className="mr-1 h-4 w-4 text-green-500" />{" "}
+                            Copied
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="mr-1 h-4 w-4" /> Copy
+                          </>
+                        )}
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={downloadYaml}>
+                        <Download className="mr-1 h-4 w-4" /> Download
+                      </Button>
+                    </div>
+                    <pre className="text-xs overflow-auto max-h-[400px] pt-10 font-mono">
+                      {yamlOutput}
+                    </pre>
+                  </div>
+                )}
               </TabsContent>
 
               <TabsContent value="edit">
@@ -204,12 +232,13 @@ const YamlGenerator = ({
                   onChange={handleYamlChange}
                   className="font-mono text-xs min-h-[400px]"
                   placeholder="YAML schema will appear here. You can edit it manually."
+                  disabled={isLoading}
                 />
                 <div className="flex justify-end space-x-2 mt-2">
-                  <Button variant="outline" size="sm" onClick={copyToClipboard}>
+                  <Button variant="outline" size="sm" onClick={copyToClipboard} disabled={isLoading || !yamlOutput}>
                     {copySuccess ? "Copied" : "Copy to Clipboard"}
                   </Button>
-                  <Button variant="outline" size="sm" onClick={downloadYaml}>
+                  <Button variant="outline" size="sm" onClick={downloadYaml} disabled={isLoading || !yamlOutput}>
                     Download
                   </Button>
                 </div>

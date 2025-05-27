@@ -119,6 +119,13 @@ export default function VoiceInterview({
       
       toast.success('Interview session initialized successfully!');
       
+      // Automatically speak the first question
+      if (data.question) {
+        setTimeout(() => {
+          speakQuestion(data.question);
+        }, 1000); // Small delay to ensure UI has rendered
+      }
+      
     } catch (error) {
       console.error('Error initializing interview session:', error);
       toast.error('Failed to initialize interview. Please try again.');
@@ -259,6 +266,13 @@ export default function VoiceInterview({
         if (nextQuestionData.sessionData) {
           setSessionData(nextQuestionData.sessionData);
         }
+        
+        // Automatically speak the new question
+        if (nextQuestionData.question) {
+          setTimeout(() => {
+            speakQuestion(nextQuestionData.question);
+          }, 1000); // Small delay to ensure UI has updated
+        }
       }
 
       // Turn off generating questions flag
@@ -278,6 +292,7 @@ export default function VoiceInterview({
   const speakQuestion = async (text: string) => {
     try {
       setIsProcessing(true);
+      toast.loading('Loading voice...');
       
       const response = await fetch('/api/speech/synthesize', {
         method: 'POST',
@@ -292,12 +307,86 @@ export default function VoiceInterview({
         if (data.audioBase64) {
           const audioBlob = base64ToBlob(data.audioBase64, 'audio/mp3');
           playAudio(audioBlob);
+          toast.dismiss();
+          toast.success('Playing audio', { duration: 2000 });
+        } else {
+          throw new Error('No audio data received');
         }
+      } else {
+        const errorData = await response.json().catch(() => ({}));
+        console.error('TTS API error:', errorData);
+        toast.error('Failed to generate speech. Using browser TTS as fallback.');
+        
+        // Fallback to browser's TTS
+        useBrowserTTS(text);
       }
     } catch (error) {
       console.error('Error synthesizing speech:', error);
+      toast.error('Using browser TTS as fallback');
+      
+      // Fallback to browser's TTS
+      useBrowserTTS(text);
     } finally {
       setIsProcessing(false);
+      toast.dismiss();
+    }
+  };
+  
+  // Fallback to browser's built-in TTS
+  const useBrowserTTS = (text: string) => {
+    if ('speechSynthesis' in window) {
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.rate = 0.9; // Slightly slower than default
+      utterance.pitch = 1.0;
+      utterance.volume = 1.0;
+      
+      // Get available voices and select a good one
+      let voices = window.speechSynthesis.getVoices();
+      if (voices.length === 0) {
+        // Voice list might not be loaded yet
+        window.speechSynthesis.onvoiceschanged = () => {
+          voices = window.speechSynthesis.getVoices();
+          // Try to find a nice voice
+          const preferredVoice = voices.find(voice => 
+            voice.name.includes('Google') || 
+            voice.name.includes('Daniel') || 
+            voice.name.includes('David') ||
+            voice.name.includes('Microsoft')
+          );
+          
+          if (preferredVoice) {
+            utterance.voice = preferredVoice;
+          }
+          
+          window.speechSynthesis.speak(utterance);
+          setIsPlaying(true);
+          
+          utterance.onend = () => {
+            setIsPlaying(false);
+          };
+        };
+      } else {
+        // Try to find a nice voice
+        const preferredVoice = voices.find(voice => 
+          voice.name.includes('Google') || 
+          voice.name.includes('Daniel') || 
+          voice.name.includes('David') ||
+          voice.name.includes('Microsoft')
+        );
+        
+        if (preferredVoice) {
+          utterance.voice = preferredVoice;
+        }
+        
+        window.speechSynthesis.speak(utterance);
+        setIsPlaying(true);
+        
+        utterance.onend = () => {
+          setIsPlaying(false);
+        };
+      }
+    } else {
+      toast.error('Text-to-speech is not supported in this browser');
     }
   };
   
@@ -418,7 +507,7 @@ export default function VoiceInterview({
       )}
 
       {/* Main Interview Interface - 2 column layout with sidebar */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 min-h-[600px]">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 min-h-[600px]">
         {/* Left Sidebar - Topic Checklist */}
         {sessionData?.topics && (
           <div className="lg:col-span-4 xl:col-span-3 h-full">
@@ -431,7 +520,7 @@ export default function VoiceInterview({
         )}
 
         {/* Right Side - Conversation and Controls */}
-        <div className="lg:col-span-8 xl:col-span-9 space-y-4">
+        <div className="lg:col-span-8 xl:col-span-9 space-y-5">
           {/* Conversation Chat */}
           <ConversationChat 
             conversationHistory={conversationHistory}
@@ -512,27 +601,83 @@ export default function VoiceInterview({
             </Card>
           )}
           
-          {/* Interview Complete Card */}
+          {/* Interview Complete Card - Replaced with more functional options */}
           {interviewCompleted && (
-            <Card className="border-green-200 bg-green-50">
-              <CardContent className="pt-6">
-                <div className="text-center">
-                  <CheckCircle className="w-12 h-12 text-green-600 mx-auto mb-4" />
-                  <h3 className="text-lg font-semibold text-green-900 mb-2">
-                    Interview Completed!
-                  </h3>
-                  <p className="text-green-800 mb-4">
-                    You've successfully covered all required topics. Your knowledge has been captured for the training module.
-                  </p>
-                  {sessionData && (
-                    <div className="text-sm text-green-700">
-                      <p>Topics covered: {sessionData.topicStats?.thoroughlyCovered || 0}</p>
-                      <p>Questions answered: {questionsAsked}</p>
+            <div className="space-y-5">
+              <Card className="border-green-200 bg-green-50">
+                <CardContent className="pt-6 pb-6">
+                  <div className="text-center">
+                    <CheckCircle className="w-12 h-12 text-green-600 mx-auto mb-4" />
+                    <h3 className="text-lg font-semibold text-green-900 mb-2">
+                      Interview Completed!
+                    </h3>
+                    <p className="text-green-800 mb-4">
+                      You've successfully captured the key concepts and information. Here's a summary of what was covered:
+                    </p>
+                    {sessionData && (
+                      <div className="text-sm text-green-700">
+                        <p>Topics covered: {sessionData.topicStats?.thoroughlyCovered || 0} thoroughly, {sessionData.topicStats?.brieflyDiscussed || 0} briefly</p>
+                        <p>Questions answered: {questionsAsked}</p>
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+              
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">Post-Interview Options</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="border rounded-lg p-4 space-y-3">
+                      <h4 className="font-medium flex items-center">
+                        <svg className="w-5 h-5 mr-2 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                        Auto-Generate Transcript
+                      </h4>
+                      <p className="text-sm text-gray-600">
+                        Generate a clean, formatted transcript of the entire interview conversation.
+                      </p>
+                      <Button variant="outline" className="w-full">
+                        Generate Transcript
+                      </Button>
                     </div>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
+                    
+                    <div className="border rounded-lg p-4 space-y-3">
+                      <h4 className="font-medium flex items-center">
+                        <svg className="w-5 h-5 mr-2 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                        </svg>
+                        Generate YAML
+                      </h4>
+                      <p className="text-sm text-gray-600">
+                        Convert the interview content into structured YAML format for automation.
+                      </p>
+                      <Button variant="outline" className="w-full">
+                        Generate YAML
+                      </Button>
+                    </div>
+                  </div>
+                  
+                  <div className="border rounded-lg p-4 space-y-3">
+                    <h4 className="font-medium flex items-center">
+                      <svg className="w-5 h-5 mr-2 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4h13M3 8h9m-9 4h9m5-4v12m0 0l-4-4m4 4l4-4" />
+                      </svg>
+                      Reorder Steps
+                    </h4>
+                    <p className="text-sm text-gray-600">
+                      Organize and reorder the procedure steps extracted from the interview.
+                    </p>
+                    <Button variant="outline" className="w-full">
+                      Reorder Steps
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
           )}
         </div>
       </div>
