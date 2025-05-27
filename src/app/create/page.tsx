@@ -445,34 +445,23 @@ export default function CreateProcedure() {
                 </Card>
               ) : (
                 <>
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    <Card>
-                      <CardContent className="pt-6">
-                        <h2 className="text-xl font-semibold mb-4">
-                          Voice Recording
-                        </h2>
-                        <VoiceRecorder onTranscriptUpdate={handleTranscriptChange} />
-                      </CardContent>
-                    </Card>
-
-                    <Card>
-                      <CardContent className="pt-6">
-                        <h2 className="text-xl font-semibold mb-4">
-                          Transcript Editor
-                        </h2>
-                        <TranscriptEditor
-                          initialTranscript={transcript}
-                          onTranscriptChange={handleTranscriptChange}
-                          onStepsChange={handleStepsChange}
-                          steps={steps}
-                          onYamlGenerated={handleYamlGenerated}
-                          procedureName={taskDefinition?.name || "Procedure"}
-                          procedureId={procedureService.currentProcedureId || ""}
-                          onSaveSteps={handleStepsChange}
-                        />
-                      </CardContent>
-                    </Card>
-                  </div>
+                  <Card>
+                    <CardContent className="pt-6">
+                      <h2 className="text-xl font-semibold mb-4">
+                        Transcript Editor
+                      </h2>
+                      <TranscriptEditor
+                        initialTranscript={transcript}
+                        onTranscriptChange={handleTranscriptChange}
+                        onStepsChange={handleStepsChange}
+                        steps={steps}
+                        onYamlGenerated={handleYamlGenerated}
+                        procedureName={taskDefinition?.name || "Procedure"}
+                        procedureId={procedureService.currentProcedureId || ""}
+                        onSaveSteps={handleStepsChange}
+                      />
+                    </CardContent>
+                  </Card>
                 </>
               )}
             </div>
