@@ -16,6 +16,26 @@ const getApiUrl = (path: string) => {
   return `${BASE_URL}${path.startsWith('/') ? path : `/${path}`}`;
 };
 
+// Helper function to get auth token from session
+const getApiHeaders = async (): Promise<Record<string, string>> => {
+  let token = null;
+  
+  // Try to get session token from client-side localStorage
+  if (typeof window !== 'undefined') {
+    // Try multiple possible token locations
+    token = localStorage.getItem('next-auth.session-token') || 
+            localStorage.getItem('supabase-auth-token') ||
+            localStorage.getItem('__Secure-next-auth.session-token');
+    
+    // For cookie-based auth, we rely on cookies being sent automatically
+  }
+  
+  return {
+    'Content-Type': 'application/json',
+    ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+  };
+};
+
 // Types
 export interface SessionData {
   procedureId: string;
@@ -243,10 +263,15 @@ export async function incrementQuestionsAsked(sessionId: string): Promise<number
 // Session management functions
 export async function initializeSession(procedureId: string, initialContext: string, procedureTitle: string): Promise<SessionData> {
   try {
+    // Get auth headers for API requests
+    const headers = await getApiHeaders();
+    console.log('Initializing session with generate-initial-topics API call');
+    
     // Generate initial topics
     const topicsResponse = await fetch(getApiUrl('/api/deepseek/generate-initial-topics'), {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
+      credentials: 'include', // Include cookies for auth
       body: JSON.stringify({ procedureTitle, initialContext })
     });
 
@@ -254,10 +279,15 @@ export async function initializeSession(procedureId: string, initialContext: str
     if (topicsResponse.ok) {
       const topicsResult = await topicsResponse.json();
       initialTopics = topicsResult.topics || [];
+      console.log(`Generated ${initialTopics.length} initial topics successfully`);
     } else {
       console.error(`Failed to generate initial topics: ${topicsResponse.status} ${topicsResponse.statusText}`);
+      const errorData = await topicsResponse.json().catch(() => ({}));
+      console.error('Error details:', errorData);
+      
       // Create some default topics instead of failing completely
       initialTopics = generateDefaultTopics(procedureTitle);
+      console.log(`Using ${initialTopics.length} default topics instead`);
     }
 
     const sessionData: SessionData = {
@@ -338,10 +368,15 @@ export async function updateTopicCoverage(
   }
 
   try {
+    // Get auth headers for API requests
+    const headers = await getApiHeaders();
+    console.log('Making analyze-topics API call with auth:', headers['Authorization'] ? 'Bearer token present' : 'No auth token');
+    
     // Analyze topic coverage
     const analysisResponse = await fetch(getApiUrl('/api/deepseek/analyze-topics'), {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
+      credentials: 'include', // Include cookies for auth
       body: JSON.stringify({
         smeResponse,
         topics: sessionData.topics,
@@ -361,9 +396,9 @@ export async function updateTopicCoverage(
       const keywordMatches = analysisResult.analysis?.keywordMatches || [];
       
       // Track which topics were updated from the API
-      const updatedTopicIds = new Set<string>();
+      const updatedTopicIds: string[] = [];
       topicUpdates.forEach((u: any) => {
-        if (u.id) updatedTopicIds.add(u.id);
+        if (u.id) updatedTopicIds.push(u.id);
       });
 
       // Update topics with new coverage info
@@ -404,7 +439,7 @@ export async function updateTopicCoverage(
         else {
           const keywordMatch = keywordMatches.find((m: any) => m.id === topic.id);
           
-          if (keywordMatch && !updatedTopicIds.has(topic.id)) {
+          if (keywordMatch && !updatedTopicIds.includes(topic.id)) {
             // Only apply keyword match if the coverage score would increase
             if (keywordMatch.initialScore > topic.coverageScore) {
               let newStatus = topic.status;
@@ -453,13 +488,20 @@ export async function updateTopicCoverage(
         // Add new topics
         sessionData.topics = [...sessionData.topics, ...newTopicsWithMetadata];
       }
+    } else {
+      console.error(`[updateTopicCoverage] Analysis API error: ${analysisResponse.status} ${analysisResponse.statusText}`);
+      const errorData = await analysisResponse.json().catch(() => ({}));
+      console.error('[updateTopicCoverage] Error details:', errorData);
     }
 
     // Also attempt to discover entirely new topics
     try {
+      console.log('Making discover-topics API call with auth:', headers['Authorization'] ? 'Bearer token present' : 'No auth token');
+      
       const discoveryResponse = await fetch(getApiUrl('/api/deepseek/discover-topics'), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
+        credentials: 'include', // Include cookies for auth
         body: JSON.stringify({
           smeResponse,
           existingTopics: sessionData.topics,

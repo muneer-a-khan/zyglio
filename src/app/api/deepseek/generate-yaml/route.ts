@@ -153,6 +153,28 @@ Your response must be ONLY the YAML content, starting directly with "procedure_n
       if (typeof parsedYaml !== 'object' || parsedYaml === null) {
         throw new Error('Generated YAML is not a valid object.');
       }
+      
+      // Force the procedure_name to match exactly what was passed in
+      if (typeof parsedYaml === 'object' && parsedYaml !== null) {
+        const yamlObj = parsedYaml as any;
+        if (yamlObj.procedure_name !== procedureName) {
+          console.log(`Correcting procedure_name in YAML from "${yamlObj.procedure_name}" to "${procedureName}"`);
+          
+          // Replace the procedure_name in the raw YAML text to preserve formatting
+          const nameRegex = /procedure_name:\s*["']?(.*?)["']?$/m;
+          generatedYaml = generatedYaml.replace(
+            nameRegex, 
+            `procedure_name: "${procedureName}"`
+          );
+          
+          // Re-parse to ensure our edit worked
+          const recheck = yaml.load(generatedYaml) as any;
+          if (recheck.procedure_name !== procedureName) {
+            console.warn('Failed to update procedure_name in YAML string');
+          }
+        }
+      }
+      
       // Add more specific checks if needed, e.g., presence of procedure_name, stages, etc.
       if (!('procedure_name' in parsedYaml) || !('stages' in parsedYaml) || !('purpose' in parsedYaml) || !('considerations' in parsedYaml) || !('goals' in parsedYaml)) {
          console.error('Generated YAML missing required fields. Content:', generatedYaml);

@@ -192,6 +192,22 @@ export default function CreateProcedure() {
       } else if (activeTab === "flowchart" && flowchartContent) {
         await procedureService.saveFlowchart(flowchartContent);
       }
+      
+      // If changing to YAML tab and we have steps but no YAML content, generate it
+      if (value === "yaml" && steps.length > 0 && !yamlContent && taskDefinition?.name) {
+        setIsGeneratingYaml(true);
+        try {
+          const generatedYaml = await generateYamlFromStepsViaAPI(steps, taskDefinition.name);
+          if (generatedYaml) {
+            setYamlContent(generatedYaml);
+            await procedureService.saveYamlContent(generatedYaml);
+          }
+        } catch (error) {
+          console.error("Error auto-generating YAML:", error);
+        } finally {
+          setIsGeneratingYaml(false);
+        }
+      }
     } catch (error) {
       console.error("Error saving data before tab change:", error);
     }
@@ -484,7 +500,7 @@ export default function CreateProcedure() {
               <CardContent className="pt-6">
                 <YamlGenerator
                   steps={steps}
-                  procedureName={taskDefinition?.procedure_name || "Sample Procedure"}
+                  procedureName={taskDefinition?.name || "Sample Procedure"}
                   initialYaml={yamlContent}
                   onChange={handleYamlGenerated}
                   onRegenerateYaml={handleRegenerateYamlFromStepsViaApi}

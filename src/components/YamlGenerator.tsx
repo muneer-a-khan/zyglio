@@ -29,7 +29,7 @@ interface YamlGeneratorProps {
 
 const YamlGenerator = ({
   steps,
-  procedureName = "Sample Procedure",
+  procedureName = "Untitled Procedure",
   initialYaml = "",
   onChange,
   onRegenerateYaml,
@@ -41,14 +41,20 @@ const YamlGenerator = ({
   const [copySuccess, setCopySuccess] = useState(false);
 
   useEffect(() => {
+    console.log(`YamlGenerator received procedure name: "${procedureName}"`);
+  }, [procedureName]);
+
+  useEffect(() => {
     if (initialYaml) {
       setYamlOutput(initialYaml);
     } else if (steps.length > 0 && !initialYaml && activeTab === "preview") {
+      generateYaml();
     }
   }, [initialYaml]);
 
   useEffect(() => {
     if (steps.length > 0 && yamlOutput === "" && !isLocallyGenerating && !isLoadingExternal && activeTab === "preview") {
+      generateYaml();
     }
   }, [steps, procedureName, yamlOutput, isLocallyGenerating, isLoadingExternal, activeTab]);
 
@@ -60,17 +66,20 @@ const YamlGenerator = ({
     setIsLocallyGenerating(true);
 
     try {
+      console.log(`Generating YAML with procedure name: "${procedureName}"`);
       const newYaml = await onRegenerateYaml(steps, procedureName);
       if (newYaml) {
         setYamlOutput(newYaml);
         if (onChange) {
           onChange(newYaml);
         }
-        toast.success("YAML regenerated successfully.");
+        toast.success("YAML generated successfully.");
       } else {
+        toast.error("Failed to generate YAML. Please try again.");
       }
     } catch (error) {
-      console.error("Error regenerating YAML:", error);
+      console.error("Error generating YAML:", error);
+      toast.error("Error generating YAML. Please try again.");
     } finally {
       setIsLocallyGenerating(false);
     }

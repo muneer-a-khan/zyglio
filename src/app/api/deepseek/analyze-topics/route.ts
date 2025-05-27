@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
-import { getAuthSession } from '@/lib/auth';
+import { getAuthSession, verifySession } from '@/lib/auth';
 
 const deepseek = new OpenAI({
   baseURL: 'https://api.deepseek.com/v1',
@@ -9,9 +9,16 @@ const deepseek = new OpenAI({
 
 export async function POST(request: NextRequest) {
   try {
+    // Try both auth methods
     const session = await getAuthSession();
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const apiSession = session || await verifySession(request);
+    
+    if (!apiSession?.user?.id) {
+      console.error('Unauthorized access attempt to analyze-topics API');
+      return NextResponse.json({ 
+        error: 'Unauthorized', 
+        message: 'You must be logged in to use this API'
+      }, { status: 401 });
     }
 
     const { smeResponse, topics, conversationHistory } = await request.json();
