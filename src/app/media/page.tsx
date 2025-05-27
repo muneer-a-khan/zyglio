@@ -87,12 +87,25 @@ export default function MediaLibrary() {
   // Handle delete media item
   const handleDeleteMedia = async (id: string) => {
     try {
-      const response = await fetch(`/api/media/${id}`, {
+      // Show confirmation dialog
+      if (!window.confirm('Are you sure you want to delete this media item?')) {
+        return;
+      }
+
+      toast.loading('Deleting media item...');
+      
+      // If it's a storage ID (starting with "storage-")
+      let url = id.startsWith('storage-') 
+        ? `/api/media?id=${encodeURIComponent(id.replace('storage-', ''))}` 
+        : `/api/media/${id}`;
+        
+      const response = await fetch(url, {
         method: 'DELETE',
       });
       
       if (!response.ok) {
-        throw new Error('Failed to delete media item');
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to delete media item');
       }
       
       // Remove item from state
@@ -103,7 +116,7 @@ export default function MediaLibrary() {
       toast.success('Media item deleted successfully');
     } catch (error) {
       console.error('Error deleting media item:', error);
-      toast.error('Failed to delete media item');
+      toast.error(`Failed to delete media item: ${error}`);
     }
   };
 

@@ -18,7 +18,10 @@ export default function ProceduresPage() {
   useEffect(() => {
     const loadProcedures = async () => {
       try {
+        setLoading(true);
+        console.log("Fetching procedures from API...");
         const data = await procedureService.getAllProcedures();
+        console.log(`Received ${data.length} procedures from API`, data);
         setProcedures(data);
       } catch (error) {
         console.error("Error loading procedures:", error);
@@ -31,14 +34,24 @@ export default function ProceduresPage() {
   }, []);
 
   const filteredProcedures = procedures.filter((procedure) => {
+    if (!searchTerm) return true;
+    
     const searchLower = searchTerm.toLowerCase();
-    return (
-      procedure.title.toLowerCase().includes(searchLower) ||
-      procedure.description.toLowerCase().includes(searchLower) ||
-      procedure.presenter.toLowerCase().includes(searchLower) ||
-      procedure.kpiTech.some((tag) => tag.toLowerCase().includes(searchLower)) ||
-      procedure.kpiConcept.some((tag) => tag.toLowerCase().includes(searchLower))
-    );
+    const titleMatch = procedure.title?.toLowerCase().includes(searchLower) || false;
+    const descriptionMatch = procedure.description?.toLowerCase().includes(searchLower) || false;
+    const presenterMatch = procedure.presenter?.toLowerCase().includes(searchLower) || false;
+    
+    const kpiTechMatch = Array.isArray(procedure.kpiTech) && 
+      procedure.kpiTech.some((tag) => 
+        typeof tag === 'string' && tag.toLowerCase().includes(searchLower)
+      );
+      
+    const kpiConceptMatch = Array.isArray(procedure.kpiConcept) && 
+      procedure.kpiConcept.some((tag) => 
+        typeof tag === 'string' && tag.toLowerCase().includes(searchLower)
+      );
+    
+    return titleMatch || descriptionMatch || presenterMatch || kpiTechMatch || kpiConceptMatch;
   });
 
   const handleSearch = (e: React.FormEvent) => {
@@ -111,7 +124,10 @@ export default function ProceduresPage() {
           <div>
             <h1 className="text-3xl font-bold mb-2">Procedures</h1>
             <p className="text-gray-500">
-              Browse our collection of voice-based procedural learning resources
+              Browse our complete collection of voice-based procedural learning resources
+            </p>
+            <p className="text-sm text-gray-400 mt-1">
+              Showing {procedures.length} procedures from all users
             </p>
           </div>
           
@@ -145,9 +161,16 @@ export default function ProceduresPage() {
                 No procedures match your search criteria. Try different keywords.
               </p>
             ) : (
-              <p className="text-gray-500">
-                There are no procedures available yet. Create your first procedure.
-              </p>
+              <div>
+                <p className="text-gray-500">
+                  {procedures.length === 0 
+                    ? "There are no procedures available yet. Create your first procedure."
+                    : "No published procedures found. Your procedures might need to be configured with simulation settings."}
+                </p>
+                <p className="text-sm text-gray-400 mt-2">
+                  Total procedures in database: {procedures.length}
+                </p>
+              </div>
             )}
             <Link href="/create" className="mt-4 inline-block">
               <Button className="mt-4">Create New Procedure</Button>

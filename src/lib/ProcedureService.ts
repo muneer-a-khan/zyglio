@@ -631,30 +631,18 @@ class ProcedureService {
       
       // Get procedures with non-null simulationSettings using Prisma
       const procedures = await prisma.procedure.findMany({
-        orderBy: { id: 'desc' },
-        where: {
-          simulationSettings: {
-            not: null
-          }
-        }
+        orderBy: { id: 'desc' }
+        // No filter for simulationSettings anymore to get all procedures
       });
 
       if (!procedures.length) return [];
 
-      // Filter procedures to only include those with valid simulationSettings
-      // (must have a name property)
-      const validProcedures = procedures.filter((proc: any) => {
-        const settings = proc.simulationSettings;
-        return settings && typeof settings === 'object' && 'name' in settings;
-      });
-
-      if (!validProcedures.length) return [];
-
-      // Get the associated learning tasks
-      const taskIds = validProcedures.map((p: any) => p.taskId).filter(Boolean);
+      // Get the associated learning tasks for all procedures
+      const taskIds = procedures.map((p: any) => p.taskId).filter(Boolean);
       const learningTasks = await prisma.learningTask.findMany({
         where: {
           id: { in: taskIds }
+          // No userId filter
         }
       });
       
@@ -664,21 +652,32 @@ class ProcedureService {
         taskMap.set(task.id, task);
       });
 
-      return validProcedures
-        .filter((proc: any) => taskMap.has(proc.taskId))
+      return procedures
+        .filter((proc: any) => taskMap.has(proc.taskId)) // Only include procedures with matching tasks
         .map((proc: any) => {
           const task = taskMap.get(proc.taskId);
+          
+          // Split kpiTech and kpiConcept strings into arrays if they exist
+          const kpiTech = task?.kpiTech ? 
+            task.kpiTech.split(',').map((tag: string) => tag.trim()).filter(Boolean) : 
+            [];
+            
+          const kpiConcept = task?.kpiConcept ? 
+            task.kpiConcept.split(',').map((tag: string) => tag.trim()).filter(Boolean) : 
+            [];
+            
           return {
             id: proc.id,
-            title: proc.title,
-            description: proc.title, // Assuming no separate description field
+            title: proc.title || task?.title || 'Untitled Procedure',
+            description: proc.title || task?.title || 'No description available',
             presenter: task?.presenter || '',
             affiliation: task?.affiliation || '',
-            kpiTech: task?.kpiTech ? [task.kpiTech] : [],
-            kpiConcept: task?.kpiConcept ? [task.kpiConcept] : [],
+            kpiTech: kpiTech,
+            kpiConcept: kpiConcept,
             date: task?.date?.toISOString() || '',
             steps: [],
-            mediaItems: []
+            mediaItems: [],
+            simulationSettings: proc.simulationSettings
           };
         });
     } catch (error) {
@@ -709,7 +708,20 @@ class ProcedureService {
       const data = await response.json();
       
       if (data.success && Array.isArray(data.procedures)) {
-        return data.procedures;
+        // Ensure all fields are properly formatted
+        return data.procedures.map((proc: any) => ({
+          id: proc.id,
+          title: proc.title || 'Untitled Procedure',
+          description: proc.description || proc.title || 'No description available',
+          presenter: proc.presenter || '',
+          affiliation: proc.affiliation || '',
+          kpiTech: Array.isArray(proc.kpiTech) ? proc.kpiTech : [],
+          kpiConcept: Array.isArray(proc.kpiConcept) ? proc.kpiConcept : [],
+          date: proc.date || new Date().toISOString(),
+          steps: Array.isArray(proc.steps) ? proc.steps : [],
+          mediaItems: Array.isArray(proc.mediaItems) ? proc.mediaItems : [],
+          simulationSettings: proc.simulationSettings || null
+        }));
       }
       
       console.warn('API returned unexpected format:', data);
