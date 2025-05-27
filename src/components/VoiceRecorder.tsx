@@ -369,14 +369,23 @@ const VoiceRecorder = ({
     // Stop media tracks
     if (mediaRecorderRef.current) {
       try {
-        mediaRecorderRef.current.stream
-          .getTracks()
-          .forEach((track) => track.stop());
+        // Make sure to stop all tracks from the stream
+        const tracks = mediaRecorderRef.current.stream.getTracks();
+        tracks.forEach((track) => {
+          track.stop();
+          mediaRecorderRef.current?.stream.removeTrack(track);
+        });
+        
+        // Explicitly set to null to help garbage collection
         mediaRecorderRef.current = null;
       } catch (e) {
-        // Handle errors silently
+        console.error("Error stopping media tracks:", e);
       }
     }
+
+    // Reset recording state
+    setIsRecording(false);
+    setIsPaused(false);
 
     // Stop timer
     if (timerRef.current) {
@@ -404,6 +413,33 @@ const VoiceRecorder = ({
     
     // The useEffect watching isRecording will start speech recognition once state is updated
   };
+
+  // Add cleanup on component unmount
+  useEffect(() => {
+    return () => {
+      // Ensure all resources are released when component unmounts
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.stop();
+        } catch (e) {
+          // Handle errors silently
+        }
+      }
+      
+      if (mediaRecorderRef.current) {
+        try {
+          const tracks = mediaRecorderRef.current.stream.getTracks();
+          tracks.forEach(track => track.stop());
+        } catch (e) {
+          // Handle errors silently
+        }
+      }
+      
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+      }
+    };
+  }, []);
 
   return (
     <div className={cn("flex flex-col items-center", className)}>
