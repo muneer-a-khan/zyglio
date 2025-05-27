@@ -16,7 +16,7 @@ import TranscriptEditor from "@/components/TranscriptEditor";
 import FlowchartViewer from "@/components/FlowchartViewer";
 import YamlGenerator from "@/components/YamlGenerator";
 import SimulationBuilder from "@/components/SimulationBuilder";
-import VoiceInterview from "@/components/VoiceInterview";
+import VoiceInterview from "@/components/voice-interview";
 import { procedureService, TaskDefinition, Step, MediaItem, SimulationSettings } from "@/lib/ProcedureService";
 import { v4 as uuidv4 } from 'uuid';
 import { generateYamlFromSteps as generateYamlFromStepsViaAPI } from "@/lib/deepseek";

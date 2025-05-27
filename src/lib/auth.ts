@@ -113,6 +113,18 @@ export const authOptions: NextAuthOptions = {
 };
 
 /**
+ * Get the user session for server components
+ */
+export async function getAuthSession() {
+  try {
+    return await getServerSession(authOptions);
+  } catch (error) {
+    console.error('Error getting auth session:', error);
+    return null;
+  }
+}
+
+/**
  * Verify the user session from a request
  */
 export async function verifySession(request: Request) {

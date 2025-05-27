@@ -35,12 +35,12 @@ export default function TopicChecklist({ topics, topicsByCategory, className = '
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'thoroughly-covered':
-        return 'bg-green-50 border-green-200 text-green-800';
+        return 'bg-green-50 border-green-200 text-green-800 border-l-4 border-l-green-500';
       case 'briefly-discussed':
-        return 'bg-yellow-50 border-yellow-200 text-yellow-800';
+        return 'bg-yellow-50 border-yellow-200 text-yellow-800 border-l-4 border-l-yellow-500';
       case 'not-discussed':
       default:
-        return 'bg-red-50 border-red-200 text-red-800';
+        return 'bg-red-50 border-red-200 text-red-800 border-l-4 border-l-red-500';
     }
   };
 
@@ -52,25 +52,25 @@ export default function TopicChecklist({ topics, topicsByCategory, className = '
   const categories = Object.keys(topicsByCategory).sort();
 
   return (
-    <div className={`bg-white rounded-lg shadow-sm border border-gray-200 ${className}`}>
-      <div className="p-4 border-b border-gray-200">
-        <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+    <div className={`bg-white rounded-lg shadow-md border border-gray-200 ${className}`}>
+      <div className="p-4 border-b border-gray-200 bg-blue-50">
+        <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
           <Clock className="w-5 h-5" />
-          Topic Coverage
+          Topic Coverage Checklist
         </h2>
         <div className="mt-2 text-sm text-gray-600">
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-4 font-medium">
             <div className="flex items-center gap-1">
               <Circle className="w-4 h-4 text-red-500" />
-              <span>Not discussed</span>
+              <span className="text-red-700">Not discussed</span>
             </div>
             <div className="flex items-center gap-1">
               <AlertCircle className="w-4 h-4 text-yellow-500" />
-              <span>Briefly covered</span>
+              <span className="text-yellow-700">Briefly covered</span>
             </div>
             <div className="flex items-center gap-1">
               <CheckCircle className="w-4 h-4 text-green-500" />
-              <span>Thoroughly covered</span>
+              <span className="text-green-700">Thoroughly covered</span>
             </div>
           </div>
         </div>

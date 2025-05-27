@@ -382,18 +382,21 @@ export default function VoiceInterview({
         )}
       </div>
 
+      {/* Topic Checklist - Display prominently at the top */}
+      {sessionData?.topics && (
+        <div className="w-full mb-4">
+          <TopicChecklist 
+            topics={sessionData.topics}
+            topicsByCategory={sessionData.topicsByCategory}
+            className="w-full"
+          />
+        </div>
+      )}
+
       {/* Main Interview Interface */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Left Side - Topic Checklist */}
+        {/* Left Side - Progress & Stats */}
         <div className="space-y-4">
-          {sessionData?.topics && (
-            <TopicChecklist 
-              topics={sessionData.topics}
-              topicsByCategory={sessionData.topicsByCategory}
-              className="h-fit"
-            />
-          )}
-          
           {/* Interview Progress Card */}
           {sessionData && (
             <Card>
