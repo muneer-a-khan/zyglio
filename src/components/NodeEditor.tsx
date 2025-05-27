@@ -2,13 +2,14 @@ import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { X, Save } from 'lucide-react';
+import { X, Save, Diamond, Target, GitBranch } from 'lucide-react';
 
 interface NodeEditorProps {
   node: {
     id: string;
     data: {
       label: string;
+      description?: string;
       content?: any;
       [key: string]: any;
     };
@@ -19,20 +20,22 @@ interface NodeEditorProps {
 
 const NodeEditor: React.FC<NodeEditorProps> = ({ node, onSave, onClose }) => {
   const [label, setLabel] = useState(node.data.label || '');
-  const [description, setDescription] = useState(node.data.content?.data || '');
+  const [description, setDescription] = useState(node.data.description || node.data.content?.data || '');
 
   const handleSave = () => {
     const updatedData = {
+      ...node.data, // Preserve all existing data
       label,
+      description,
+      // Update content if it exists, otherwise preserve structure
       content: description ? {
         type: 'text',
         data: description,
         title: label
-      } : undefined
+      } : node.data.content
     };
     
     onSave(node.id, updatedData);
-    onClose();
   };
 
   return (
@@ -45,7 +48,30 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ node, onSave, onClose }) => {
       </div>
       
       <div className="flex-1 p-4 overflow-y-auto">
-        <div className="space-y-4">
+        <div className="space-y-6">
+          {/* Node Type Indicators */}
+          {(node.data.isDecision || node.data.isTerminal) && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Node Type
+              </label>
+              <div className="flex flex-wrap gap-2">
+                {node.data.isDecision && (
+                  <span className="px-3 py-1 bg-purple-100 text-purple-800 rounded-full text-xs font-medium flex items-center gap-1">
+                    <Diamond className="w-3 h-3" />
+                    Decision Point
+                  </span>
+                )}
+                {node.data.isTerminal && (
+                  <span className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-xs font-medium flex items-center gap-1">
+                    <Target className="w-3 h-3" />
+                    Terminal Step
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Title
@@ -70,12 +96,43 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ node, onSave, onClose }) => {
               rows={4}
             />
           </div>
+
+          {/* Decision Options (read-only display) */}
+          {node.data.isDecision && node.data.decisionOptions && node.data.decisionOptions.length > 0 && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Decision Options ({node.data.decisionOptions.length})
+              </label>
+              <div className="space-y-2 max-h-40 overflow-y-auto">
+                {node.data.decisionOptions.map((option: any, index: number) => (
+                  <div key={index} className="p-2 bg-purple-50 border border-purple-200 rounded text-sm">
+                    <div className="font-medium text-purple-900">
+                      {option.label}
+                    </div>
+                    {option.description && option.description !== option.label && (
+                      <div className="text-purple-700 text-xs mt-0.5">
+                        {option.description}
+                      </div>
+                    )}
+                    {option.nodeId && (
+                      <div className="text-purple-600 text-xs mt-0.5 font-mono">
+                        → {option.nodeId}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <p className="text-xs text-gray-500 mt-1">
+                Decision options are managed through the procedure configuration
+              </p>
+            </div>
+          )}
           
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
               Node ID
             </label>
-            <div className="p-3 bg-gray-50 rounded-md border text-sm text-gray-600">
+            <div className="p-3 bg-gray-50 rounded-md border text-sm text-gray-600 font-mono">
               {node.id}
             </div>
           </div>
