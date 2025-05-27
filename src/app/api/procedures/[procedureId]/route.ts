@@ -6,7 +6,7 @@ import { createClient } from '@supabase/supabase-js';
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: { procedureId: string } } // Changed id to procedureId
+  context: { params: Promise<{ procedureId: string }> }
 ) {
   try {
     const session = await getServerSession(authOptions);
@@ -17,7 +17,7 @@ export async function GET(
       );
     }
 
-    const procedureId = params.procedureId; // Changed params.id to params.procedureId
+    const { procedureId } = await context.params;
     
     if (!procedureId) {
       return NextResponse.json(
@@ -44,9 +44,9 @@ export async function GET(
       orderBy: { index: 'asc' }
     });
 
-    // Get media items
+    // Get media items associated with this procedure's task
     const mediaData = await prisma.mediaItem.findMany({
-      where: { procedureId: procedureId } // This line needs to be updated in schema or logic
+      where: { taskId: procedureData.taskId }
     });
 
     // Refresh signed URLs for media items if needed
@@ -65,10 +65,10 @@ export async function GET(
     const mediaItems = await Promise.all(
       mediaData.map(async (media) => {
         // Extract file path from URL if available
-        let filePath = media.filePath || '';
+        let filePath = '';
         
-        // Try to extract from storage URL structure if no filePath
-        if (!filePath && media.url && media.url.includes('user-uploads')) {
+        // Try to extract from storage URL structure
+        if (media.url && media.url.includes('user-uploads')) {
           try {
             const urlParts = media.url.split('?')[0].split('/');
             const bucketIndex = urlParts.findIndex(part => part === 'user-uploads');

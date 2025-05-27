@@ -1,0 +1,62 @@
+procedure_name: "Simple Medical Decision Tree Example"
+purpose: "Demonstrate decision tree functionality in procedural flowchart"
+steps:
+  - id: step_1
+    title: "Patient Assessment"
+    description: "Evaluate patient's initial condition and vital signs"
+    next: step_2
+  - id: step_2
+    title: "Check Blood Pressure"
+    description: "Measure and evaluate patient's blood pressure reading"
+    decision_point: true
+    options:
+      - choice: "Normal BP (120/80 or below)"
+        next: step_3
+        condition: "Systolic ≤120 and Diastolic ≤80"
+      - choice: "Elevated BP (above normal)"
+        next: step_4
+        condition: "Systolic >120 or Diastolic >80"
+  - id: step_3
+    title: "Standard Procedure"
+    description: "Continue with normal treatment protocol"
+    next: step_6
+  - id: step_4
+    title: "Hypertension Assessment"
+    description: "Evaluate severity of elevated blood pressure"
+    decision_point: true
+    options:
+      - choice: "Mild Elevation"
+        next: step_5
+        condition: "Systolic 121-139 or Diastolic 81-89"
+      - choice: "Severe Elevation"
+        next: step_7
+        condition: "Systolic ≥140 or Diastolic ≥90"
+  - id: step_5
+    title: "Monitor and Recheck"
+    description: "Monitor patient closely and recheck BP in 15 minutes"
+    next: step_6
+  - id: step_6
+    title: "Document Findings"
+    description: "Record all measurements and decisions in patient chart"
+    next: step_8
+  - id: step_7
+    title: "Emergency Protocol"
+    description: "Initiate immediate hypertension management protocol"
+    next: step_8
+  - id: step_8
+    title: "Complete Assessment"
+    description: "Finalize patient evaluation and prepare treatment plan"
+    is_terminal: true
+considerations:
+  pre-operative:
+    - Ensure patient is in comfortable position
+    - Verify proper cuff size for accurate readings
+  intra-operative:
+    - Use calibrated equipment only
+    - Take multiple readings if initial values seem abnormal
+  post-operative:
+    - Document all findings thoroughly
+    - Communicate any concerns to attending physician
+goals:
+  - Accurate assessment of patient's cardiovascular status
+  - Appropriate treatment pathway selection based on findings 

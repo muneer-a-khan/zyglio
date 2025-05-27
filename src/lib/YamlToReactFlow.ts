@@ -49,6 +49,7 @@ interface ReactFlowEdge {
   animated?: boolean;
   markerEnd?: any; // For arrowheads
   type?: string;
+  data?: Record<string, any>; // Add data property for edge metadata
 }
 
 interface ReactFlowElements {
@@ -231,12 +232,26 @@ function processYamlData(yamlData: YamlProcedure): ReactFlowElements {
   Object.keys(nodesAtDepth).sort((a,b) => Number(a) - Number(b)).forEach(depthKey => {
     const depth = Number(depthKey);
     const nodesInLevel = nodesAtDepth[depth];
-    const levelWidth = nodesInLevel.length * (NODE_WIDTH + LEVEL_X_SPACING) - LEVEL_X_SPACING;
-    let startX = (1200 - levelWidth) / 2; // Centering based on wider canvas
+    
+    // Calculate extra spacing for decision nodes at this level
+    const decisionNodesCount = nodesInLevel.filter(nodeId => {
+      const step = yamlData.steps.find(s => s.id === nodeId);
+      return step && step.decision_point && step.options && step.options.length > 0;
+    }).length;
+    
+    // Increase spacing if there are decision nodes
+    const nodeSpacing = LEVEL_X_SPACING + (decisionNodesCount > 0 ? 50 : 0);
+    const levelWidth = nodesInLevel.length * (NODE_WIDTH + nodeSpacing) - nodeSpacing;
+    let startX = (1400 - levelWidth) / 2; // Wider canvas for better spacing
     if (startX < 50) startX = 50;
 
     nodesInLevel.forEach((nodeId, index) => {
-      const x = startX + index * (NODE_WIDTH + LEVEL_X_SPACING);
+      const step = yamlData.steps.find(s => s.id === nodeId);
+      const isDecisionNode = step && step.decision_point && step.options && step.options.length > 0;
+      
+      // Give decision nodes extra width in positioning
+      const nodeWidth = isDecisionNode ? NODE_WIDTH + 40 : NODE_WIDTH;
+      const x = startX + index * (nodeWidth + nodeSpacing);
       const y = depth * LEVEL_Y_SPACING + 50; // Add top margin
       nodePositions.set(nodeId, { x, y });
     });
@@ -275,9 +290,15 @@ function processYamlData(yamlData: YamlProcedure): ReactFlowElements {
 
     if (isTerminal) {
       nodeStyle.background = 'linear-gradient(135deg, #11998e 0%, #38ef7d 100%)';
+      nodeStyle.borderRadius = '20px';
     } else if (isDecision) {
       nodeStyle.background = 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)';
-      nodeStyle.borderRadius = '20px';
+      nodeStyle.borderRadius = '8px';
+      nodeStyle.border = '3px solid #ffffff';
+      nodeStyle.boxShadow = '0 6px 20px rgba(240, 147, 251, 0.3)';
+      // Make decision nodes slightly wider to accommodate decision text
+      nodeStyle.width = NODE_WIDTH + 40;
+      nodeStyle.minHeight = '90px';
     }
 
     nodes.push({
@@ -297,12 +318,14 @@ function processYamlData(yamlData: YamlProcedure): ReactFlowElements {
   // Create edges with modern styling
   yamlData.steps.forEach(step => {
     const sourceId = step.id;
-    if (step.next && allNodeIds.has(step.next)) {
+    
+    // Handle regular next edge (non-decision)
+    if (step.next && allNodeIds.has(step.next) && (!step.decision_point || !step.options || step.options.length === 0)) {
       edges.push({
         id: `${sourceId}-to-${step.next}`,
         source: sourceId,
         target: step.next,
-        type: 'smoothstep', // Use smooth step edges for modern look
+        type: 'smoothstep',
         style: { 
           stroke: '#3b82f6', 
           strokeWidth: 2,
@@ -317,10 +340,33 @@ function processYamlData(yamlData: YamlProcedure): ReactFlowElements {
       });
     }
 
-    if (step.decision_point && step.options) {
+    // Handle decision point edges
+    if (step.decision_point && step.options && step.options.length > 0) {
+      console.log(`Processing decision node: ${step.id} with ${step.options.length} options`);
+      
       step.options.forEach((option, index) => {
-        if (option.next && allNodeIds.has(option.next) && option.next !== step.next) { 
+        if (option.next && allNodeIds.has(option.next)) { 
           const choiceLabel = getStringValue(option.choice, `Option ${index+1}`);
+          
+          // Determine if this is a yes/no decision or a multiple choice
+          const isYesNo = step.options && step.options.length === 2 && 
+            step.options.some(opt => getStringValue(opt.choice, '').toLowerCase().includes('yes')) &&
+            step.options.some(opt => getStringValue(opt.choice, '').toLowerCase().includes('no'));
+          
+          const isYesOption = isYesNo && (
+            choiceLabel.toLowerCase().includes('yes') || 
+            choiceLabel.toLowerCase().includes('true') ||
+            choiceLabel.toLowerCase().includes('proceed') ||
+            choiceLabel.toLowerCase().includes('continue')
+          );
+          
+          const isNoOption = isYesNo && (
+            choiceLabel.toLowerCase().includes('no') || 
+            choiceLabel.toLowerCase().includes('false') ||
+            choiceLabel.toLowerCase().includes('stop') ||
+            choiceLabel.toLowerCase().includes('abort')
+          );
+          
           edges.push({
             id: `${sourceId}-option-${index}-to-${option.next}`,
             source: sourceId,
@@ -332,26 +378,77 @@ function processYamlData(yamlData: YamlProcedure): ReactFlowElements {
               fontSize: 12, 
               fontWeight: '500',
               fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-              backgroundColor: '#ffffff',
+              backgroundColor: isYesOption ? '#dcfce7' : (isNoOption ? '#fef2f2' : '#ffffff'),
               padding: '4px 8px',
               borderRadius: '6px',
-              border: '1px solid #e5e7eb',
+              border: `1px solid ${isYesOption ? '#10b981' : (isNoOption ? '#ef4444' : '#e5e7eb')}`,
             },
             style: { 
-              stroke: '#f59e0b', 
+              stroke: isYesOption ? '#10b981' : (isNoOption ? '#ef4444' : '#f59e0b'),
               strokeWidth: 2,
-              strokeDasharray: '8,4',
+              strokeDasharray: isYesNo ? '5,5' : '8,4',
             },
             animated: false,
             markerEnd: { 
               type: 'arrowclosed', 
-              color: '#f59e0b',
+              color: isYesOption ? '#10b981' : (isNoOption ? '#ef4444' : '#f59e0b'),
               width: 20,
               height: 20,
             },
+            data: {
+              label: choiceLabel,
+              isDecisionEdge: true,
+              isYes: isYesOption,
+              isNo: isNoOption,
+              choice: choiceLabel,
+              condition: option.condition,
+              optionIndex: index
+            }
           });
         }
       });
+      
+      // Add fallback edge if there's a next step defined for the decision node itself
+      if (step.next && allNodeIds.has(step.next)) {
+        // Only add if this next step isn't already covered by options
+        const optionTargets = step.options.map(opt => opt.next).filter(Boolean);
+        if (!optionTargets.includes(step.next)) {
+          edges.push({
+            id: `${sourceId}-fallback-to-${step.next}`,
+            source: sourceId,
+            target: step.next,
+            type: 'smoothstep',
+            label: 'Default',
+            labelStyle: { 
+              fill: '#6b7280', 
+              fontSize: 11, 
+              fontWeight: '400',
+              fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+              backgroundColor: '#f9fafb',
+              padding: '2px 6px',
+              borderRadius: '4px',
+              border: '1px solid #d1d5db',
+            },
+            style: { 
+              stroke: '#9ca3af', 
+              strokeWidth: 1,
+              strokeDasharray: '10,5',
+            },
+            animated: false,
+            markerEnd: { 
+              type: 'arrowclosed', 
+              color: '#9ca3af',
+              width: 16,
+              height: 16,
+            },
+            data: {
+              label: 'Default',
+              isDecisionEdge: false,
+              isFallback: true
+            }
+          });
+        }
+      }
     }
   });
   

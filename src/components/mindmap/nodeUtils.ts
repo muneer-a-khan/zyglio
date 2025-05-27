@@ -41,9 +41,6 @@ export const processNodes = (
   
   // Extract decision options from edges for nodes that have multiple outgoing connections
   edges.forEach(edge => {
-    // Skip if edge has no data
-    if (!edge.data) return;
-    
     const sourceNode = nodes.find(n => n.id === edge.source);
     const targetNode = nodes.find(n => n.id === edge.target);
     if (!sourceNode || !targetNode) return;
@@ -54,12 +51,41 @@ export const processNodes = (
       // Create or update decision options for this source node
       const currentOptions = decisionOptionsMap.get(edge.source) || [];
       
-      // Add this target as an option if we have label information
-      currentOptions.push({
-        label: edge.data?.isYes ? 'Yes' : (edge.data?.isNo ? 'No' : targetNode.data?.label?.toString() || 'Option'),
-        description: edge.data?.label ? String(edge.data.label) : (edge.data?.isYes ? 'Yes path' : (edge.data?.isNo ? 'No path' : 'Choose this path')),
-        nodeId: edge.target
-      });
+      // Get label from edge data or edge label or target node
+      let optionLabel = 'Option';
+      let optionDescription = 'Choose this path';
+      
+      if (edge.data?.label) {
+        optionLabel = String(edge.data.label);
+      } else if (edge.label) {
+        optionLabel = String(edge.label);
+      } else if (edge.data?.isYes) {
+        optionLabel = 'Yes';
+        optionDescription = 'Yes path';
+      } else if (edge.data?.isNo) {
+        optionLabel = 'No';
+        optionDescription = 'No path';
+      } else {
+        optionLabel = targetNode.data?.label?.toString() || 'Option';
+        optionDescription = `Go to ${targetNode.data?.label?.toString() || 'next step'}`;
+      }
+      
+      // Set description based on edge data
+      if (edge.data?.condition) {
+        optionDescription = String(edge.data.condition);
+      } else if (edge.data?.choice) {
+        optionDescription = String(edge.data.choice);
+      }
+      
+      // Only add if not already present (avoid duplicates)
+      const existingOption = currentOptions.find(opt => opt.label === optionLabel && opt.nodeId === edge.target);
+      if (!existingOption) {
+        currentOptions.push({
+          label: optionLabel,
+          description: optionDescription,
+          nodeId: edge.target
+        });
+      }
       
       decisionOptionsMap.set(edge.source, currentOptions);
     }
