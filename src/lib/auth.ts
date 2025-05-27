@@ -32,30 +32,36 @@ export const authOptions: NextAuthOptions = {
           return null;
         }
 
-        const user = await prisma.user.findUnique({
-          where: {
-            email: credentials.email,
-          },
-        });
+        try {
+          const user = await prisma.user.findUnique({
+            where: {
+              email: credentials.email,
+            },
+          });
 
-        if (!user || !user.password) {
+          if (!user || !user.password) {
+            return null;
+          }
+
+          const isPasswordValid = await bcrypt.compare(
+            credentials.password,
+            user.password
+          );
+
+          if (!isPasswordValid) {
+            return null;
+          }
+
+          return {
+            id: user.id,
+            email: user.email,
+            name: user.name,
+          };
+        } catch (error) {
+          console.error("Error in credentials authorization:", error);
+          // Return null instead of throwing an error
           return null;
         }
-
-        const isPasswordValid = await bcrypt.compare(
-          credentials.password,
-          user.password
-        );
-
-        if (!isPasswordValid) {
-          return null;
-        }
-
-        return {
-          id: user.id,
-          email: user.email,
-          name: user.name,
-        };
       },
     }),
   ],
@@ -79,8 +85,8 @@ export const authOptions: NextAuthOptions = {
           };
         }
 
-        // Only attempt to fetch user if we have an ID
-        if (token?.sub || token?.id) {
+        // Only attempt to fetch user if we have an ID and prisma is available
+        if ((token?.sub || token?.id) && prisma && typeof prisma.user?.findUnique === 'function') {
           const userIdToFetch = token.id || token.sub;
           try {
             const dbUser = await prisma.user.findUnique({
