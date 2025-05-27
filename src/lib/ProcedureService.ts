@@ -324,6 +324,12 @@ class ProcedureService {
    */
   async saveYaml(yamlContent: string): Promise<void> {
     try {
+      // Try to recover task ID if missing
+      if (!this.currentTaskId && this.currentProcedureId) {
+        console.log('No task ID found for YAML save, attempting to recover from procedure:', this.currentProcedureId);
+        await this.recoverTaskId();
+      }
+      
       if (!this.currentTaskId) {
         console.warn('No active task (currentTaskId) to save YAML for. This might be normal if procedure creation is not complete.');
         // Depending on UX, you might not want to throw an error here if it's an intermediate save
@@ -362,6 +368,12 @@ class ProcedureService {
    */
   async saveYamlContent(yamlContent: string): Promise<void> {
     try {
+      // Try to recover task ID if missing
+      if (!this.currentTaskId && this.currentProcedureId) {
+        console.log('No task ID found for YAML content save, attempting to recover from procedure:', this.currentProcedureId);
+        await this.recoverTaskId();
+      }
+      
       if (!this.currentTaskId) {
         console.warn('No active task (currentTaskId) to save YAML content for.');
         return; 
@@ -396,8 +408,14 @@ class ProcedureService {
    */
   async saveFlowchart(flowchartCode: string): Promise<void> {
     try {
+      // Try to recover task ID if missing
+      if (!this.currentTaskId && this.currentProcedureId) {
+        console.log('No task ID found, attempting to recover from procedure:', this.currentProcedureId);
+        await this.recoverTaskId();
+      }
+      
       if (!this.currentTaskId) {
-        throw new Error('No active task to save flowchart for');
+        throw new Error('No active task to save flowchart for. Please create or select a procedure first.');
       }
       
       const response = await fetch('/api/procedures/flowchart', {
@@ -777,6 +795,42 @@ class ProcedureService {
   /**
    * Clears the current procedure context
    */
+  /**
+   * Attempts to recover the task ID from the current procedure ID
+   */
+  private async recoverTaskId(): Promise<void> {
+    if (!this.currentProcedureId) {
+      console.log('No procedure ID available for task ID recovery');
+      return;
+    }
+
+    try {
+      if (!this.isServer && typeof window !== 'undefined') {
+        // Client-side: Use API
+        const response = await fetch(`/api/procedures/${this.currentProcedureId}`);
+        if (response.ok) {
+          const data = await response.json();
+          if (data.taskId) {
+            this.currentTaskId = data.taskId;
+            console.log('Recovered task ID via API:', this.currentTaskId);
+          }
+        }
+      } else if (prisma) {
+        // Server-side: Use Prisma directly
+        const procedure = await prisma.procedure.findUnique({
+          where: { id: this.currentProcedureId }
+        });
+        
+        if (procedure && procedure.taskId) {
+          this.currentTaskId = procedure.taskId;
+          console.log('Recovered task ID via Prisma:', this.currentTaskId);
+        }
+      }
+    } catch (error) {
+      console.error('Error recovering task ID:', error);
+    }
+  }
+
   clearCurrentProcedure(): void {
     this.currentProcedureId = null;
     this.currentTaskId = null;

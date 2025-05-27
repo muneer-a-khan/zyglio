@@ -1,6 +1,18 @@
 import { generateYamlFromSteps } from './deepseek';
 
-export async function generateProcedureYaml(steps: string[]): Promise<{ yaml?: string; error?: string }> {
+/**
+ * OpenAI integration for generating procedure YAML from steps
+ */
+
+interface GenerateYamlResult {
+  yaml: string;
+  error?: string;
+}
+
+/**
+ * Generate procedure YAML from steps using AI
+ */
+export async function generateProcedureYaml(steps: string[]): Promise<GenerateYamlResult> {
   try {
     // Validate input
     if (!steps || !Array.isArray(steps) || steps.length === 0) {
@@ -53,7 +65,9 @@ export async function generateProcedureYaml(steps: string[]): Promise<{ yaml?: s
   }
 }
 
-// Fallback YAML generation when AI fails
+/**
+ * Generate fallback YAML when AI generation fails
+ */
 function generateFallbackYaml(steps: string[]): string {
   console.log('generateFallbackYaml: Generating fallback YAML for steps:', steps);
   

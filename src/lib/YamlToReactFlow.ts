@@ -48,6 +48,7 @@ interface ReactFlowEdge {
   style?: Record<string, any>;
   animated?: boolean;
   markerEnd?: any; // For arrowheads
+  type?: string;
 }
 
 interface ReactFlowElements {
@@ -55,11 +56,11 @@ interface ReactFlowElements {
   edges: ReactFlowEdge[];
 }
 
-const MAX_LABEL_LENGTH = 40; // Increased max label length
-const NODE_WIDTH = 220;
+const MAX_LABEL_LENGTH = 50; // Increased max label length for better readability
+const NODE_WIDTH = 280; // Wider nodes for better content display
 const NODE_HEIGHT = 'auto'; // Auto height based on content
-const LEVEL_Y_SPACING = 150;
-const LEVEL_X_SPACING = 70;
+const LEVEL_Y_SPACING = 200; // More vertical spacing
+const LEVEL_X_SPACING = 100; // More horizontal spacing
 
 /**
  * Extracts a meaningful string from a value that might be a string or an object.
@@ -231,17 +232,17 @@ function processYamlData(yamlData: YamlProcedure): ReactFlowElements {
     const depth = Number(depthKey);
     const nodesInLevel = nodesAtDepth[depth];
     const levelWidth = nodesInLevel.length * (NODE_WIDTH + LEVEL_X_SPACING) - LEVEL_X_SPACING;
-    let startX = (1000 - levelWidth) / 2; // Centering based on a nominal canvas width
-    if (startX < 0) startX = 50;
+    let startX = (1200 - levelWidth) / 2; // Centering based on wider canvas
+    if (startX < 50) startX = 50;
 
     nodesInLevel.forEach((nodeId, index) => {
       const x = startX + index * (NODE_WIDTH + LEVEL_X_SPACING);
-      const y = depth * LEVEL_Y_SPACING;
+      const y = depth * LEVEL_Y_SPACING + 50; // Add top margin
       nodePositions.set(nodeId, { x, y });
     });
   });
 
-  // Create nodes
+  // Create nodes with modern styling
   yamlData.steps.forEach(step => {
     const position = nodePositions.get(step.id) || { x: Math.random() * 400, y: Math.random() * 400 }; // Fallback position
     const isDecision = !!(step.decision_point && step.options && step.options.length > 0);
@@ -249,6 +250,35 @@ function processYamlData(yamlData: YamlProcedure): ReactFlowElements {
 
     const nodeLabel = getStringValue(step.title, step.id);
     const nodeDescription = getStringValue(step.description);
+
+    // Modern node styling inspired by contemporary flowchart libraries
+    let nodeStyle = {
+      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+      color: '#ffffff',
+      borderRadius: '12px',
+      border: 'none',
+      padding: '16px 20px',
+      width: NODE_WIDTH,
+      minHeight: '80px',
+      height: NODE_HEIGHT,
+      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+      fontSize: '14px',
+      fontWeight: '500',
+      lineHeight: '1.4',
+      boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      textAlign: 'center' as const,
+      transition: 'all 0.2s ease',
+    };
+
+    if (isTerminal) {
+      nodeStyle.background = 'linear-gradient(135deg, #11998e 0%, #38ef7d 100%)';
+    } else if (isDecision) {
+      nodeStyle.background = 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)';
+      nodeStyle.borderRadius = '20px';
+    }
 
     nodes.push({
       id: step.id,
@@ -259,25 +289,12 @@ function processYamlData(yamlData: YamlProcedure): ReactFlowElements {
         isDecision,
       },
       position,
-      style: {
-        background: isTerminal ? '#d4edda' : isDecision ? '#fff3cd' : '#e9ecef', // Bootstrap-like colors
-        borderColor: isTerminal ? '#c3e6cb' : isDecision ? '#ffeeba' : '#ced4da',
-        borderWidth: '1px',
-        borderStyle: 'solid',
-        borderRadius: '0.25rem',
-        padding: '10px 15px',
-        width: NODE_WIDTH,
-        minHeight: '60px', // Min height
-        height: NODE_HEIGHT, // Auto height
-        textAlign: 'center',
-        fontSize: '14px',
-        boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
-      },
-      // type: 'customStepNode', // If you have custom nodes
+      style: nodeStyle,
+      type: 'default', // Use default React Flow node type with custom styling
     });
   });
 
-  // Create edges
+  // Create edges with modern styling
   yamlData.steps.forEach(step => {
     const sourceId = step.id;
     if (step.next && allNodeIds.has(step.next)) {
@@ -285,30 +302,59 @@ function processYamlData(yamlData: YamlProcedure): ReactFlowElements {
         id: `${sourceId}-to-${step.next}`,
         source: sourceId,
         target: step.next,
-        style: { stroke: '#6c757d', strokeWidth: 1.5 },
+        type: 'smoothstep', // Use smooth step edges for modern look
+        style: { 
+          stroke: '#3b82f6', 
+          strokeWidth: 2,
+        },
         animated: false,
-        markerEnd: { type: 'arrowclosed', color: '#6c757d' },
+        markerEnd: { 
+          type: 'arrowclosed', 
+          color: '#3b82f6',
+          width: 20,
+          height: 20,
+        },
       });
     }
 
     if (step.decision_point && step.options) {
       step.options.forEach((option, index) => {
-        if (option.next && allNodeIds.has(option.next) && option.next !== step.next) { // Avoid duplicate if option.next is same as step.next
+        if (option.next && allNodeIds.has(option.next) && option.next !== step.next) { 
           const choiceLabel = getStringValue(option.choice, `Option ${index+1}`);
           edges.push({
             id: `${sourceId}-option-${index}-to-${option.next}`,
             source: sourceId,
             target: option.next,
-            label: sanitizeText(truncateText(choiceLabel, 20)),
-            labelStyle: { fill: '#495057', fontSize: 11, fontWeight: 'normal' },
-            style: { stroke: '#adb5bd', strokeWidth: 1.5, strokeDasharray: '5,5' },
+            type: 'smoothstep',
+            label: sanitizeText(truncateText(choiceLabel, 25)),
+            labelStyle: { 
+              fill: '#374151', 
+              fontSize: 12, 
+              fontWeight: '500',
+              fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+              backgroundColor: '#ffffff',
+              padding: '4px 8px',
+              borderRadius: '6px',
+              border: '1px solid #e5e7eb',
+            },
+            style: { 
+              stroke: '#f59e0b', 
+              strokeWidth: 2,
+              strokeDasharray: '8,4',
+            },
             animated: false,
-            markerEnd: { type: 'arrowclosed', color: '#adb5bd' },
+            markerEnd: { 
+              type: 'arrowclosed', 
+              color: '#f59e0b',
+              width: 20,
+              height: 20,
+            },
           });
         }
       });
     }
   });
+  
   console.log("Generated React Flow Nodes:", nodes);
   console.log("Generated React Flow Edges:", edges);
   return { nodes, edges };
@@ -350,14 +396,46 @@ function createDefaultFlow(): ReactFlowElements {
     {
       id: 'start_node',
       data: { label: 'Procedure Start', isTerminal: false, isDecision: false },
-      position: { x: 250, y: 50 },
-      style: { background: '#e9ecef', borderColor: '#ced4da', borderWidth: '1px', borderStyle: 'solid', borderRadius: '0.25rem', padding: '10px 15px', width: NODE_WIDTH, textAlign: 'center', fontSize: '14px' }
+      position: { x: 350, y: 100 },
+      style: { 
+        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+        color: '#ffffff',
+        borderRadius: '12px',
+        border: 'none',
+        padding: '16px 20px',
+        width: NODE_WIDTH,
+        minHeight: '80px',
+        fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+        fontSize: '14px',
+        fontWeight: '500',
+        boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        textAlign: 'center' as const,
+      }
     },
     {
       id: 'error_node',
       data: { label: 'Error: Could not generate flowchart from YAML.', isTerminal: true, isDecision: false },
-      position: { x: 250, y: 200 },
-      style: { background: '#f8d7da', borderColor: '#f5c6cb', color: '#721c24', borderWidth: '1px', borderStyle: 'solid', borderRadius: '0.25rem', padding: '10px 15px', width: NODE_WIDTH + 100, textAlign: 'center', fontSize: '14px' }
+      position: { x: 300, y: 300 },
+      style: { 
+        background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+        color: '#ffffff',
+        borderRadius: '12px',
+        border: 'none',
+        padding: '16px 20px',
+        width: NODE_WIDTH + 80,
+        minHeight: '80px',
+        fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+        fontSize: '14px',
+        fontWeight: '500',
+        boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        textAlign: 'center' as const,
+      }
     }
   ];
 
@@ -366,8 +444,9 @@ function createDefaultFlow(): ReactFlowElements {
       id: 'start-to-error',
       source: 'start_node',
       target: 'error_node',
-      style: { stroke: '#6c757d' },
-      markerEnd: { type: 'arrowclosed', color: '#6c757d' },
+      type: 'smoothstep',
+      style: { stroke: '#ef4444', strokeWidth: 2 },
+      markerEnd: { type: 'arrowclosed', color: '#ef4444', width: 20, height: 20 },
     }
   ];
 

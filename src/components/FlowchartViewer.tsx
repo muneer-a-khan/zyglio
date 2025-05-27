@@ -136,9 +136,11 @@ const FlowchartViewer = ({ steps: stepsProp, onChange }: FlowchartViewerProps) =
   }, [stepsProp, onChange, generateAIYaml]);
 
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between pb-2">
-        <CardTitle className="text-xl">Procedure Flowchart</CardTitle>
+    <Card className="shadow-lg border-0 bg-white/95 backdrop-blur-sm">
+      <CardHeader className="flex flex-row items-center justify-between pb-4 border-b border-gray-100">
+        <CardTitle className="text-2xl font-bold bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent">
+          Procedure Flowchart
+        </CardTitle>
         <div className="flex space-x-2">
           <Button
             variant="outline"
@@ -146,25 +148,27 @@ const FlowchartViewer = ({ steps: stepsProp, onChange }: FlowchartViewerProps) =
             onClick={() => generateAIYaml(stepsProp)} 
             disabled={isGeneratingAI || !stepsProp || stepsProp.length === 0 || stepsProp.every(s => s.trim() === "")}
             title="Regenerate flowchart with AI"
+            className="bg-white/80 backdrop-blur-sm border-gray-200 hover:bg-blue-50 hover:border-blue-300 transition-all duration-200"
           >
             <RefreshCw
-              className={`mr-1 h-4 w-4 ${isGeneratingAI ? "animate-spin" : ""}`}
-            /> Refresh
+              className={`mr-2 h-4 w-4 ${isGeneratingAI ? "animate-spin" : ""}`}
+            /> 
+            {isGeneratingAI ? 'Generating...' : 'Refresh'}
           </Button>
         </div>
       </CardHeader>
-      <CardContent>
+      <CardContent className="p-6">
         {error && (
-          <div className="bg-red-50 p-3 mb-4 text-red-600 text-sm rounded border border-red-200">
-            <p className="font-semibold">Error with AI Flowchart Generation:</p>
-            <pre className="whitespace-pre-wrap text-xs">{error}</pre>
+          <div className="bg-gradient-to-r from-red-50 to-pink-50 p-4 mb-6 text-red-700 text-sm rounded-lg border border-red-200 shadow-sm">
+            <p className="font-semibold text-red-800">Error with AI Flowchart Generation:</p>
+            <pre className="whitespace-pre-wrap text-xs mt-2 font-mono bg-red-100/50 p-2 rounded border">{error}</pre>
           </div>
         )}
         
-        <div className="h-[600px]">
+        <div className="h-[650px] rounded-lg overflow-hidden shadow-inner">
           <ReactFlowChart 
             yamlContent={yamlContent || ""}
-            className="w-full h-full"
+            className="w-full h-full rounded-lg"
           />
         </div>
       </CardContent>
