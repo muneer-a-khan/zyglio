@@ -44,7 +44,7 @@ export async function GET(req: NextRequest) {
     const { data: storageFiles, error } = await supabase
       .storage
       .from('user-uploads')
-      .list();
+      .list('', { sortBy: { column: 'created_at', order: 'desc' } });
 
     if (!error && storageFiles) {
       allBucketFiles = storageFiles;
@@ -57,13 +57,14 @@ export async function GET(req: NextRequest) {
       const { data: dirFiles, error: dirError } = await supabase
         .storage
         .from('user-uploads')
-        .list(dir);
+        .list(dir, { sortBy: { column: 'created_at', order: 'desc' } });
         
       if (!dirError && dirFiles && dirFiles.length > 0) {
         // Add directory prefix to file names
         const filesWithPath = dirFiles.map(file => ({
           ...file,
-          name: `${dir}/${file.name}`
+          name: `${dir}/${file.name}`,
+          path: `${dir}/${file.name}`
         }));
         allBucketFiles = [...allBucketFiles, ...filesWithPath];
       }
@@ -114,10 +115,18 @@ export async function GET(req: NextRequest) {
         if (existingItem) {
           // If in database, use that record but refresh URL
           const TEN_YEARS_IN_SECONDS = 60 * 60 * 24 * 365 * 10;
+          
+          // Use the correct path for the file (either direct or with directory)
+          const filePath = file.path || file.name;
+          
           const { data, error: signedUrlError } = await supabase
             .storage
             .from('user-uploads')
-            .createSignedUrl(file.name, TEN_YEARS_IN_SECONDS);
+            .createSignedUrl(filePath, TEN_YEARS_IN_SECONDS);
+            
+          if (signedUrlError) {
+            console.error('Error creating signed URL:', signedUrlError);
+          }
             
           return {
             ...existingItem,
@@ -128,16 +137,30 @@ export async function GET(req: NextRequest) {
         // Determine media type from file name
         let type = 'IMAGE';
         const extension = file.name.split('.').pop()?.toLowerCase();
-        if (['mp4', 'webm', 'mov'].includes(extension || '')) type = 'VIDEO';
-        else if (['mp3', 'wav', 'ogg'].includes(extension || '')) type = 'AUDIO';
-        else if (['pdf'].includes(extension || '')) type = 'PDF';
+        
+        if (['mp4', 'webm', 'mov'].includes(extension || '')) {
+          type = 'VIDEO';
+        } else if (['mp3', 'wav', 'ogg'].includes(extension || '')) {
+          type = 'AUDIO';
+        } else if (['pdf'].includes(extension || '')) {
+          type = 'PDF';
+        }
 
         // Generate signed URL with 10-year expiry
         const TEN_YEARS_IN_SECONDS = 60 * 60 * 24 * 365 * 10;
+        
+        // Use the correct path for the file (either direct or with directory)
+        const filePath = file.path || file.name;
+        
         const { data, error: signedUrlError } = await supabase
           .storage
           .from('user-uploads')
-          .createSignedUrl(file.name, TEN_YEARS_IN_SECONDS);
+          .createSignedUrl(filePath, TEN_YEARS_IN_SECONDS);
+
+        if (signedUrlError) {
+          console.error('Error creating signed URL:', signedUrlError, filePath);
+          return null;
+        }
 
         // Create a new clean file name for display (remove user ID prefix)
         const displayName = file.name.includes('_') 
@@ -145,11 +168,11 @@ export async function GET(req: NextRequest) {
           : file.name;
 
         const mediaItem = {
-          id: `storage-${file.name}`,
+          id: `storage-${filePath}`,
           type,
           caption: displayName,
           url: data?.signedUrl || '',
-          filePath: file.name,
+          filePath: filePath,
           createdAt: file.created_at || new Date(),
           presenter: ''
         };
@@ -193,6 +216,33 @@ export async function DELETE(req: NextRequest) {
       }, { status: 400 });
     }
 
+    // Check if this is a storage item (not in database)
+    if (id.includes('/')) {
+      // This is likely a path from Supabase storage
+      try {
+        console.log('Deleting file from storage:', id);
+        
+        // Delete the file from Supabase storage
+        const { data, error } = await supabase.storage.from('user-uploads').remove([id]);
+        
+        if (error) {
+          throw new Error(`Storage deletion error: ${error.message}`);
+        }
+        
+        return NextResponse.json({
+          success: true,
+          message: "Media item deleted successfully from storage"
+        });
+      } catch (error: any) {
+        console.error('Error deleting file from storage:', error);
+        return NextResponse.json({ 
+          success: false, 
+          message: error.message || "An error occurred while deleting from storage"
+        }, { status: 500 });
+      }
+    }
+
+    // Otherwise this is a database item
     // Check if the media item exists and belongs to the user
     const mediaItem = await prisma.mediaItem.findFirst({
       where: {
@@ -225,13 +275,33 @@ export async function DELETE(req: NextRequest) {
     // Delete from Supabase storage if URL is from Supabase
     if (mediaItem.url.includes('storage.googleapis.com') || mediaItem.url.includes(process.env.NEXT_PUBLIC_SUPABASE_URL || '')) {
       try {
-        // Extract the path from the URL
-        const urlParts = mediaItem.url.split('/');
-        const bucket = urlParts[urlParts.length - 2];
-        const filePath = urlParts[urlParts.length - 1];
+        // Try to extract the path from the URL
+        let filePath = '';
         
-        // Delete the file from Supabase storage
-        await supabase.storage.from(bucket).remove([filePath]);
+        // First try to get the file path from query params
+        const urlObj = new URL(mediaItem.url);
+        const filePathParam = urlObj.searchParams.get('path');
+        
+        if (filePathParam) {
+          filePath = decodeURIComponent(filePathParam);
+        } else {
+          // Extract from the URL pattern
+          const urlParts = mediaItem.url.split('/');
+          // Try to find the bucket name in URL
+          const bucketIndex = urlParts.findIndex(part => 
+            part === 'user-uploads' || part === 'storage'
+          );
+          
+          if (bucketIndex >= 0 && bucketIndex < urlParts.length - 1) {
+            filePath = urlParts.slice(bucketIndex + 1).join('/').split('?')[0];
+          }
+        }
+        
+        if (filePath) {
+          console.log('Attempting to delete file from storage:', filePath);
+          // Delete the file from Supabase storage
+          await supabase.storage.from('user-uploads').remove([filePath]);
+        }
       } catch (error) {
         console.error('Error deleting file from storage:', error);
         // Continue with deleting the database record even if storage deletion fails

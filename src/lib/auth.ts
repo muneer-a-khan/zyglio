@@ -1,11 +1,13 @@
 import { NextAuthOptions } from "next-auth";
 import { PrismaAdapter } from "@auth/prisma-adapter";
-import { prisma } from "@/lib/prisma";
+import prisma from "@/lib/prisma";
 import CredentialsProvider from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import { getServerSession } from 'next-auth/next';
 import { cookies, headers } from 'next/headers';
 import { createClient } from '@supabase/supabase-js';
+import { authOptions } from '@/app/api/auth/[...nextauth]/route';
+import { supabase } from '@/integrations/supabase/client';
 
 export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma),
@@ -30,30 +32,36 @@ export const authOptions: NextAuthOptions = {
           return null;
         }
 
-        const user = await prisma.user.findUnique({
-          where: {
-            email: credentials.email,
-          },
-        });
+        try {
+          const user = await prisma.user.findUnique({
+            where: {
+              email: credentials.email,
+            },
+          });
 
-        if (!user || !user.password) {
+          if (!user || !user.password) {
+            return null;
+          }
+
+          const isPasswordValid = await bcrypt.compare(
+            credentials.password,
+            user.password
+          );
+
+          if (!isPasswordValid) {
+            return null;
+          }
+
+          return {
+            id: user.id,
+            email: user.email,
+            name: user.name,
+          };
+        } catch (error) {
+          console.error("Error in credentials authorization:", error);
+          // Return null instead of throwing an error
           return null;
         }
-
-        const isPasswordValid = await bcrypt.compare(
-          credentials.password,
-          user.password
-        );
-
-        if (!isPasswordValid) {
-          return null;
-        }
-
-        return {
-          id: user.id,
-          email: user.email,
-          name: user.name,
-        };
       },
     }),
   ],
@@ -77,8 +85,8 @@ export const authOptions: NextAuthOptions = {
           };
         }
 
-        // Only attempt to fetch user if we have an ID
-        if (token?.sub || token?.id) {
+        // Only attempt to fetch user if we have an ID and prisma is available
+        if ((token?.sub || token?.id) && prisma && typeof prisma.user?.findUnique === 'function') {
           const userIdToFetch = token.id || token.sub;
           try {
             const dbUser = await prisma.user.findUnique({
@@ -111,17 +119,29 @@ export const authOptions: NextAuthOptions = {
 };
 
 /**
+ * Get the user session for server components
+ */
+export async function getAuthSession() {
+  try {
+    return await getServerSession(authOptions);
+  } catch (error) {
+    console.error('Error getting auth session:', error);
+    return null;
+  }
+}
+
+/**
  * Verify the user session from a request
  */
 export async function verifySession(request: Request) {
   try {
     // Get session from Next-Auth
-    const session = await getServerSession();
+    const session = await getServerSession(authOptions);
     if (session) {
       return session;
     }
 
-    // Fallback to checking auth cookie or header
+    // Fallback to checking auth header
     const authHeader = request.headers.get('Authorization');
     if (authHeader && authHeader.startsWith('Bearer ')) {
       const token = authHeader.substring(7);
@@ -141,11 +161,6 @@ export async function verifySession(request: Request) {
  */
 async function verifyToken(token: string) {
   try {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
-    
-    const supabase = createClient(supabaseUrl, supabaseAnonKey);
-    
     const { data, error } = await supabase.auth.getUser(token);
     
     if (error || !data.user) {

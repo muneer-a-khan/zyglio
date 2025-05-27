@@ -9,15 +9,40 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
-model User {
-  id            String         @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  email         String         @unique
-  name          String?
-  createdAt     DateTime       @default(now()) @db.Timestamptz(6)
-  role          user_role      @default(trainee)
-  learningTasks LearningTask[]
+model AISuggestion {
+  id          String         @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  text        String
+  kind        SuggestionType
+  dictationId String         @db.Uuid
 
-  @@map("users")
+  @@index([dictationId])
+}
+
+model Dictation {
+  id         String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  audioUrl   String
+  transcript String
+  createdAt  DateTime @default(now()) @db.Timestamptz(6)
+  taskId     String   @db.Uuid
+
+  @@index([taskId])
+}
+
+model ExternalResource {
+  id          String @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  url         String
+  description String
+  taskId      String @db.Uuid
+
+  @@index([taskId])
+}
+
+model Flowchart {
+  id      String @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  mermaid String
+  taskId  String @db.Uuid
+
+  @@index([taskId])
 }
 
 model LearningTask {
@@ -29,7 +54,7 @@ model LearningTask {
   affiliation String?
   date        DateTime @db.Timestamptz(6)
   userId      String   @db.Uuid
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  users       users    @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@index([userId])
 }
@@ -46,47 +71,6 @@ model MediaItem {
 
   @@index([stepId])
   @@index([taskId])
-}
-
-model ExternalResource {
-  id          String @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  url         String
-  description String
-  taskId      String @db.Uuid
-
-  @@index([taskId])
-}
-
-model Dictation {
-  id         String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  audioUrl   String
-  transcript String
-  createdAt  DateTime @default(now()) @db.Timestamptz(6)
-  taskId     String   @db.Uuid
-
-  @@index([taskId])
-}
-
-model AISuggestion {
-  id          String         @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  text        String
-  kind        SuggestionType
-  dictationId String         @db.Uuid
-
-  @@index([dictationId])
-}
-
-model Question {
-  id          String       @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  type        QuestionType
-  content     String
-  options     String?
-  correct     String?
-  dictationId String?      @db.Uuid
-  stepId      String?      @db.Uuid
-
-  @@index([dictationId])
-  @@index([stepId])
 }
 
 model Procedure {
@@ -111,20 +95,17 @@ model ProcedureStep {
   @@index([procedureId])
 }
 
-model YamlOutput {
-  id      String @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  content String
-  taskId  String @db.Uuid
+model Question {
+  id          String       @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  type        QuestionType
+  content     String
+  options     String?
+  correct     String?
+  dictationId String?      @db.Uuid
+  stepId      String?      @db.Uuid
 
-  @@index([taskId])
-}
-
-model Flowchart {
-  id      String @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  mermaid String
-  taskId  String @db.Uuid
-
-  @@index([taskId])
+  @@index([dictationId])
+  @@index([stepId])
 }
 
 model Simulation {
@@ -146,30 +127,48 @@ model SimulationStep {
   @@index([simulationId])
 }
 
-model Document {
-  id          String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  title       String
-  url         String
-  broadTopic  String
-  sourceType  String
-  content     String?   @db.Text
-  createdAt   DateTime  @default(now()) @db.Timestamptz(6)
-  updatedAt   DateTime  @updatedAt @db.Timestamptz(6)
-  chunks      Chunk[]
+model YamlOutput {
+  id      String @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  content String
+  taskId  String @db.Uuid
+
+  @@index([taskId])
 }
 
-model Chunk {
-  id             String      @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  documentId     String      @db.Uuid
-  document       Document    @relation(fields: [documentId], references: [id])
-  text           String      @db.Text
-  embedding      Unsupported("vector(1536)")? 
+model chunks {
+  id             String                 @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  documentId     String                 @db.Uuid
+  text           String
+  embedding      Unsupported("vector")?
   sequenceNumber Int
   metadata       Json?
-  createdAt      DateTime    @default(now()) @db.Timestamptz(6)
-  updatedAt      DateTime    @updatedAt @db.Timestamptz(6)
+  createdAt      DateTime               @default(now()) @db.Timestamptz(6)
+  updatedAt      DateTime               @default(now()) @db.Timestamptz(6)
+  documents      documents              @relation(fields: [documentId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_document")
 
   @@index([documentId])
+  @@index([embedding])
+}
+
+model documents {
+  id         String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  title      String
+  url        String
+  broadTopic String
+  sourceType String
+  content    String?
+  createdAt  DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt  DateTime @default(now()) @db.Timestamptz(6)
+  chunks     chunks[]
+}
+
+model users {
+  id           String         @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  email        String         @unique
+  name         String?
+  createdAt    DateTime       @default(now()) @db.Timestamptz(6)
+  role         user_role      @default(trainee)
+  LearningTask LearningTask[]
 }
 
 enum MediaType {
@@ -179,14 +178,14 @@ enum MediaType {
   PDF
 }
 
-enum SuggestionType {
-  INSERTION
-  CLARIFYING_QUESTION
+enum QuestionType {
   MCQ
   OPEN_ENDED
 }
 
-enum QuestionType {
+enum SuggestionType {
+  INSERTION
+  CLARIFYING_QUESTION
   MCQ
   OPEN_ENDED
 }
