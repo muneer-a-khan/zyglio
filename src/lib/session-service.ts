@@ -1,9 +1,14 @@
 import OpenAI from 'openai';
 
 // Initialize DeepSeek client
+const apiKey = process.env.DEEPSEEK_API_KEY;
+if (!apiKey) {
+  console.error('DEEPSEEK_API_KEY is not defined in environment variables.');
+}
+
 const deepseek = new OpenAI({
   baseURL: 'https://api.deepseek.com/v1',
-  apiKey: process.env.DEEPSEEK_API_KEY,
+  apiKey: apiKey,
 });
 
 // Get the base URL for API calls from environment variables or use a default
@@ -776,6 +781,8 @@ async function generateInitialGeneralQuestions(
   topics: TopicItem[]
 ): Promise<BatchedQuestion[]> {
   try {
+    console.log('Generating initial general questions with DeepSeek API...');
+    console.log('DeepSeek API key available:', !!apiKey);
     const systemPrompt = `You are an expert interviewer gathering detailed information about a procedure or process from a subject matter expert (SME).
     
 Generate 3 initial general, open-ended questions for the SME about the topic "${procedureTitle}". These should be broad questions that allow the SME to share their general knowledge before getting into specifics.
