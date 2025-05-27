@@ -1,6 +1,6 @@
 'use client';
 
-import { CheckCircle, Circle, AlertCircle, Clock, ChevronDown, ChevronRight } from 'lucide-react';
+import { CheckCircle, Circle, AlertCircle, Clock, ChevronDown, ChevronRight, Tag } from 'lucide-react';
 import { useState } from 'react';
 
 interface TopicItem {
@@ -33,6 +33,9 @@ export default function TopicChecklist({ topics, topicsByCategory, className = '
 
   // State to track which topics have expanded subtopics
   const [expandedTopics, setExpandedTopics] = useState<Record<string, boolean>>({});
+  
+  // State to track which topics have expanded tags
+  const [expandedTags, setExpandedTags] = useState<Record<string, boolean>>({});
 
   const toggleCategory = (category: string) => {
     setExpandedCategories(prev => ({
@@ -43,6 +46,13 @@ export default function TopicChecklist({ topics, topicsByCategory, className = '
 
   const toggleTopic = (topicId: string) => {
     setExpandedTopics(prev => ({
+      ...prev,
+      [topicId]: !prev[topicId]
+    }));
+  };
+  
+  const toggleTags = (topicId: string) => {
+    setExpandedTags(prev => ({
       ...prev,
       [topicId]: !prev[topicId]
     }));
@@ -83,6 +93,11 @@ export default function TopicChecklist({ topics, topicsByCategory, className = '
   const hasSubtopics = (topic: TopicItem) => {
     return topic.subtopics && topic.subtopics.length > 0;
   };
+  
+  // Function to determine if a topic has keywords/tags
+  const hasTags = (topic: TopicItem) => {
+    return topic.keywords && topic.keywords.length > 0;
+  };
 
   // Group topics by parent/child relationship if not already done
   const organizeTopicHierarchy = (topicsInCategory: TopicItem[]) => {
@@ -92,7 +107,7 @@ export default function TopicChecklist({ topics, topicsByCategory, className = '
   };
 
   return (
-    <div className={`bg-white rounded-lg shadow-md border border-gray-200 ${className}`}>
+    <div className={`bg-white rounded-lg shadow-md border border-gray-200 min-w-[320px] w-full ${className}`}>
       <div className="p-4 border-b border-gray-200 bg-blue-50">
         <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
           <Clock className="w-5 h-5" />
@@ -178,21 +193,48 @@ export default function TopicChecklist({ topics, topicsByCategory, className = '
                             </p>
                           )}
                           
-                          {topic.keywords.length > 0 && (
-                            <div className="mt-2 flex flex-wrap gap-1">
-                              {topic.keywords.slice(0, 3).map((keyword, index) => (
-                                <span
-                                  key={index}
-                                  className="inline-block px-2 py-1 text-xs bg-white bg-opacity-60 rounded-full"
-                                >
-                                  {keyword}
+                          {hasTags(topic) && (
+                            <div className="mt-2">
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs text-gray-500 flex items-center">
+                                  <Tag className="w-3 h-3 mr-1" />
+                                  Keywords
                                 </span>
-                              ))}
-                              {topic.keywords.length > 3 && (
-                                <span className="text-xs text-gray-500">
-                                  +{topic.keywords.length - 3} more
-                                </span>
-                              )}
+                                
+                                {topic.keywords.length > 3 && (
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      toggleTags(topic.id);
+                                    }}
+                                    className="p-1 rounded-full hover:bg-white/30 text-xs text-gray-500 flex items-center"
+                                  >
+                                    {expandedTags[topic.id] ? 
+                                      <ChevronDown className="w-3 h-3" /> : 
+                                      <ChevronRight className="w-3 h-3" />
+                                    }
+                                    <span className="ml-1">
+                                      {expandedTags[topic.id] ? "Show less" : "Show all"}
+                                    </span>
+                                  </button>
+                                )}
+                              </div>
+                              
+                              <div className="mt-1 flex flex-wrap gap-1">
+                                {(expandedTags[topic.id] ? topic.keywords : topic.keywords.slice(0, 3)).map((keyword, index) => (
+                                  <span
+                                    key={index}
+                                    className="inline-block px-2 py-1 text-xs bg-white bg-opacity-60 rounded-full"
+                                  >
+                                    {keyword}
+                                  </span>
+                                ))}
+                                {!expandedTags[topic.id] && topic.keywords.length > 3 && (
+                                  <span className="text-xs text-gray-500">
+                                    +{topic.keywords.length - 3} more
+                                  </span>
+                                )}
+                              </div>
                             </div>
                           )}
                           
@@ -245,6 +287,52 @@ export default function TopicChecklist({ topics, topicsByCategory, className = '
                                   <p className="mt-1 text-xs text-gray-600 leading-relaxed">
                                     {subtopic.description}
                                   </p>
+                                )}
+                                
+                                {/* Tags for subtopics */}
+                                {subtopic.keywords && subtopic.keywords.length > 0 && (
+                                  <div className="mt-2">
+                                    <div className="flex items-center justify-between">
+                                      <span className="text-xs text-gray-500 flex items-center">
+                                        <Tag className="w-3 h-3 mr-1" />
+                                        Keywords
+                                      </span>
+                                      
+                                      {subtopic.keywords.length > 3 && (
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            toggleTags(subtopic.id);
+                                          }}
+                                          className="p-1 rounded-full hover:bg-white/30 text-xs text-gray-500 flex items-center"
+                                        >
+                                          {expandedTags[subtopic.id] ? 
+                                            <ChevronDown className="w-3 h-3" /> : 
+                                            <ChevronRight className="w-3 h-3" />
+                                          }
+                                          <span className="ml-1">
+                                            {expandedTags[subtopic.id] ? "Show less" : "Show all"}
+                                          </span>
+                                        </button>
+                                      )}
+                                    </div>
+                                    
+                                    <div className="mt-1 flex flex-wrap gap-1">
+                                      {(expandedTags[subtopic.id] ? subtopic.keywords : subtopic.keywords.slice(0, 3)).map((keyword, index) => (
+                                        <span
+                                          key={index}
+                                          className="inline-block px-2 py-1 text-xs bg-white bg-opacity-60 rounded-full"
+                                        >
+                                          {keyword}
+                                        </span>
+                                      ))}
+                                      {!expandedTags[subtopic.id] && subtopic.keywords.length > 3 && (
+                                        <span className="text-xs text-gray-500">
+                                          +{subtopic.keywords.length - 3} more
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
                                 )}
                                 
                                 {subtopic.coverageScore > 0 && (

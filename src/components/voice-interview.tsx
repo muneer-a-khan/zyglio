@@ -418,20 +418,20 @@ export default function VoiceInterview({
       )}
 
       {/* Main Interview Interface - 2 column layout with sidebar */}
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 min-h-[600px]">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 min-h-[600px]">
         {/* Left Sidebar - Topic Checklist */}
         {sessionData?.topics && (
-          <div className="lg:col-span-1 h-full">
+          <div className="lg:col-span-4 xl:col-span-3 h-full">
             <TopicChecklist 
               topics={sessionData.topics}
               topicsByCategory={sessionData.topicsByCategory}
-              className="sticky top-6 max-h-[calc(100vh-200px)]"
+              className="sticky top-6 max-h-[calc(100vh-200px)] overflow-y-auto"
             />
           </div>
         )}
 
         {/* Right Side - Conversation and Controls */}
-        <div className="lg:col-span-3 space-y-4">
+        <div className="lg:col-span-8 xl:col-span-9 space-y-4">
           {/* Conversation Chat */}
           <ConversationChat 
             conversationHistory={conversationHistory}
