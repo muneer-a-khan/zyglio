@@ -4,7 +4,7 @@ import prisma from '@/lib/prisma';
 export async function GET() {
   try {
     // Test connection
-    const usersCount = await prisma.user.count();
+    const usersCount = await prisma.users.count();
     
     // Return a success response
     return NextResponse.json({ 

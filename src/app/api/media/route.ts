@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { authOptions } from "@/lib/auth";
 import { createClient } from '@supabase/supabase-js';
 
 // Create a Supabase client
@@ -84,13 +84,19 @@ export async function GET(req: NextRequest) {
     });
     
     // Also fetch from database as backup
+    const userTasks = await prisma.learningTask.findMany({
+      where: {
+        userId: session.user.id
+      },
+      select: { id: true }
+    });
+    
+    const userTaskIds = userTasks.map(task => task.id);
+    
     const dbMediaItems = await prisma.mediaItem.findMany({
       where: {
         taskId: {
-          in: await prisma.learningTask.findMany({
-            where: { userId: session.user.id },
-            select: { id: true }
-          }).then(tasks => tasks.map(task => task.id))
+          in: userTaskIds
         }
       },
       orderBy: {
@@ -240,21 +246,30 @@ export async function DELETE(req: NextRequest) {
     // Check if the media item exists and belongs to the user
     const mediaItem = await prisma.mediaItem.findFirst({
       where: {
-        id,
-        taskId: {
-          in: await prisma.learningTask.findMany({
-            where: { userId: session.user.id },
-            select: { id: true }
-          }).then(tasks => tasks.map(task => task.id))
-        }
+        id
       }
     });
 
     if (!mediaItem) {
       return NextResponse.json({ 
         success: false, 
-        message: "Media item not found or access denied" 
+        message: "Media item not found" 
       }, { status: 404 });
+    }
+
+    // Check user ownership by verifying the associated task
+    const task = await prisma.learningTask.findFirst({
+      where: {
+        id: mediaItem.taskId,
+        userId: session.user.id
+      }
+    });
+
+    if (!task) {
+      return NextResponse.json({ 
+        success: false, 
+        message: "Access denied" 
+      }, { status: 403 });
     }
 
     // Delete from Supabase storage if URL is from Supabase

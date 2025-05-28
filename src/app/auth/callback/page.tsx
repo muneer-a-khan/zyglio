@@ -16,7 +16,7 @@ export default function AuthCallback() {
     const handleEmailConfirmation = async () => {
       try {
         // Get the code from the URL
-        const code = searchParams.get("code");
+        const code = searchParams?.get("code");
         
         if (!code) {
           setError("No confirmation code found in the URL.");

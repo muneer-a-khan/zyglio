@@ -5,7 +5,7 @@ import { prisma } from '@/lib/prisma';
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: { procedureId: string } }
+  context: { params: Promise<{ procedureId: string }> }
 ) {
   try {
     const session = await getServerSession(authOptions);
@@ -17,7 +17,7 @@ export async function POST(
     }
 
     const { steps } = await req.json();
-    const { procedureId } = params;
+    const { procedureId } = await context.params;
 
     if (!steps || !Array.isArray(steps)) {
       return NextResponse.json(
@@ -67,7 +67,8 @@ export async function POST(
         content: step.content,
         index: step.order,
         isCheckpoint: step.isCheckpoint || false,
-        expectedResponses: step.expectedResponses || []
+        expectedResponses: step.expectedResponses || [],
+        updatedAt: new Date()
       }))
     });
 

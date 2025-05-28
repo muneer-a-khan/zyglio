@@ -139,7 +139,6 @@ export async function POST(req: NextRequest) {
               file.type.startsWith('audio/') ? 'AUDIO' : 'PDF',
         caption: file.name,
         url: fileUrl,
-        filePath: filePath,
         taskId: taskId,
       }
     });

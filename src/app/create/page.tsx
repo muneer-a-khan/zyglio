@@ -87,7 +87,7 @@ export default function CreateProcedure() {
   const handleTranscriptChange = async (text: string) => {
     try {
       // Only save if we have a task ID and non-empty transcript
-      if (!procedureService.currentTaskId) {
+      if (!procedureService.getCurrentTaskId()) {
         console.log('No task ID available for saving transcript');
         return;
       }
@@ -108,33 +108,12 @@ export default function CreateProcedure() {
   };
   
   const handleStepsChange = async (newSteps: Step[]) => {
-    try {
-      // Update local state first
-      setSteps(newSteps);
-      
-      if (!procedureService.currentProcedureId) {
-        console.error('No active procedure ID for saving steps');
-        return;
-      }
-
-      // Save steps to database
-      const success = await procedureService.saveSteps(procedureService.currentProcedureId, newSteps);
-      
-      if (!success) {
-        toast.error("Failed to save steps. Please try again.");
-        return;
-      }
-
-      // If we have YAML generation enabled, trigger it
-      if (newSteps.length > 0 && taskDefinition?.name) {
-        const yaml = await handleRegenerateYamlFromStepsViaApi(newSteps, taskDefinition.name);
-        if (yaml) {
-          setYamlContent(yaml);
-        }
-      }
-    } catch (error) {
-      console.error("Error handling steps change:", error);
-      toast.error("Failed to save steps. Please try again.");
+    setSteps(newSteps);
+    
+    // Save steps to database
+    const currentProcedureId = procedureService.getCurrentProcedureId();
+    if (currentProcedureId) {
+      await procedureService.saveSteps(currentProcedureId, newSteps);
     }
   };
   

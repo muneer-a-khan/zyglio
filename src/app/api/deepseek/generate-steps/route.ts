@@ -62,18 +62,18 @@ Provide ONLY the steps, one per line. Do not include any introductory text, conc
 
     const steps = generatedContent
       .split('\n')
-      .map(step => step.trim())
-      .filter(step => step && step.includes(':')) // Basic validation for "Title: Description"
-      .map(step => step.replace(/^[-•*]\s*/, '').trim()); // Remove list markers
+      .map((step: string) => step.trim())
+      .filter((step: string) => step && step.includes(':')) // Basic validation for "Title: Description"
+      .map((step: string) => step.replace(/^[-•*]\s*/, '').trim()); // Remove list markers
 
     if (steps.length === 0) {
       console.error('No valid steps extracted from DeepSeek response:', generatedContent);
       // Fallback if no steps are generated
        const fallbackSteps = transcript
           .split(/[.!?]+/)
-          .map(sentence => sentence.trim())
-          .filter(sentence => sentence.length > 10)
-          .map((sentence, index) => `Step ${index + 1}: ${sentence}`);
+          .map((sentence: string) => sentence.trim())
+          .filter((sentence: string) => sentence.length > 10)
+          .map((sentence: string, index: number) => `Step ${index + 1}: ${sentence}`);
         
         if (fallbackSteps.length > 0) {
           console.log('Using fallback steps mechanism for step generation, count:', fallbackSteps.length);

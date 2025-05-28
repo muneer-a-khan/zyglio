@@ -60,7 +60,9 @@ ${ragResult.relevantFactors.map((factor, i) => `${i+1}. ${factor}`).join('\n')}
       conversationHistory: [],
       batchedQuestions: [],
       questionsAsked: 0,
-      interviewCompleted: false
+      interviewCompleted: false,
+      topics: [],
+      firstOverviewGiven: false
     });
     
     return NextResponse.json({

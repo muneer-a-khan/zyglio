@@ -144,12 +144,14 @@ Generate ${numberOfQuestions} follow-up questions that explore areas not yet cov
     const questionsData = JSON.parse(responseText);
     
     // Convert to BatchedQuestion objects
-    const batchedQuestions: BatchedQuestion[] = questionsData.map((q: any) => ({
+    const batchedQuestions: BatchedQuestion[] = questionsData.map((q: any, index: number) => ({
       id: uuidv4(),
       question: q.question,
       category: q.category,
       keywords: q.keywords,
-      used: false
+      used: false,
+      priority: q.priority || (index + 1), // Default priority based on order
+      relatedTopics: q.relatedTopics || [] // Default to empty array
     }));
 
     return batchedQuestions;
@@ -165,7 +167,9 @@ Generate ${numberOfQuestions} follow-up questions that explore areas not yet cov
         question: `Can you tell me more about this aspect of the procedure?`,
         category: 'general',
         keywords: ['procedure', 'process', 'steps'],
-        used: false
+        used: false,
+        priority: i + 1,
+        relatedTopics: []
       });
     }
     

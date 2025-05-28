@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { authOptions } from "@/lib/auth";
 import { v4 as uuidv4 } from "uuid";
 
 export async function POST(req: NextRequest) {
@@ -24,17 +24,29 @@ export async function POST(req: NextRequest) {
     const procedure = await prisma.procedure.findFirst({
       where: {
         id: procedureId,
-        task: {
-          userId: session.user.id
-        }
       }
     });
     
     if (!procedure) {
       return NextResponse.json({ 
         success: false, 
-        message: "Procedure not found or access denied" 
+        message: "Procedure not found" 
       }, { status: 404 });
+    }
+    
+    // Check if the user owns the task associated with this procedure
+    const task = await prisma.learningTask.findFirst({
+      where: {
+        id: procedure.taskId,
+        userId: session.user.id
+      }
+    });
+    
+    if (!task) {
+      return NextResponse.json({ 
+        success: false, 
+        message: "Access denied" 
+      }, { status: 403 });
     }
     
     // Delete existing steps
@@ -50,9 +62,9 @@ export async function POST(req: NextRequest) {
             id: uuidv4(),
             index,
             content: step.content,
-            notes: step.notes || null,
-            conditions: step.conditions || null,
-            procedureId
+            procedureId,
+            createdAt: new Date(),
+            updatedAt: new Date()
           }
         })
       )

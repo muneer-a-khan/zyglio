@@ -51,9 +51,34 @@ export async function POST(request: Request) {
 
     const sampleYaml = `procedure_name: ${procedureName} # THIS WILL BE REPLACED BY THE PROVIDED procedureName
 purpose: A concise statement explaining the overall objective of the procedure.
-stages:
-    - Step Title 1: Detailed description of the first action or phase.
-    - Step Title 2: Detailed description of the second action or phase.
+steps:
+  - id: step_1
+    title: "First Step Title"
+    description: "Detailed description of the first action"
+    next: step_2
+  - id: step_2
+    title: "Decision Point Example"
+    description: "A step that requires a decision"
+    decision_point: true
+    options:
+      - choice: "Yes - Continue"
+        next: step_3
+        condition: "If conditions are met"
+      - choice: "No - Alternative"
+        next: step_4
+        condition: "If conditions are not met"
+  - id: step_3
+    title: "Positive Path Step"
+    description: "Action taken if yes was chosen"
+    next: step_5
+  - id: step_4
+    title: "Alternative Path Step"
+    description: "Action taken if no was chosen"
+    next: step_5
+  - id: step_5
+    title: "Final Step"
+    description: "Concluding action"
+    is_terminal: true
 considerations:
     - pre-operative:
         - Detail 1: Specific check or preparation before starting.
@@ -76,53 +101,75 @@ goals:
       return `${index + 1}. ${step.content}`;
     }).join('\n');
 
-    const prompt = `Given the procedure name "${procedureName}" and the following list of procedure steps, generate a comprehensive YAML document. The YAML must strictly adhere to the provided format template.
+    const prompt = `Given the procedure name "${procedureName}" and the following list of procedure steps, generate a comprehensive YAML document for a decision tree flowchart. The YAML must strictly adhere to the provided format template.
 
 Format Template (use this structure):
 \`\`\`yaml
 procedure_name: "${procedureName}" # Use this exact procedure name
 purpose: A concise statement explaining the overall objective of the procedure.
-stages:
-    # Each item from 'Procedure Steps to incorporate' below should be a distinct item here, formatted as "- Title: Description".
-    # Example: - Collect all necessary tools: Ensure all tools are sterile and accounted for.
+steps:
+  - id: step_1
+    title: "Step Title"
+    description: "Detailed description"
+    next: step_2  # Next step ID
+  - id: step_2
+    title: "Decision Point Title"
+    description: "Description of the decision"
+    decision_point: true
+    options:
+      - choice: "Option 1"
+        next: step_3
+        condition: "When this condition is met"
+      - choice: "Option 2"  
+        next: step_4
+        condition: "When this condition is met"
+  - id: step_3
+    title: "Outcome Step"
+    description: "Result of choice 1"
+    next: step_5
+  # Continue with more steps...
+  - id: final_step
+    title: "Final Step"
+    description: "Concluding action"
+    is_terminal: true
 considerations:
     pre-operative:
-        - # Detail 1
+        - Detail 1
     intra-operative:
-        - # Detail 1
+        - Detail 1  
     post-operative:
-        - # Detail 1
+        - Detail 1
 goals:
-    - # Goal 1
-complications: # (Optional: Include if inferable from steps)
-    - # Potential issue 1
-conditionals: # (Optional: Include if inferable from steps)
-    - # if X then Y: description
+    - Goal 1
 \`\`\`
 
 Procedure Name:
 ${procedureName}
 
-Procedure Steps to incorporate into the YAML (interpret each line as a step, typically in "Title: Description" format):
+Procedure Steps to incorporate into the YAML:
 ${formattedStepsForPrompt}
 
 Detailed Instructions for YAML generation:
 1.  **procedure_name**: This field MUST be exactly: "${procedureName}". Do not change or generate this.
-2.  **purpose**: Write a clear, brief statement explaining the overall objective of this procedure, based on the provided steps and name.
-3.  **stages**: List each provided step from 'Procedure Steps to incorporate' under this section. 
-    *   Each step from the input should be a distinct item in the YAML 'stages' list.
-    *   The format for each stage item MUST be "- Title: Description". Parse or infer the Title and Description from each input step line.
-    *   Example: If an input step is "Perform incision: Make a 2cm incision at the marked site.", the YAML stage should be "- Perform incision: Make a 2cm incision at the marked site."
-4.  **considerations**: 
-    *   Based on the nature of the steps, infer and detail relevant pre-operative, intra-operative, and post-operative considerations. 
-    *   If the steps do not clearly indicate all three (pre, intra, post), include only those that are relevant. If none are directly inferable, provide general examples appropriate for a technical/medical procedure. 
-    *   Provide at least one or two points for each applicable consideration subsection.
-5.  **goals**: Define at least two primary goals that this procedure aims to achieve, based on the steps and their implied purpose.
-6.  **complications (optional)**: If the steps or procedure nature suggest potential complications or risks, list them under a 'complications' key. Each complication should be a list item. If not applicable, this section can be omitted.
-7.  **conditionals (optional)**: If the steps imply any decision points or conditional logic (e.g., "if X, then Y"), describe them under a 'conditionals' key. If not applicable, this section can be omitted.
+2.  **purpose**: Write a clear, brief statement explaining the overall objective of this procedure.
+3.  **steps**: Convert each provided step into a structured step object with:
+    *   **id**: Unique identifier (step_1, step_2, etc.)
+    *   **title**: Short, descriptive title for the step
+    *   **description**: Detailed description of what needs to be done
+    *   **next**: ID of the next step (for linear flow)
+    *   **decision_point**: Set to true if this step requires a decision
+    *   **options**: Array of choices for decision points, each with:
+        - **choice**: The decision option text
+        - **next**: ID of the step to go to if this choice is selected
+        - **condition**: Description of when this choice applies
+    *   **is_terminal**: Set to true for the final step
+4.  **Create decision points**: Where logical in the procedure, create decision points with 2-3 options each. Look for steps that naturally involve choices, conditions, or branching paths.
+5.  **considerations**: Based on the steps, provide relevant pre-operative, intra-operative, and post-operative considerations.
+6.  **goals**: Define at least two primary goals this procedure aims to achieve.
 
-Your response must be ONLY the YAML content, starting directly with "procedure_name:". Ensure perfect YAML syntax, including correct indentation (typically 2 spaces for lists/nested items). Do not include any extra text, explanations, or markdown formatting (like \`\`\`yaml) outside the YAML itself.
-`;
+Ensure all step IDs are unique and properly referenced in 'next' fields. Create a logical flow with appropriate decision points for a meaningful flowchart.
+
+Your response must be ONLY the YAML content, starting directly with "procedure_name:". Ensure perfect YAML syntax with correct indentation.`;
 
     console.log('Sending request to DeepSeek for YAML generation with procedureName:', procedureName);
     const completion = await deepseek.chat.completions.create({
@@ -176,9 +223,9 @@ Your response must be ONLY the YAML content, starting directly with "procedure_n
       }
       
       // Add more specific checks if needed, e.g., presence of procedure_name, stages, etc.
-      if (!('procedure_name' in parsedYaml) || !('stages' in parsedYaml) || !('purpose' in parsedYaml) || !('considerations' in parsedYaml) || !('goals' in parsedYaml)) {
+      if (!('procedure_name' in parsedYaml) || !('steps' in parsedYaml) || !('purpose' in parsedYaml) || !('considerations' in parsedYaml) || !('goals' in parsedYaml)) {
          console.error('Generated YAML missing required fields. Content:', generatedYaml);
-         throw new Error('Generated YAML is missing one or more required fields (procedure_name, purpose, stages, considerations, goals).');
+         throw new Error('Generated YAML is missing one or more required fields (procedure_name, purpose, steps, considerations, goals).');
       }
 
       console.log('Successfully generated and validated YAML.');
