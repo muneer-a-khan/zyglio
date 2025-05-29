@@ -62,11 +62,15 @@ export default function VoiceInterview({
   const [questionsAsked, setQuestionsAsked] = useState(0);
   const [sessionData, setSessionData] = useState<SessionData | null>(null);
   const [isGeneratingQuestions, setIsGeneratingQuestions] = useState(false);
+  const [currentTranscript, setCurrentTranscript] = useState('');
+  const [streamingEnabled, setStreamingEnabled] = useState(false);
   
   // Refs
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
+  const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const isRecognitionActiveRef = useRef<boolean>(false);
   
   // Initialize the interview session
   useEffect(() => {
@@ -131,6 +135,61 @@ export default function VoiceInterview({
       toast.error('Failed to initialize interview. Please try again.');
     } finally {
       setIsInitializing(false);
+    }
+  };
+  
+  // Initialize speech recognition for streaming
+  const initializeSpeechRecognition = () => {
+    if (typeof window !== 'undefined' && 'webkitSpeechRecognition' in window) {
+      const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
+      
+      if (SpeechRecognition) {
+        const recognition = new SpeechRecognition();
+        
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        recognition.lang = 'en-US';
+  
+        recognition.onresult = (event: any) => {
+          let interimTranscript = '';
+          let finalTranscript = '';
+  
+          for (let i = event.resultIndex; i < event.results.length; i++) {
+            const result = event.results[i];
+            if (result.isFinal) {
+              finalTranscript += result[0].transcript;
+            } else {
+              interimTranscript += result[0].transcript;
+            }
+          }
+  
+          // Update display
+          setCurrentTranscript(finalTranscript + interimTranscript);
+  
+          // Process final transcripts immediately if streaming is enabled
+          if (finalTranscript.trim() && streamingEnabled) {
+            processTranscriptChunk(finalTranscript.trim());
+          }
+        };
+  
+        recognition.onerror = (event: any) => {
+          console.error('Speech recognition error:', event.error);
+          setIsRecording(false);
+          isRecognitionActiveRef.current = false;
+        };
+  
+        recognition.onend = () => {
+          setIsRecording(false);
+          isRecognitionActiveRef.current = false;
+          
+          // Process any remaining content when recording stops
+          if (currentTranscript.trim() && streamingEnabled) {
+            forceProcessBuffer();
+          }
+        };
+  
+        recognitionRef.current = recognition;
+      }
     }
   };
   
