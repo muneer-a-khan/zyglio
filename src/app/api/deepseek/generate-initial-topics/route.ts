@@ -50,7 +50,9 @@ Initial Context: "${initialContext || 'No additional context provided'}"
 
 Generate a comprehensive list of required topics that would be essential for someone to learn in order to teach this procedure to others. Consider what knowledge, skills, and understanding would be necessary for effective instruction.
 
-Return a JSON object with this structure:
+IMPORTANT: Return ONLY valid JSON without any markdown formatting, code blocks, or additional text. The response should start with { and end with }.
+
+Return a JSON object with this exact structure:
 {
   "topics": [
     {
@@ -82,11 +84,25 @@ Aim for 8-15 comprehensive topics that cover all essential aspects of the proced
         throw new Error('No response from DeepSeek');
       }
 
+      // Clean the response to handle markdown code blocks
+      let cleanedResponse = responseContent.trim();
+      
+      // Remove markdown code blocks if present
+      if (cleanedResponse.startsWith('```json')) {
+        cleanedResponse = cleanedResponse.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+      } else if (cleanedResponse.startsWith('```')) {
+        cleanedResponse = cleanedResponse.replace(/^```\s*/, '').replace(/\s*```$/, '');
+      }
+      
+      // Remove any additional formatting
+      cleanedResponse = cleanedResponse.trim();
+
       let topicsResult;
       try {
-        topicsResult = JSON.parse(responseContent);
+        topicsResult = JSON.parse(cleanedResponse);
       } catch (parseError) {
-        console.error('Failed to parse DeepSeek response:', responseContent);
+        console.error('Failed to parse DeepSeek response:', cleanedResponse);
+        console.error('Original response:', responseContent);
         throw new Error('Invalid JSON response from DeepSeek');
       }
 

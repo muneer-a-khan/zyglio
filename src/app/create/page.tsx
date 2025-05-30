@@ -380,7 +380,7 @@ export default function CreateProcedure() {
             <TabsList className="grid w-full grid-cols-6">
               <TabsTrigger value="task">1. Define Task</TabsTrigger>
               <TabsTrigger value="media">2. Media</TabsTrigger>
-              <TabsTrigger value="interview">3. Interview & Dictation</TabsTrigger>
+              <TabsTrigger value="interview">3. Interview</TabsTrigger>
               <TabsTrigger value="yaml">4. YAML</TabsTrigger>
               <TabsTrigger value="flowchart">5. Flowchart</TabsTrigger>
               <TabsTrigger value="simulation">6. Simulation</TabsTrigger>
