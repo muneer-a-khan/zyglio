@@ -87,6 +87,9 @@ export default function VoiceInterview({
   const [currentTranscript, setCurrentTranscript] = useState('');
   const [finalTranscript, setFinalTranscript] = useState('');
   const [accumulatedTranscript, setAccumulatedTranscript] = useState('');
+  const [isEditingTranscript, setIsEditingTranscript] = useState(false);
+  const [editedTranscript, setEditedTranscript] = useState('');
+  const [isReadyToSubmit, setIsReadyToSubmit] = useState(false);
   
   // Refs
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -522,6 +525,11 @@ Generate one specific follow-up question to get more detail. Be concise.`
         lastProcessedTranscriptRef.current = '';
         accumulatedFinalTranscriptRef.current = '';
         
+        // Reset editing and submission states
+        setIsEditingTranscript(false);
+        setEditedTranscript('');
+        setIsReadyToSubmit(false);
+        
         // Clear streaming state
         setStreamingState({
           agents: {},
@@ -620,10 +628,13 @@ Generate one specific follow-up question to get more detail. Be concise.`
         setFinalTranscript(whisperTranscript);
         setAccumulatedTranscript(whisperTranscript);
         
-        toast.success('High-accuracy transcription complete!');
+        toast.success('High-accuracy transcription complete! You can edit it if needed before submitting.');
         
-        // Process the complete response with the accurate transcript
-        await processCompleteResponse();
+        // Initialize the editing state for user review
+        setEditedTranscript(whisperTranscript);
+        setIsReadyToSubmit(true);
+        
+        // Don't process immediately - let user review and edit if needed
       } else {
         throw new Error('No transcript received from Whisper');
       }
@@ -648,7 +659,10 @@ Generate one specific follow-up question to get more detail. Be concise.`
 
   // Process the complete response and move to next question
   const processCompleteResponse = async () => {
-    const completeTranscript = accumulatedFinalTranscriptRef.current.trim();
+    // Use edited transcript if available, otherwise use accumulated transcript
+    const completeTranscript = isEditingTranscript && editedTranscript.trim() 
+      ? editedTranscript.trim() 
+      : accumulatedFinalTranscriptRef.current.trim();
     
     if (!completeTranscript) {
       toast.error('No speech detected. Please try again.');
@@ -689,6 +703,10 @@ Generate one specific follow-up question to get more detail. Be concise.`
       
       // Update session data
       setSessionData(turnData.sessionData);
+      
+      // Reset transcript editing state
+      setIsEditingTranscript(false);
+      setEditedTranscript('');
       
       // Check if interview is completed
       if (turnData.interviewCompleted) {
@@ -749,6 +767,32 @@ Generate one specific follow-up question to get more detail. Be concise.`
     } finally {
       setIsProcessing(false);
     }
+  };
+
+  // Handle transcript editing
+  const handleEditTranscript = () => {
+    setEditedTranscript(accumulatedTranscript);
+    setIsEditingTranscript(true);
+  };
+
+  const handleSaveTranscriptEdit = () => {
+    if (editedTranscript.trim()) {
+      setAccumulatedTranscript(editedTranscript);
+      accumulatedFinalTranscriptRef.current = editedTranscript;
+      setIsEditingTranscript(false);
+      toast.success('Transcript updated!');
+    }
+  };
+
+  const handleCancelTranscriptEdit = () => {
+    setEditedTranscript('');
+    setIsEditingTranscript(false);
+  };
+
+  // Submit the final answer for processing
+  const submitAnswer = async () => {
+    setIsReadyToSubmit(false);
+    await processCompleteResponse();
   };
 
   // Speak a question using Eleven Labs TTS
@@ -961,14 +1005,20 @@ Generate one specific follow-up question to get more detail. Be concise.`
       {/* Progress Bar */}
       {sessionData?.topicStats && (
         <div className="w-full mb-6">
+          {/* Percentage Complete - moved above */}
           <div className="flex justify-between mb-2">
             <span className="text-sm font-medium">Interview Progress</span>
             <span className="text-sm font-medium">
-              {sessionData.topicStats.thoroughlyCovered} of {sessionData.topicStats.total} topics thoroughly covered
+              {(() => {
+                const total = sessionData.topicStats.total;
+                const discussed = sessionData.topicStats.brieflyDiscussed + sessionData.topicStats.thoroughlyCovered;
+                const discussedPercent = Math.round((discussed / total) * 100);
+                return `${discussedPercent}% Complete (${discussed} of ${total} topics)`;
+              })()}
             </span>
           </div>
           
-          {/* Stacked Progress Bar */}
+          {/* Stacked Progress Bar - only fills discussed portion */}
           <div className={`w-full h-6 bg-gray-200 rounded-full overflow-hidden relative shadow-inner group transition-all duration-300 ${progressBarPulse ? 'ring-4 ring-blue-200 ring-opacity-75 animate-pulse' : ''}`}>
             {/* Calculate percentages */}
             {(() => {
@@ -976,31 +1026,25 @@ Generate one specific follow-up question to get more detail. Be concise.`
               const notDiscussed = total - sessionData.topicStats.brieflyDiscussed - sessionData.topicStats.thoroughlyCovered;
               const brieflyDiscussed = sessionData.topicStats.brieflyDiscussed;
               const thoroughlyCovered = sessionData.topicStats.thoroughlyCovered;
+              const totalDiscussed = brieflyDiscussed + thoroughlyCovered;
               
-              const notDiscussedPercent = (notDiscussed / total) * 100;
-              const brieflyDiscussedPercent = (brieflyDiscussed / total) * 100;
-              const thoroughlyCoveredPercent = (thoroughlyCovered / total) * 100;
+              // Calculate what portion of the total bar should be filled
+              const totalDiscussedPercent = (totalDiscussed / total) * 100;
+              
+              // Within the discussed portion, calculate the yellow/green split
+              const brieflyPercentOfDiscussed = totalDiscussed > 0 ? (brieflyDiscussed / totalDiscussed) * 100 : 0;
+              const thoroughlyPercentOfDiscussed = totalDiscussed > 0 ? (thoroughlyCovered / totalDiscussed) * 100 : 0;
               
               return (
                 <>
-                  {/* Red segment - Not Discussed */}
-                  {notDiscussed > 0 && (
-                    <div 
-                      className="absolute left-0 top-0 h-full bg-red-500 hover:bg-red-600 transition-all duration-700 ease-out cursor-pointer"
-                      style={{ width: `${notDiscussedPercent}%` }}
-                      title={`${notDiscussed} topics not yet discussed (${Math.round(notDiscussedPercent)}%)`}
-                    />
-                  )}
-                  
                   {/* Yellow segment - Briefly Discussed */}
                   {brieflyDiscussed > 0 && (
                     <div 
-                      className="absolute top-0 h-full bg-yellow-500 hover:bg-yellow-600 transition-all duration-700 ease-out cursor-pointer"
+                      className="absolute left-0 top-0 h-full bg-yellow-500 hover:bg-yellow-600 transition-all duration-700 ease-out cursor-pointer"
                       style={{ 
-                        left: `${notDiscussedPercent}%`,
-                        width: `${brieflyDiscussedPercent}%` 
+                        width: `${(brieflyDiscussed / total) * 100}%` 
                       }}
-                      title={`${brieflyDiscussed} topics briefly discussed (${Math.round(brieflyDiscussedPercent)}%)`}
+                      title={`${brieflyDiscussed} topics briefly discussed`}
                     />
                   )}
                   
@@ -1009,13 +1053,13 @@ Generate one specific follow-up question to get more detail. Be concise.`
                     <div 
                       className="absolute top-0 h-full bg-green-500 hover:bg-green-600 transition-all duration-700 ease-out cursor-pointer"
                       style={{ 
-                        left: `${notDiscussedPercent + brieflyDiscussedPercent}%`,
-                        width: `${thoroughlyCoveredPercent}%` 
+                        left: `${(brieflyDiscussed / total) * 100}%`,
+                        width: `${(thoroughlyCovered / total) * 100}%` 
                       }}
-                      title={`${thoroughlyCovered} topics thoroughly covered (${Math.round(thoroughlyCoveredPercent)}%)`}
+                      title={`${thoroughlyCovered} topics thoroughly covered`}
                     >
                       {/* Celebration sparkles for completed topics */}
-                      {progressBarPulse && thoroughlyCoveredPercent > 0 && (
+                      {progressBarPulse && thoroughlyCovered > 0 && (
                         <div className="absolute inset-0 overflow-hidden">
                           <div className="absolute top-1 left-1/4 w-1 h-1 bg-yellow-300 rounded-full animate-ping" />
                           <div className="absolute top-2 right-1/3 w-1 h-1 bg-yellow-300 rounded-full animate-ping" style={{ animationDelay: '0.2s' }} />
@@ -1025,12 +1069,14 @@ Generate one specific follow-up question to get more detail. Be concise.`
                     </div>
                   )}
                   
-                  {/* Progress indicators with percentages */}
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <span className="text-xs font-semibold text-white drop-shadow-lg mix-blend-difference">
-                      {Math.round(thoroughlyCoveredPercent)}% Complete
-                    </span>
-                  </div>
+                  {/* Progress text overlay */}
+                  {totalDiscussedPercent > 15 && (
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <span className="text-xs font-semibold text-white drop-shadow-lg mix-blend-difference">
+                        {Math.round(totalDiscussedPercent)}%
+                      </span>
+                    </div>
+                  )}
                   
                   {/* Animated shine effect when progress updates */}
                   <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white to-transparent opacity-20 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000 ease-out pointer-events-none" />
@@ -1040,9 +1086,9 @@ Generate one specific follow-up question to get more detail. Be concise.`
           </div>
           
           {/* Legend with live counts */}
-          <div className="flex justify-between mt-3 text-xs">
+          <div className="flex justify-center gap-6 mt-3 text-xs">
             <div className="flex items-center gap-1 hover:scale-105 transition-transform">
-              <div className="w-3 h-3 bg-red-500 rounded-sm shadow-sm"></div>
+              <div className="w-3 h-3 bg-gray-300 rounded-sm shadow-sm"></div>
               <span className="text-gray-600 font-medium">
                 Not Discussed: {sessionData.topicStats.total - sessionData.topicStats.brieflyDiscussed - sessionData.topicStats.thoroughlyCovered}
               </span>
@@ -1059,13 +1105,6 @@ Generate one specific follow-up question to get more detail. Be concise.`
                 Thoroughly Covered: {sessionData.topicStats.thoroughlyCovered}
               </span>
             </div>
-          </div>
-          
-          {/* Additional stats row */}
-          <div className="flex justify-center mt-2 text-xs text-gray-500">
-            <span className="bg-gray-50 px-2 py-1 rounded-full border">
-              Required Topics: <span className="font-semibold text-gray-700">{sessionData.topicStats?.requiredCovered || 0} / {sessionData.topicStats?.required || 0}</span> completed
-            </span>
           </div>
         </div>
       )}
@@ -1106,9 +1145,6 @@ Generate one specific follow-up question to get more detail. Be concise.`
         <div className="flex justify-center gap-4 text-sm mb-6">
           <Badge variant="outline">
             Questions Asked: {questionsAsked}
-          </Badge>
-          <Badge variant="outline">
-            Required Topics: {sessionData.topicStats?.requiredCovered || 0} / {sessionData.topicStats?.required || 0}
           </Badge>
           {isGeneratingQuestions ? (
             <Badge variant="outline" className="flex items-center gap-1 bg-blue-50 text-blue-700">
@@ -1184,25 +1220,38 @@ Generate one specific follow-up question to get more detail. Be concise.`
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="flex items-center gap-4">
-                  <Button
-                    onClick={isRecording ? stopRecording : startRecording}
-                    variant={isRecording ? "destructive" : "default"}
-                    size="lg"
-                    disabled={isProcessing || isTranscribing}
-                    className="flex items-center gap-2"
-                  >
-                    {isRecording ? (
-                      <>
-                        <MicOff className="w-5 h-5" />
-                        Stop & Submit Answer
-                      </>
-                    ) : (
-                      <>
-                        <Mic className="w-5 h-5" />
-                        Start Recording Answer
-                      </>
-                    )}
-                  </Button>
+                  {!isReadyToSubmit ? (
+                    <Button
+                      onClick={isRecording ? stopRecording : startRecording}
+                      variant={isRecording ? "destructive" : "default"}
+                      size="lg"
+                      disabled={isProcessing || isTranscribing}
+                      className="flex items-center gap-2"
+                    >
+                      {isRecording ? (
+                        <>
+                          <MicOff className="w-5 h-5" />
+                          Stop Recording
+                        </>
+                      ) : (
+                        <>
+                          <Mic className="w-5 h-5" />
+                          Start Recording Answer
+                        </>
+                      )}
+                    </Button>
+                  ) : (
+                    <Button
+                      onClick={submitAnswer}
+                      variant="default"
+                      size="lg"
+                      disabled={isProcessing || isTranscribing}
+                      className="flex items-center gap-2 bg-green-600 hover:bg-green-700"
+                    >
+                      <CheckCircle className="w-5 h-5" />
+                      Submit Answer
+                    </Button>
+                  )}
                   
                   <Button
                     onClick={forceEndInterview}
@@ -1230,22 +1279,82 @@ Generate one specific follow-up question to get more detail. Be concise.`
                 )}
 
                 {/* Live transcript display */}
-                {accumulatedTranscript && (
+                {(accumulatedTranscript || isEditingTranscript) && (
                   <div className="p-3 bg-gray-50 border rounded-lg">
-                    <div className="flex items-center gap-2 mb-1">
-                      <p className="text-sm text-gray-600">Live transcript:</p>
-                      {isRecording && (
-                        <Badge variant="outline" className="text-xs">
-                          Browser Recognition (Real-time Preview)
-                        </Badge>
-                      )}
-                      {!isRecording && !isTranscribing && (
-                        <Badge variant="default" className="text-xs bg-green-600">
-                          Final Transcript (AI Enhanced)
-                        </Badge>
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm text-gray-600">Live transcript:</p>
+                        {isRecording && !isEditingTranscript && (
+                          <Badge variant="outline" className="text-xs">
+                            Browser Recognition (Real-time Preview)
+                          </Badge>
+                        )}
+                        {!isRecording && !isTranscribing && !isEditingTranscript && (
+                          <Badge variant="default" className="text-xs bg-green-600">
+                            Final Transcript (AI Enhanced)
+                          </Badge>
+                        )}
+                        {isEditingTranscript && (
+                          <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700">
+                            Editing Mode
+                          </Badge>
+                        )}
+                      </div>
+                      
+                      {/* Edit controls */}
+                      {!isRecording && !isTranscribing && !isProcessing && (
+                        <div className="flex items-center gap-2">
+                          {!isEditingTranscript ? (
+                            <Button
+                              onClick={handleEditTranscript}
+                              variant="outline"
+                              size="sm"
+                              className="text-xs h-7"
+                            >
+                              Edit
+                            </Button>
+                          ) : (
+                            <>
+                              <Button
+                                onClick={handleSaveTranscriptEdit}
+                                variant="default"
+                                size="sm"
+                                className="text-xs h-7 bg-green-600 hover:bg-green-700"
+                              >
+                                Save
+                              </Button>
+                              <Button
+                                onClick={handleCancelTranscriptEdit}
+                                variant="outline"
+                                size="sm"
+                                className="text-xs h-7"
+                              >
+                                Cancel
+                              </Button>
+                            </>
+                          )}
+                        </div>
                       )}
                     </div>
-                    <p className="text-gray-900">{accumulatedTranscript}</p>
+                    
+                    {/* Transcript content */}
+                    {isEditingTranscript ? (
+                      <textarea
+                        value={editedTranscript}
+                        onChange={(e) => setEditedTranscript(e.target.value)}
+                        className="w-full h-24 p-2 text-gray-900 bg-white border rounded resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="Edit your transcript here..."
+                        autoFocus
+                      />
+                    ) : (
+                      <p className="text-gray-900 whitespace-pre-wrap">{accumulatedTranscript}</p>
+                    )}
+                    
+                    {isEditingTranscript && (
+                      <p className="text-xs text-gray-500 mt-2">
+                        Make any corrections needed, then click Save to use the edited version.
+                      </p>
+                    )}
                   </div>
                 )}
 
