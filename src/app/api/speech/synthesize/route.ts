@@ -44,7 +44,7 @@ export async function POST(request: NextRequest) {
     
     // If not set or invalid format, use a default voice
     if (!voiceId || !voiceId.match(/^[a-zA-Z0-9]{21,24}$/)) {
-      voiceId = VOICE_OPTIONS.adam; // Default to Adam
+      voiceId = VOICE_OPTIONS.rachel; // Default to Rachel for better interview experience
     }
 
     console.log(`Using ElevenLabs voice ID: ${voiceId}, model: ${model}`);
@@ -61,8 +61,10 @@ export async function POST(request: NextRequest) {
         text: text,
         model_id: model,
         voice_settings: {
-          stability: 0.5,
-          similarity_boost: 0.5
+          stability: 0.4, // Slightly lower for more natural variation
+          similarity_boost: 0.7, // Higher for clearer pronunciation
+          style: 0.3, // Add some conversational style
+          use_speaker_boost: true // Better clarity for interview questions
         }
       })
     });
@@ -85,8 +87,10 @@ export async function POST(request: NextRequest) {
             text: text,
             model_id: model,
             voice_settings: {
-              stability: 0.5,
-              similarity_boost: 0.5
+              stability: 0.4, // Same improved settings for backup
+              similarity_boost: 0.7,
+              style: 0.3,
+              use_speaker_boost: true
             }
           })
         });

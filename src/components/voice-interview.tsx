@@ -130,34 +130,56 @@ export default function VoiceInterview({
   
         recognition.onresult = (event: any) => {
           let interimTranscript = '';
-          let finalTranscript = '';
+          let newFinalTranscript = '';
   
           for (let i = event.resultIndex; i < event.results.length; i++) {
             const result = event.results[i];
             const transcript = result[0].transcript;
             
             if (result.isFinal) {
-              finalTranscript += transcript;
+              newFinalTranscript += transcript;
             } else {
               interimTranscript += transcript;
             }
           }
   
-          // Update display with both final and interim
-          const combinedTranscript = (finalTranscript + interimTranscript).trim();
+          // Update display with accumulated final + current interim
+          const accumulatedFinal = finalTranscript + newFinalTranscript;
+          const combinedTranscript = (accumulatedFinal + ' ' + interimTranscript).trim();
           setCurrentTranscript(combinedTranscript);
   
-          // Process final transcripts for real-time analysis
-          if (finalTranscript.trim() && finalTranscript !== lastProcessedTranscriptRef.current) {
-            lastProcessedTranscriptRef.current = finalTranscript;
-            setFinalTranscript(prev => prev + ' ' + finalTranscript);
-            processTranscriptChunk(finalTranscript.trim());
+          // Process and accumulate final transcripts for real-time analysis
+          if (newFinalTranscript.trim() && newFinalTranscript !== lastProcessedTranscriptRef.current) {
+            lastProcessedTranscriptRef.current = newFinalTranscript;
+            setFinalTranscript(prev => prev + ' ' + newFinalTranscript);
+            processTranscriptChunk(newFinalTranscript.trim());
           }
         };
   
         recognition.onerror = (event: any) => {
           console.error('Speech recognition error:', event.error);
-          if (event.error !== 'no-speech') {
+          
+          // Handle different types of errors more gracefully
+          if (event.error === 'network') {
+            toast.error('Network error in speech recognition. Attempting to restart...');
+            // Auto-restart after network error
+            setTimeout(() => {
+              if (isRecording && recognitionRef.current) {
+                try {
+                  recognitionRef.current.start();
+                  isRecognitionActiveRef.current = true;
+                } catch (e) {
+                  console.error('Failed to restart recognition:', e);
+                }
+              }
+            }, 1000);
+          } else if (event.error === 'not-allowed') {
+            toast.error('Microphone access denied. Please enable microphone permissions.');
+            setIsRecording(false);
+          } else if (event.error === 'no-speech') {
+            // Don't show error for no-speech, it's normal
+            console.log('No speech detected, continuing...');
+          } else {
             toast.error(`Speech recognition error: ${event.error}`);
           }
         };
@@ -193,11 +215,11 @@ export default function VoiceInterview({
       wordCount
     }));
 
-    // Trigger real-time topic analysis
+    // Trigger real-time topic analysis more frequently
     await analyzeTopicCoverage(newBuffer);
 
-    // Trigger agents for questions/validation
-    if (wordCount >= 15 || chunk.match(/[.!?]+\s*$/)) {
+    // Trigger agents for questions/validation with lower threshold for more responsiveness
+    if (wordCount >= 8 || chunk.match(/[.!?]+\s*$/)) {
       await triggerStreamingAgents(newBuffer);
     }
   };
@@ -307,20 +329,40 @@ Be specific and concise.`;
     if (!sessionData) return;
 
     try {
-      // Validation agent
-      const validationPrompt = `Validate this response about "${taskDefinition.title}": "${transcript}"
-Check for accuracy, completeness, and relevance. Be brief.`;
-      
-      const validationResponse = await fetch('/api/openai/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          messages: [{ role: 'user', content: validationPrompt }],
-          model: 'gpt-4o',
-          max_tokens: 100
+      // Run validation and follow-up agents in parallel for better performance
+      const [validationResponse, followUpResponse] = await Promise.all([
+        // Validation agent
+        fetch('/api/openai/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            messages: [{ 
+              role: 'user', 
+              content: `Validate this response about "${taskDefinition.title}": "${transcript}"
+Check for accuracy, completeness, and relevance. Be brief.` 
+            }],
+            model: 'gpt-4o',
+            max_tokens: 100
+          }),
         }),
-      });
+        
+        // Follow-up agent
+        fetch('/api/openai/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            messages: [{ 
+              role: 'user', 
+              content: `Based on this response about "${taskDefinition.title}": "${transcript}"
+Generate one specific follow-up question to get more detail. Be concise.` 
+            }],
+            model: 'gpt-4o',
+            max_tokens: 80
+          }),
+        })
+      ]);
 
+      // Process validation response
       if (validationResponse.ok) {
         const validationData = await validationResponse.json();
         setStreamingState(prev => ({
@@ -337,20 +379,7 @@ Check for accuracy, completeness, and relevance. Be brief.`;
         }));
       }
 
-      // Follow-up agent  
-      const followUpPrompt = `Based on this response about "${taskDefinition.title}": "${transcript}"
-Generate one specific follow-up question to get more detail. Be concise.`;
-      
-      const followUpResponse = await fetch('/api/openai/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          messages: [{ role: 'user', content: followUpPrompt }],
-          model: 'gpt-4o',
-          max_tokens: 80
-        }),
-      });
-
+      // Process follow-up response
       if (followUpResponse.ok) {
         const followUpData = await followUpResponse.json();
         setStreamingState(prev => ({
@@ -403,11 +432,10 @@ Generate one specific follow-up question to get more detail. Be concise.`;
       
       toast.success('Interview session initialized successfully!');
       
-      // Automatically speak the first question
+      // Automatically speak the first question immediately
       if (data.question) {
-        setTimeout(() => {
-          speakQuestion(data.question);
-        }, 1000);
+        // Start speaking right away - no delay
+        speakQuestion(data.question);
       }
       
     } catch (error) {
@@ -422,7 +450,7 @@ Generate one specific follow-up question to get more detail. Be concise.`;
   const startRecording = async () => {
     try {
       if (recognitionRef.current && !isRecognitionActiveRef.current) {
-        // Clear previous transcript data
+        // Clear ALL previous transcript data for fresh start
         setCurrentTranscript('');
         setFinalTranscript('');
         lastProcessedTranscriptRef.current = '';
@@ -472,19 +500,36 @@ Generate one specific follow-up question to get more detail. Be concise.`;
 
     try {
       setIsProcessing(true);
+      setIsGeneratingQuestions(true);
       
-      // Process the turn with the complete transcript
-      const turnResponse = await fetch('/api/interview/interview-turn', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          procedureId,
-          smeResponse: completeTranscript,
-          currentQuestion: currentAIQuestion
+      // Start both operations in parallel for better performance
+      const [turnResponse, nextQuestionResponse] = await Promise.all([
+        // Process current turn
+        fetch('/api/interview/interview-turn', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            procedureId,
+            smeResponse: completeTranscript,
+            currentQuestion: currentAIQuestion
+          }),
         }),
-      });
+        
+        // Get next question in parallel
+        fetch('/api/interview/interview-question', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            procedureId,
+            initialContext: taskDefinition.description || '',
+            procedureTitle: taskDefinition.title
+          }),
+        })
+      ]);
 
       if (!turnResponse.ok) {
         throw new Error('Failed to process interview turn');
@@ -508,6 +553,7 @@ Generate one specific follow-up question to get more detail. Be concise.`;
       if (turnData.interviewCompleted) {
         setInterviewCompleted(true);
         setCurrentAIQuestion(null);
+        setIsGeneratingQuestions(false);
         toast.success(turnData.message || 'Interview completed successfully!');
         if (onInterviewComplete) {
           onInterviewComplete(newHistory);
@@ -515,21 +561,7 @@ Generate one specific follow-up question to get more detail. Be concise.`;
         return;
       }
       
-      // Get next question
-      setIsGeneratingQuestions(true);
-      
-      const nextQuestionResponse = await fetch('/api/interview/interview-question', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          procedureId,
-          initialContext: taskDefinition.description || '',
-          procedureTitle: taskDefinition.title
-        }),
-      });
-      
+      // Process next question response
       if (nextQuestionResponse.ok) {
         const nextQuestionData = await nextQuestionResponse.json();
         setCurrentAIQuestion(nextQuestionData.question);
@@ -547,11 +579,10 @@ Generate one specific follow-up question to get more detail. Be concise.`;
           wordCount: 0
         });
         
-        // Automatically speak the new question
+        // Automatically speak the new question using Eleven Labs
         if (nextQuestionData.question) {
-          setTimeout(() => {
-            speakQuestion(nextQuestionData.question);
-          }, 1000);
+          // Don't wait for TTS to complete - start it immediately
+          speakQuestion(nextQuestionData.question);
         }
       }
 
@@ -566,10 +597,73 @@ Generate one specific follow-up question to get more detail. Be concise.`;
     }
   };
 
-  // Speak a question using text-to-speech (fixed to avoid duplicate audio)
+  // Speak a question using Eleven Labs TTS
   const speakQuestion = async (text: string) => {
     try {
-      // Only use browser TTS to avoid duplicates
+      setIsPlaying(true);
+      
+      // Call our Eleven Labs TTS API
+      const response = await fetch('/api/speech/synthesize', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          text: text,
+          model: 'eleven_flash_v2_5' // Fast model for low latency
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        
+        // If Eleven Labs fails, fallback to browser TTS
+        if (errorData.fallback) {
+          console.warn('Falling back to browser TTS:', errorData.details);
+          await fallbackToBrowserTTS(text);
+          return;
+        }
+        
+        throw new Error(errorData.error || 'Failed to synthesize speech');
+      }
+
+      const data = await response.json();
+      
+      if (data.success && data.audioBase64) {
+        // Convert base64 to blob and play
+        const audioBlob = base64ToBlob(data.audioBase64, 'audio/mpeg');
+        const audioUrl = URL.createObjectURL(audioBlob);
+        
+        if (audioPlayerRef.current) {
+          audioPlayerRef.current.src = audioUrl;
+          audioPlayerRef.current.onended = () => {
+            setIsPlaying(false);
+            URL.revokeObjectURL(audioUrl); // Clean up
+          };
+          audioPlayerRef.current.onerror = () => {
+            setIsPlaying(false);
+            URL.revokeObjectURL(audioUrl);
+            toast.error('Failed to play audio');
+          };
+          
+          await audioPlayerRef.current.play();
+        }
+      } else {
+        throw new Error('Invalid response from TTS service');
+      }
+      
+    } catch (error) {
+      console.error('Error with Eleven Labs TTS:', error);
+      setIsPlaying(false);
+      
+      // Fallback to browser TTS if Eleven Labs fails
+      await fallbackToBrowserTTS(text);
+    }
+  };
+
+  // Fallback to browser TTS if Eleven Labs fails
+  const fallbackToBrowserTTS = async (text: string) => {
+    try {
       if ('speechSynthesis' in window) {
         // Cancel any ongoing speech
         window.speechSynthesis.cancel();
@@ -588,7 +682,7 @@ Generate one specific follow-up question to get more detail. Be concise.`;
         };
         
         utterance.onerror = (event) => {
-          console.error('TTS error:', event);
+          console.error('Browser TTS error:', event);
           setIsPlaying(false);
         };
         
@@ -606,13 +700,26 @@ Generate one specific follow-up question to get more detail. Be concise.`;
         
         window.speechSynthesis.speak(utterance);
       }
-      
     } catch (error) {
-      console.error('Error with text-to-speech:', error);
+      console.error('Error with browser TTS fallback:', error);
+      setIsPlaying(false);
       toast.error('Failed to play audio. You can still read the question above.');
     }
   };
-  
+
+  // Helper function to convert base64 to blob
+  const base64ToBlob = (base64: string, mimeType: string): Blob => {
+    const byteCharacters = atob(base64);
+    const byteNumbers = new Array(byteCharacters.length);
+    
+    for (let i = 0; i < byteCharacters.length; i++) {
+      byteNumbers[i] = byteCharacters.charCodeAt(i);
+    }
+    
+    const byteArray = new Uint8Array(byteNumbers);
+    return new Blob([byteArray], { type: mimeType });
+  };
+
   // Force end interview
   const forceEndInterview = () => {
     setInterviewCompleted(true);
