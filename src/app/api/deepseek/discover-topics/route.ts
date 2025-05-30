@@ -82,11 +82,25 @@ If no new topics are found, return: {"newTopics": []}`;
       throw new Error('No response from DeepSeek');
     }
 
+    // Clean the response to handle markdown code blocks
+    let cleanedResponse = responseContent.trim();
+    
+    // Remove markdown code blocks if present
+    if (cleanedResponse.startsWith('```json')) {
+      cleanedResponse = cleanedResponse.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+    } else if (cleanedResponse.startsWith('```')) {
+      cleanedResponse = cleanedResponse.replace(/^```\s*/, '').replace(/\s*```$/, '');
+    }
+    
+    // Remove any additional formatting
+    cleanedResponse = cleanedResponse.trim();
+
     let discoveryResult;
     try {
-      discoveryResult = JSON.parse(responseContent);
+      discoveryResult = JSON.parse(cleanedResponse);
     } catch (parseError) {
-      console.error('Failed to parse DeepSeek response:', responseContent);
+      console.error('Failed to parse DeepSeek response:', cleanedResponse);
+      console.error('Original response:', responseContent);
       throw new Error('Invalid JSON response from DeepSeek');
     }
 

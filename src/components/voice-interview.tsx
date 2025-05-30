@@ -67,6 +67,7 @@ export default function VoiceInterview({
   const [isInitializing, setIsInitializing] = useState(true);
   const [isRecording, setIsRecording] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [conversationHistory, setConversationHistory] = useState<ConversationEntry[]>([]);
   const [currentAIQuestion, setCurrentAIQuestion] = useState<string | null>(null);
@@ -125,33 +126,53 @@ export default function VoiceInterview({
       if (SpeechRecognition) {
         const recognition = new SpeechRecognition();
         
+        // Optimize settings for better accuracy
         recognition.continuous = true;
         recognition.interimResults = true;
         recognition.lang = 'en-US';
-        recognition.maxAlternatives = 1;
-  
+        recognition.maxAlternatives = 3; // Get multiple alternatives for better accuracy
+        recognition.audioCapture = true;
+        
+        // Audio quality settings if available
+        if ('audioTrack' in recognition) {
+          recognition.audioTrack = true;
+        }
+
         recognition.onresult = (event: any) => {
           let interimTranscript = '';
           
           // Process only new results from this event
           for (let i = event.resultIndex; i < event.results.length; i++) {
             const result = event.results[i];
-            const transcript = result[0].transcript;
+            
+            // Use the highest confidence alternative
+            let bestTranscript = result[0].transcript;
+            let bestConfidence = result[0].confidence || 0;
+            
+            // Check other alternatives for better confidence
+            for (let j = 1; j < result.length && j < 3; j++) {
+              if (result[j].confidence > bestConfidence) {
+                bestTranscript = result[j].transcript;
+                bestConfidence = result[j].confidence;
+              }
+            }
             
             if (result.isFinal) {
-              // Add this final result to accumulated transcript immediately
-              accumulatedFinalTranscriptRef.current = (accumulatedFinalTranscriptRef.current + ' ' + transcript).trim();
-              
-              // Update state
-              setFinalTranscript(accumulatedFinalTranscriptRef.current);
-              
-              // Process for real-time analysis
-              if (transcript.trim() && transcript !== lastProcessedTranscriptRef.current) {
-                lastProcessedTranscriptRef.current = transcript;
-                processTranscriptChunk(transcript.trim());
+              // Only add high-confidence final results to accumulated transcript
+              if (bestConfidence > 0.7 || !result[0].confidence) { // Some browsers don't provide confidence
+                accumulatedFinalTranscriptRef.current = (accumulatedFinalTranscriptRef.current + ' ' + bestTranscript).trim();
+                
+                // Update state
+                setFinalTranscript(accumulatedFinalTranscriptRef.current);
+                
+                // Process for real-time analysis
+                if (bestTranscript.trim() && bestTranscript !== lastProcessedTranscriptRef.current) {
+                  lastProcessedTranscriptRef.current = bestTranscript;
+                  processTranscriptChunk(bestTranscript.trim());
+                }
               }
             } else {
-              interimTranscript += transcript;
+              interimTranscript += bestTranscript;
             }
           }
   
@@ -450,9 +471,48 @@ Generate one specific follow-up question to get more detail. Be concise.`
     }
   };
 
-  // Start recording with speech recognition
+  // Start recording with both speech recognition and audio recording
   const startRecording = async () => {
     try {
+      // Request microphone access
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          sampleRate: 16000, // Optimal for speech recognition
+          channelCount: 1,
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true
+        }
+      });
+
+      // Start audio recording for Whisper transcription
+      let mimeType = 'audio/webm; codecs=opus';
+      
+      // Check for browser support and use fallback formats
+      if (!MediaRecorder.isTypeSupported('audio/webm; codecs=opus')) {
+        if (MediaRecorder.isTypeSupported('audio/webm')) {
+          mimeType = 'audio/webm';
+        } else if (MediaRecorder.isTypeSupported('audio/mp4')) {
+          mimeType = 'audio/mp4';
+        } else {
+          mimeType = ''; // Use default
+        }
+      }
+      
+      const mediaRecorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      
+      audioChunksRef.current = [];
+      
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+      
+      mediaRecorder.start(100); // Collect data every 100ms
+      mediaRecorderRef.current = mediaRecorder;
+
+      // Start speech recognition for real-time display
       if (recognitionRef.current && !isRecognitionActiveRef.current) {
         // Clear ALL previous transcript data for fresh start
         setCurrentTranscript('');
@@ -469,29 +529,119 @@ Generate one specific follow-up question to get more detail. Be concise.`
         });
         
         recognitionRef.current.start();
-        setIsRecording(true);
         isRecognitionActiveRef.current = true;
-        toast.success('Recording started - speak your answer');
-      } else {
-        toast.error('Speech recognition not available');
       }
+
+      setIsRecording(true);
+      toast.success('Recording started - speak your answer');
       
     } catch (error) {
       console.error('Error starting recording:', error);
-      toast.error('Unable to start recording. Please check permissions.');
+      toast.error('Unable to start recording. Please check microphone permissions.');
     }
   };
   
-  // Stop recording and process the complete response
+  // Stop recording and process with high-accuracy transcription
   const stopRecording = async () => {
-    if (recognitionRef.current && isRecognitionActiveRef.current) {
-      recognitionRef.current.stop();
-      setIsRecording(false);
+    return new Promise<void>((resolve) => {
+      // Stop audio recording
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+        mediaRecorderRef.current.onstop = async () => {
+          // Stop speech recognition
+          if (recognitionRef.current && isRecognitionActiveRef.current) {
+            recognitionRef.current.stop();
+            setIsRecording(false);
+          }
+
+          // Process the audio for accurate transcription
+          await processAudioWithWhisper();
+          resolve();
+        };
+        
+        mediaRecorderRef.current.stop();
+        
+        // Stop all media tracks
+        if (mediaRecorderRef.current.stream) {
+          mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
+        }
+      } else {
+        // Fallback: just stop speech recognition
+        if (recognitionRef.current && isRecognitionActiveRef.current) {
+          recognitionRef.current.stop();
+          setIsRecording(false);
+        }
+        
+        // Use the accumulated transcript from browser recognition
+        setTimeout(async () => {
+          await processCompleteResponse();
+          resolve();
+        }, 500);
+      }
+    });
+  };
+
+  // Process audio with Whisper for high accuracy
+  const processAudioWithWhisper = async () => {
+    if (audioChunksRef.current.length === 0) {
+      toast.error('No audio recorded. Please try again.');
+      return;
+    }
+
+    try {
+      setIsTranscribing(true);
       
-      // Wait a moment for final processing
-      setTimeout(async () => {
+      // Create audio blob
+      const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+      
+      // Prepare form data for Whisper API
+      const formData = new FormData();
+      formData.append('audio', audioBlob, 'recording.webm');
+      formData.append('procedureId', procedureId);
+
+      // Call Whisper transcription API
+      const response = await fetch('/api/speech/transcribe', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to transcribe audio');
+      }
+
+      const data = await response.json();
+      
+      if (data.success && data.text) {
+        // Use the high-accuracy Whisper transcript as the final transcript
+        const whisperTranscript = data.text.trim();
+        
+        // Update our transcript states with the accurate transcript
+        accumulatedFinalTranscriptRef.current = whisperTranscript;
+        setFinalTranscript(whisperTranscript);
+        setAccumulatedTranscript(whisperTranscript);
+        
+        toast.success('High-accuracy transcription complete!');
+        
+        // Process the complete response with the accurate transcript
         await processCompleteResponse();
-      }, 500);
+      } else {
+        throw new Error('No transcript received from Whisper');
+      }
+      
+    } catch (error) {
+      console.error('Error with Whisper transcription:', error);
+      toast.error('High-accuracy transcription failed. Using browser transcription as fallback.');
+      
+      // Fallback to browser speech recognition transcript
+      if (accumulatedFinalTranscriptRef.current.trim()) {
+        await processCompleteResponse();
+      } else {
+        toast.error('No speech detected. Please try again.');
+      }
+    } finally {
+      setIsTranscribing(false);
+      
+      // Clean up audio chunks
+      audioChunksRef.current = [];
     }
   };
 
@@ -939,8 +1089,11 @@ Generate one specific follow-up question to get more detail. Be concise.`
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Mic className="w-5 h-5" />
-                  Live Voice Response
+                  Enhanced Voice Response
                 </CardTitle>
+                <p className="text-sm text-gray-600">
+                  This system uses AI-powered transcription (OpenAI Whisper) for maximum accuracy, with real-time browser recognition for immediate feedback.
+                </p>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="flex items-center gap-4">
@@ -948,7 +1101,7 @@ Generate one specific follow-up question to get more detail. Be concise.`
                     onClick={isRecording ? stopRecording : startRecording}
                     variant={isRecording ? "destructive" : "default"}
                     size="lg"
-                    disabled={isProcessing}
+                    disabled={isProcessing || isTranscribing}
                     className="flex items-center gap-2"
                   >
                     {isRecording ? (
@@ -968,23 +1121,43 @@ Generate one specific follow-up question to get more detail. Be concise.`
                     onClick={forceEndInterview}
                     variant="outline"
                     className="border-red-300 text-red-700 hover:bg-red-50"
+                    disabled={isRecording || isProcessing || isTranscribing}
                   >
                     <StopCircle className="w-4 h-4 mr-2" />
                     End Interview
                   </Button>
                 </div>
 
-                {isProcessing && (
+                {isTranscribing && (
                   <div className="flex items-center gap-2 text-blue-600">
                     <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>Processing your answer and generating next question...</span>
+                    <span>Processing with high-accuracy AI transcription (Whisper)...</span>
+                  </div>
+                )}
+
+                {isProcessing && !isTranscribing && (
+                  <div className="flex items-center gap-2 text-blue-600">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Analyzing your answer and generating next question...</span>
                   </div>
                 )}
 
                 {/* Live transcript display */}
                 {accumulatedTranscript && (
                   <div className="p-3 bg-gray-50 border rounded-lg">
-                    <p className="text-sm text-gray-600 mb-1">Live transcript:</p>
+                    <div className="flex items-center gap-2 mb-1">
+                      <p className="text-sm text-gray-600">Live transcript:</p>
+                      {isRecording && (
+                        <Badge variant="outline" className="text-xs">
+                          Browser Recognition (Real-time Preview)
+                        </Badge>
+                      )}
+                      {!isRecording && !isTranscribing && (
+                        <Badge variant="default" className="text-xs bg-green-600">
+                          Final Transcript (AI Enhanced)
+                        </Badge>
+                      )}
+                    </div>
                     <p className="text-gray-900">{accumulatedTranscript}</p>
                   </div>
                 )}
@@ -993,7 +1166,7 @@ Generate one specific follow-up question to get more detail. Be concise.`
                 {isRecording && (
                   <div className="flex items-center gap-2 text-red-600">
                     <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>
-                    <span>Recording... AI is analyzing your response in real-time</span>
+                    <span>Recording audio for high-accuracy transcription + real-time AI analysis</span>
                   </div>
                 )}
               </CardContent>
