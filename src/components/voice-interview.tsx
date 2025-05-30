@@ -76,6 +76,7 @@ export default function VoiceInterview({
   const [questionsAsked, setQuestionsAsked] = useState(0);
   const [sessionData, setSessionData] = useState<SessionData | null>(null);
   const [isGeneratingQuestions, setIsGeneratingQuestions] = useState(false);
+  const [progressBarPulse, setProgressBarPulse] = useState(false);
   
   // Streaming states (always enabled)
   const [streamingState, setStreamingState] = useState<StreamingState>({
@@ -909,6 +910,15 @@ Generate one specific follow-up question to get more detail. Be concise.`
     }
   };
 
+  // Trigger pulse animation when session data updates
+  useEffect(() => {
+    if (sessionData) {
+      setProgressBarPulse(true);
+      const timer = setTimeout(() => setProgressBarPulse(false), 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [sessionData?.topicStats?.thoroughlyCovered, sessionData?.topicStats?.brieflyDiscussed]);
+
   if (isInitializing) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
@@ -954,31 +964,108 @@ Generate one specific follow-up question to get more detail. Be concise.`
           <div className="flex justify-between mb-2">
             <span className="text-sm font-medium">Interview Progress</span>
             <span className="text-sm font-medium">
-              {Math.round((sessionData.topicStats.thoroughlyCovered / sessionData.topicStats.total) * 100)}% Complete
+              {sessionData.topicStats.thoroughlyCovered} of {sessionData.topicStats.total} topics thoroughly covered
             </span>
           </div>
-          <div className="w-full h-4 bg-gray-200 rounded-full overflow-hidden">
-            <div 
-              className="h-full bg-gradient-to-r from-blue-500 to-green-500 transition-all duration-500"
-              style={{ 
-                width: `${(sessionData.topicStats.thoroughlyCovered / sessionData.topicStats.total) * 100}%` 
-              }}
-            />
+          
+          {/* Stacked Progress Bar */}
+          <div className={`w-full h-6 bg-gray-200 rounded-full overflow-hidden relative shadow-inner group transition-all duration-300 ${progressBarPulse ? 'ring-4 ring-blue-200 ring-opacity-75 animate-pulse' : ''}`}>
+            {/* Calculate percentages */}
+            {(() => {
+              const total = sessionData.topicStats.total;
+              const notDiscussed = total - sessionData.topicStats.brieflyDiscussed - sessionData.topicStats.thoroughlyCovered;
+              const brieflyDiscussed = sessionData.topicStats.brieflyDiscussed;
+              const thoroughlyCovered = sessionData.topicStats.thoroughlyCovered;
+              
+              const notDiscussedPercent = (notDiscussed / total) * 100;
+              const brieflyDiscussedPercent = (brieflyDiscussed / total) * 100;
+              const thoroughlyCoveredPercent = (thoroughlyCovered / total) * 100;
+              
+              return (
+                <>
+                  {/* Red segment - Not Discussed */}
+                  {notDiscussed > 0 && (
+                    <div 
+                      className="absolute left-0 top-0 h-full bg-red-500 hover:bg-red-600 transition-all duration-700 ease-out cursor-pointer"
+                      style={{ width: `${notDiscussedPercent}%` }}
+                      title={`${notDiscussed} topics not yet discussed (${Math.round(notDiscussedPercent)}%)`}
+                    />
+                  )}
+                  
+                  {/* Yellow segment - Briefly Discussed */}
+                  {brieflyDiscussed > 0 && (
+                    <div 
+                      className="absolute top-0 h-full bg-yellow-500 hover:bg-yellow-600 transition-all duration-700 ease-out cursor-pointer"
+                      style={{ 
+                        left: `${notDiscussedPercent}%`,
+                        width: `${brieflyDiscussedPercent}%` 
+                      }}
+                      title={`${brieflyDiscussed} topics briefly discussed (${Math.round(brieflyDiscussedPercent)}%)`}
+                    />
+                  )}
+                  
+                  {/* Green segment - Thoroughly Covered */}
+                  {thoroughlyCovered > 0 && (
+                    <div 
+                      className="absolute top-0 h-full bg-green-500 hover:bg-green-600 transition-all duration-700 ease-out cursor-pointer"
+                      style={{ 
+                        left: `${notDiscussedPercent + brieflyDiscussedPercent}%`,
+                        width: `${thoroughlyCoveredPercent}%` 
+                      }}
+                      title={`${thoroughlyCovered} topics thoroughly covered (${Math.round(thoroughlyCoveredPercent)}%)`}
+                    >
+                      {/* Celebration sparkles for completed topics */}
+                      {progressBarPulse && thoroughlyCoveredPercent > 0 && (
+                        <div className="absolute inset-0 overflow-hidden">
+                          <div className="absolute top-1 left-1/4 w-1 h-1 bg-yellow-300 rounded-full animate-ping" />
+                          <div className="absolute top-2 right-1/3 w-1 h-1 bg-yellow-300 rounded-full animate-ping" style={{ animationDelay: '0.2s' }} />
+                          <div className="absolute bottom-1 left-1/2 w-1 h-1 bg-white rounded-full animate-ping" style={{ animationDelay: '0.4s' }} />
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  
+                  {/* Progress indicators with percentages */}
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <span className="text-xs font-semibold text-white drop-shadow-lg mix-blend-difference">
+                      {Math.round(thoroughlyCoveredPercent)}% Complete
+                    </span>
+                  </div>
+                  
+                  {/* Animated shine effect when progress updates */}
+                  <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white to-transparent opacity-20 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000 ease-out pointer-events-none" />
+                </>
+              );
+            })()}
           </div>
           
-          <div className="flex justify-between mt-2 text-xs text-gray-500">
-            <div className="flex items-center gap-1">
-              <span className="w-2 h-2 bg-red-500 rounded-full"></span>
-              <span>Not Discussed: {sessionData.topicStats.total - sessionData.topicStats.brieflyDiscussed - sessionData.topicStats.thoroughlyCovered}</span>
+          {/* Legend with live counts */}
+          <div className="flex justify-between mt-3 text-xs">
+            <div className="flex items-center gap-1 hover:scale-105 transition-transform">
+              <div className="w-3 h-3 bg-red-500 rounded-sm shadow-sm"></div>
+              <span className="text-gray-600 font-medium">
+                Not Discussed: {sessionData.topicStats.total - sessionData.topicStats.brieflyDiscussed - sessionData.topicStats.thoroughlyCovered}
+              </span>
             </div>
-            <div className="flex items-center gap-1">
-              <span className="w-2 h-2 bg-yellow-500 rounded-full"></span>
-              <span>Briefly Discussed: {sessionData.topicStats.brieflyDiscussed}</span>
+            <div className="flex items-center gap-1 hover:scale-105 transition-transform">
+              <div className="w-3 h-3 bg-yellow-500 rounded-sm shadow-sm"></div>
+              <span className="text-gray-600 font-medium">
+                Briefly Discussed: {sessionData.topicStats.brieflyDiscussed}
+              </span>
             </div>
-            <div className="flex items-center gap-1">
-              <span className="w-2 h-2 bg-green-500 rounded-full"></span>
-              <span>Thoroughly Covered: {sessionData.topicStats.thoroughlyCovered}</span>
+            <div className="flex items-center gap-1 hover:scale-105 transition-transform">
+              <div className="w-3 h-3 bg-green-500 rounded-sm shadow-sm"></div>
+              <span className="text-gray-600 font-medium">
+                Thoroughly Covered: {sessionData.topicStats.thoroughlyCovered}
+              </span>
             </div>
+          </div>
+          
+          {/* Additional stats row */}
+          <div className="flex justify-center mt-2 text-xs text-gray-500">
+            <span className="bg-gray-50 px-2 py-1 rounded-full border">
+              Required Topics: <span className="font-semibold text-gray-700">{sessionData.topicStats?.requiredCovered || 0} / {sessionData.topicStats?.required || 0}</span> completed
+            </span>
           </div>
         </div>
       )}
