@@ -39,6 +39,8 @@ export async function POST(request: NextRequest) {
 
     // Quick keyword-based pre-analysis
     const responseText = smeResponse.toLowerCase();
+    const responseWordCount = responseText.split(/\s+/).length;
+    
     const keywordMatches = topicsWithKeywords.map((topic: any) => {
       const matchCount = topic.extractedKeywords.filter((keyword: string) => 
         responseText.includes(keyword.toLowerCase())
@@ -48,11 +50,28 @@ export async function POST(request: NextRequest) {
         ? matchCount / topic.extractedKeywords.length 
         : 0;
       
+      // More sophisticated scoring based on multiple factors
+      let baseScore = Math.round(matchRatio * 100);
+      
+      // Adjust score based on response length and detail
+      if (responseWordCount > 50 && matchCount > 0) {
+        baseScore += Math.min(15, Math.floor(responseWordCount / 20)); // Bonus for longer responses
+      }
+      
+      // Add some variance to avoid clustering at same percentages
+      const variance = Math.floor(Math.random() * 8) - 4; // ±4 variance
+      baseScore = Math.max(0, Math.min(100, baseScore + variance));
+      
+      // Ensure minimum scores align with guidelines
+      if (matchCount > 0 && baseScore < 16) {
+        baseScore = 16 + Math.floor(Math.random() * 10); // 16-25 range for minimal mentions
+      }
+      
       return {
         id: topic.id,
         matchCount,
         matchRatio,
-        initialScore: Math.min(100, Math.round(matchRatio * 100))
+        initialScore: baseScore
       };
     });
 
@@ -60,16 +79,30 @@ export async function POST(request: NextRequest) {
 
 For each topic, you need to:
 1. Determine coverage level: "not-discussed", "briefly-discussed", or "thoroughly-covered"
-2. Assign a coverage score from 0-100
+2. Assign a precise coverage score from 0-100 based on depth and detail
 3. Identify keywords/concepts mentioned related to each topic
 
-Coverage guidelines:
-- "not-discussed" (0-25): Topic not mentioned or only tangentially referenced
-- "briefly-discussed" (26-70): Topic mentioned with some detail but lacks depth
-- "thoroughly-covered" (71-100): Topic explained in detail with sufficient information for teaching
+Coverage scoring guidelines:
+- "not-discussed" (0-15): Topic not mentioned at all or only tangentially referenced
+- "briefly-discussed" (16-65): Topic mentioned but with varying depth:
+  * 16-25: Barely mentioned, minimal detail
+  * 26-40: Some explanation but lacks important details
+  * 41-55: Moderate detail, covers key points but missing depth
+  * 56-65: Good coverage but could use more examples or specifics
+- "thoroughly-covered" (66-100): Topic explained in detail:
+  * 66-75: Well explained with good detail and examples
+  * 76-85: Comprehensive coverage with clear explanations
+  * 86-95: Excellent depth with practical insights
+  * 96-100: Complete mastery-level explanation
 
-Be especially attentive to technical terms, processes, and context-specific vocabulary. 
-The SME might discuss a topic using different terminology than what is listed in the topics.
+Scoring factors to consider:
+- Depth of explanation (how detailed?)
+- Practical examples or scenarios given
+- Technical accuracy and terminology used
+- Context provided for when/why/how to apply
+- Connection to other related topics
+
+Be precise with scoring - avoid clustering around the same percentages. Consider the actual content depth.
 
 Return your analysis as a JSON object with topic updates.`;
 
@@ -115,8 +148,16 @@ Return a JSON object with this structure:
   ]
 }
 
-Important: For topicUpdates, if a topic was previously "thoroughly-covered" (score ≥ 71), do not downgrade it unless there is explicit contradiction.
-For suggestedNewTopics, only include topics that weren't listed but were extensively discussed by the SME.`;
+Important guidelines:
+- For topicUpdates: If a topic was previously "thoroughly-covered" (score ≥ 66), do not downgrade it unless there is explicit contradiction.
+- For suggestedNewTopics: BE VERY STRICT - only suggest new topics if they are:
+  1. Extensively discussed by the SME (at least 2-3 sentences of detail)
+  2. Cannot reasonably fit under any existing topic category
+  3. Represent a genuinely new concept not covered by existing topics
+  4. Are important enough to warrant separate tracking
+  
+  Prefer grouping concepts under existing topics rather than creating new ones.
+  If unsure, DO NOT suggest a new topic - leave the array empty instead.`;
 
     const completion = await deepseek.chat.completions.create({
       model: "deepseek-chat",
@@ -149,8 +190,8 @@ For suggestedNewTopics, only include topics that weren't listed but were extensi
         analysisResult.topicUpdates = keywordMatches.map((match: any) => {
           const topic = topics.find((t: any) => t.id === match.id);
           let status = "not-discussed";
-          if (match.initialScore >= 71) status = "thoroughly-covered";
-          else if (match.initialScore >= 26) status = "briefly-discussed";
+          if (match.initialScore >= 66) status = "thoroughly-covered";
+          else if (match.initialScore >= 16) status = "briefly-discussed";
           
           return {
             id: match.id,
@@ -159,7 +200,7 @@ For suggestedNewTopics, only include topics that weren't listed but were extensi
             mentionedKeywords: topic.keywords?.filter((kw: string) => 
               responseText.includes(kw.toLowerCase())
             ) || [],
-            reasoning: `Based on keyword matching: ${match.matchCount} keywords matched out of ${topic.extractedKeywords.length}`
+            reasoning: `Based on keyword matching: ${match.matchCount} keywords matched out of ${topic.extractedKeywords?.length || 0}`
           };
         });
       }
@@ -170,8 +211,8 @@ For suggestedNewTopics, only include topics that weren't listed but were extensi
         topicUpdates: keywordMatches.map((match: any) => {
           const topic = topics.find((t: any) => t.id === match.id);
           let status = "not-discussed";
-          if (match.initialScore >= 71) status = "thoroughly-covered";
-          else if (match.initialScore >= 26) status = "briefly-discussed";
+          if (match.initialScore >= 66) status = "thoroughly-covered";
+          else if (match.initialScore >= 16) status = "briefly-discussed";
           
           return {
             id: match.id,
@@ -180,7 +221,7 @@ For suggestedNewTopics, only include topics that weren't listed but were extensi
             mentionedKeywords: topic.keywords?.filter((kw: string) => 
               responseText.includes(kw.toLowerCase())
             ) || [],
-            reasoning: `Based on keyword matching: ${match.matchCount} keywords matched out of ${topic.extractedKeywords.length}`
+            reasoning: `Based on keyword matching: ${match.matchCount} keywords matched out of ${topic.extractedKeywords?.length || 0}`
           };
         }),
         keywordMatches,

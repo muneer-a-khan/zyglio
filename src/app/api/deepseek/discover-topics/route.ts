@@ -29,7 +29,18 @@ export async function POST(request: NextRequest) {
 
     const systemPrompt = `You are an expert topic discovery agent. Your job is to identify new topics/subtopics mentioned by an SME that aren't already being tracked, and classify them as required or optional for teaching this procedure.
 
-Guidelines for classification:
+CRITICAL: Be EXTREMELY conservative about creating new topics. The goal is to prevent interview bloat and ensure completion.
+
+Guidelines for NEW topic creation (must meet ALL criteria):
+1. The concept is extensively discussed (multiple sentences with detail)
+2. It CANNOT reasonably fit under any existing topic category
+3. It represents a genuinely distinct concept not covered elsewhere
+4. It is essential enough to warrant separate tracking
+5. It would be confusing or misleading to group it with existing topics
+
+When in doubt, DO NOT create a new topic. Prefer grouping concepts under existing topics.
+
+Classification guidelines:
 - REQUIRED: Essential concepts, steps, safety measures, or knowledge needed to successfully teach and perform the procedure
 - OPTIONAL: Additional context, advanced techniques, alternatives, or supplementary information that enhances understanding but isn't critical
 
@@ -51,6 +62,17 @@ Analyze the SME response and identify any NEW topics, concepts, or subtopics men
 3. Generate relevant keywords
 4. Provide a brief description
 
+IMPORTANT: Only create new topics if they meet ALL the strict criteria above. Ask yourself:
+- Could this concept be grouped under an existing topic?
+- Is this discussed extensively enough to warrant its own topic?
+- Is this truly a distinct concept that would be confusing to group elsewhere?
+
+Examples of what should NOT be new topics:
+- Brief mentions or single-sentence concepts
+- Specific tools that could go under "Equipment"
+- Specific techniques that could go under existing technique categories
+- Minor variations of existing topics
+
 Return a JSON object with this structure:
 {
   "newTopics": [
@@ -60,12 +82,12 @@ Return a JSON object with this structure:
       "isRequired": true/false,
       "keywords": ["keyword1", "keyword2"],
       "description": "Brief description of what this topic covers",
-      "reasoning": "Why this is classified as required/optional"
+      "reasoning": "Why this is classified as required/optional AND why it cannot fit under existing topics"
     }
   ]
 }
 
-If no new topics are found, return: {"newTopics": []}`;
+If no new topics meet the strict criteria, return: {"newTopics": []}`;
 
     const completion = await deepseek.chat.completions.create({
       model: "deepseek-chat",
