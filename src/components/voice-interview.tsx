@@ -84,6 +84,7 @@ export default function VoiceInterview({
   });
   const [currentTranscript, setCurrentTranscript] = useState('');
   const [finalTranscript, setFinalTranscript] = useState('');
+  const [accumulatedTranscript, setAccumulatedTranscript] = useState('');
   
   // Refs
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -93,6 +94,7 @@ export default function VoiceInterview({
   const isRecognitionActiveRef = useRef<boolean>(false);
   const processingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastProcessedTranscriptRef = useRef<string>('');
+  const accumulatedFinalTranscriptRef = useRef<string>('');
   
   // Initialize the interview session
   useEffect(() => {
@@ -130,30 +132,32 @@ export default function VoiceInterview({
   
         recognition.onresult = (event: any) => {
           let interimTranscript = '';
-          let newFinalTranscript = '';
-  
+          
+          // Process only new results from this event
           for (let i = event.resultIndex; i < event.results.length; i++) {
             const result = event.results[i];
             const transcript = result[0].transcript;
             
             if (result.isFinal) {
-              newFinalTranscript += transcript;
+              // Add this final result to accumulated transcript immediately
+              accumulatedFinalTranscriptRef.current = (accumulatedFinalTranscriptRef.current + ' ' + transcript).trim();
+              
+              // Update state
+              setFinalTranscript(accumulatedFinalTranscriptRef.current);
+              
+              // Process for real-time analysis
+              if (transcript.trim() && transcript !== lastProcessedTranscriptRef.current) {
+                lastProcessedTranscriptRef.current = transcript;
+                processTranscriptChunk(transcript.trim());
+              }
             } else {
               interimTranscript += transcript;
             }
           }
   
-          // Update display with accumulated final + current interim
-          const accumulatedFinal = finalTranscript + newFinalTranscript;
-          const combinedTranscript = (accumulatedFinal + ' ' + interimTranscript).trim();
-          setCurrentTranscript(combinedTranscript);
-  
-          // Process and accumulate final transcripts for real-time analysis
-          if (newFinalTranscript.trim() && newFinalTranscript !== lastProcessedTranscriptRef.current) {
-            lastProcessedTranscriptRef.current = newFinalTranscript;
-            setFinalTranscript(prev => prev + ' ' + newFinalTranscript);
-            processTranscriptChunk(newFinalTranscript.trim());
-          }
+          // Update display: accumulated final + current interim
+          const displayTranscript = (accumulatedFinalTranscriptRef.current + ' ' + interimTranscript).trim();
+          setAccumulatedTranscript(displayTranscript);
         };
   
         recognition.onerror = (event: any) => {
@@ -453,7 +457,9 @@ Generate one specific follow-up question to get more detail. Be concise.`
         // Clear ALL previous transcript data for fresh start
         setCurrentTranscript('');
         setFinalTranscript('');
+        setAccumulatedTranscript('');
         lastProcessedTranscriptRef.current = '';
+        accumulatedFinalTranscriptRef.current = '';
         
         // Clear streaming state
         setStreamingState({
@@ -491,7 +497,7 @@ Generate one specific follow-up question to get more detail. Be concise.`
 
   // Process the complete response and move to next question
   const processCompleteResponse = async () => {
-    const completeTranscript = finalTranscript.trim();
+    const completeTranscript = accumulatedFinalTranscriptRef.current.trim();
     
     if (!completeTranscript) {
       toast.error('No speech detected. Please try again.');
@@ -976,10 +982,10 @@ Generate one specific follow-up question to get more detail. Be concise.`
                 )}
 
                 {/* Live transcript display */}
-                {currentTranscript && (
+                {accumulatedTranscript && (
                   <div className="p-3 bg-gray-50 border rounded-lg">
                     <p className="text-sm text-gray-600 mb-1">Live transcript:</p>
-                    <p className="text-gray-900">{currentTranscript}</p>
+                    <p className="text-gray-900">{accumulatedTranscript}</p>
                   </div>
                 )}
 
