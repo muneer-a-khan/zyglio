@@ -502,34 +502,18 @@ Generate one specific follow-up question to get more detail. Be concise.`
       setIsProcessing(true);
       setIsGeneratingQuestions(true);
       
-      // Start both operations in parallel for better performance
-      const [turnResponse, nextQuestionResponse] = await Promise.all([
-        // Process current turn
-        fetch('/api/interview/interview-turn', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            procedureId,
-            smeResponse: completeTranscript,
-            currentQuestion: currentAIQuestion
-          }),
+      // First process the current turn
+      const turnResponse = await fetch('/api/interview/interview-turn', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          procedureId,
+          smeResponse: completeTranscript,
+          currentQuestion: currentAIQuestion
         }),
-        
-        // Get next question in parallel
-        fetch('/api/interview/interview-question', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            procedureId,
-            initialContext: taskDefinition.description || '',
-            procedureTitle: taskDefinition.title
-          }),
-        })
-      ]);
+      });
 
       if (!turnResponse.ok) {
         throw new Error('Failed to process interview turn');
@@ -560,6 +544,19 @@ Generate one specific follow-up question to get more detail. Be concise.`
         }
         return;
       }
+      
+      // Only after turn processing is complete, get the next question
+      const nextQuestionResponse = await fetch('/api/interview/interview-question', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          procedureId,
+          initialContext: taskDefinition.description || '',
+          procedureTitle: taskDefinition.title
+        }),
+      });
       
       // Process next question response
       if (nextQuestionResponse.ok) {

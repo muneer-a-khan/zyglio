@@ -31,7 +31,10 @@ export async function POST(request: NextRequest) {
     // Get or initialize session
     let sessionData = await getSessionData(procedureId);
     if (!sessionData) {
+      console.log('No existing session found, initializing new session for procedure:', procedureId);
       sessionData = await initializeSession(procedureId, initialContext || '', procedureTitle || 'Unknown Procedure');
+    } else {
+      console.log('Found existing session for procedure:', procedureId, 'with', sessionData.questionsAsked, 'questions asked');
     }
 
     // Generate first question if this is the start
