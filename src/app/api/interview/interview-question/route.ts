@@ -28,26 +28,36 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Procedure ID is required' }, { status: 400 });
     }
 
+    // Get enhanced context if available, otherwise use initial context
+    const contextToUse = await getEnhancedContextIfAvailable(procedureId, initialContext);
+
     // Get or initialize session
     let sessionData = await getSessionData(procedureId);
     if (!sessionData) {
       console.log('No existing session found, initializing new session for procedure:', procedureId);
-      sessionData = await initializeSession(procedureId, initialContext || '', procedureTitle || 'Unknown Procedure');
+      sessionData = await initializeSession(procedureId, contextToUse, procedureTitle || 'Unknown Procedure');
     } else {
       console.log('Found existing session for procedure:', procedureId, 'with', sessionData.questionsAsked, 'questions asked');
+      
+      // Update session context if enhanced context is now available
+      if (contextToUse !== initialContext && sessionData.initialContext !== contextToUse) {
+        sessionData.initialContext = contextToUse;
+        await setSessionData(procedureId, sessionData);
+        console.log('Updated session context with enhanced media content');
+      }
     }
 
     // Generate first question if this is the start
     if (sessionData.questionsAsked === 0) {
       // Create the first question - "Tell me about X" format
-      const customFirstQuestion = generateCustomFirstQuestion(procedureTitle, initialContext);
+      const customFirstQuestion = generateCustomFirstQuestion(procedureTitle, contextToUse);
       
       console.log('Generated first question:', customFirstQuestion);
 
-      // Generate initial batch of questions
+      // Generate initial batch of questions using enhanced context
       const batchedQuestions = await generateBatchedQuestions(
         procedureTitle,
-        initialContext,
+        contextToUse,
         [],
         sessionData.topics,
         5
@@ -73,12 +83,11 @@ export async function POST(request: NextRequest) {
     // For subsequent questions, select from batched questions
     const availableQuestions = sessionData.batchedQuestions.filter(q => !q.used);
     
-    // Generate more questions if we're running low (when only 2 left instead of 5)
+    // Generate more questions if we're running low, using enhanced context
     if (availableQuestions.length <= 2) {
-      // Generate more questions if we're running low
       const newQuestions = await generateBatchedQuestions(
         procedureTitle,
-        initialContext,
+        contextToUse,
         sessionData.conversationHistory,
         sessionData.topics,
         5
@@ -125,6 +134,30 @@ export async function POST(request: NextRequest) {
       error: 'Failed to generate question',
       details: error instanceof Error ? error.message : 'Unknown error'
     }, { status: 500 });
+  }
+}
+
+/**
+ * Get enhanced context if media processing is complete, otherwise return original context
+ */
+async function getEnhancedContextIfAvailable(taskId: string, fallbackContext: string): Promise<string> {
+  try {
+    const prisma = new (await import('@prisma/client')).PrismaClient();
+    
+    const interviewContext = await prisma.interviewContext.findFirst({
+      where: { taskId }
+    });
+
+    if (interviewContext?.mediaProcessed && interviewContext.enhancedContext) {
+      console.log('Using enhanced context with parsed media content');
+      return interviewContext.enhancedContext;
+    }
+
+    console.log('Using original context (media not yet processed or no media)');
+    return fallbackContext;
+  } catch (error) {
+    console.error('Error getting enhanced context:', error);
+    return fallbackContext;
   }
 }
 

@@ -60,14 +60,15 @@ model LearningTask {
 }
 
 model MediaItem {
-  id        String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  type      MediaType
-  caption   String?
-  url       String
-  relevance String?
-  createdAt DateTime  @default(now()) @db.Timestamptz(6)
-  taskId    String    @db.Uuid
-  stepId    String?   @db.Uuid
+  id                  String                 @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  type                MediaType
+  caption             String?
+  url                 String
+  relevance           String?
+  createdAt           DateTime               @default(now()) @db.Timestamptz(6)
+  taskId              String                 @db.Uuid
+  stepId              String?                @db.Uuid
+  ParsedMediaContent  ParsedMediaContent[]
 
   @@index([stepId])
   @@index([taskId])
@@ -169,6 +170,36 @@ model users {
   createdAt    DateTime       @default(now()) @db.Timestamptz(6)
   role         user_role      @default(trainee)
   LearningTask LearningTask[]
+}
+
+model ParsedMediaContent {
+  id               String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  mediaItemId      String    @db.Uuid
+  contentType      String
+  extractedText    String
+  summary          String?
+  keyTopics        String[]
+  processingStatus String
+  errorMessage     String?
+  processingTime   Int?
+  confidence       Float?    @db.Real
+  metadata         Json?
+  createdAt        DateTime? @default(now()) @db.Timestamptz(6)
+  updatedAt        DateTime? @default(now()) @updatedAt @db.Timestamptz(6)
+
+  @@index([mediaItemId])
+  @@index([processingStatus])
+}
+
+model InterviewContext {
+  id              String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  taskId          String    @db.Uuid
+  baseContext     String
+  enhancedContext String
+  mediaProcessed  Boolean?  @default(false)
+  lastUpdated     DateTime? @default(now()) @db.Timestamptz(6)
+
+  @@index([taskId])
 }
 
 enum MediaType {

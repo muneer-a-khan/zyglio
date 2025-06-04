@@ -29,11 +29,95 @@ const MediaUploader = ({ mediaItems = [], onChange }: MediaUploaderProps) => {
   const [urlCaption, setUrlCaption] = useState<string>("");
   const [urlType, setUrlType] = useState<string>("IMAGE");
   const [showStorageSetup, setShowStorageSetup] = useState(false);
+  const [processingStatus, setProcessingStatus] = useState<Record<string, any>>({});
+  const [showProcessingFeedback, setShowProcessingFeedback] = useState(false);
 
   // Update local state when props change
   useEffect(() => {
     setItems(mediaItems);
   }, [mediaItems]);
+
+  // Start polling for processing status when media items are uploaded
+  useEffect(() => {
+    if (items.length > 0) {
+      checkProcessingStatus();
+      const interval = setInterval(checkProcessingStatus, 3000); // Poll every 3 seconds
+      return () => clearInterval(interval);
+    }
+  }, [items]);
+
+  const checkProcessingStatus = async () => {
+    if (items.length === 0) return;
+
+    try {
+      // Get the current task ID from ProcedureService
+      const { procedureService } = await import('@/lib/ProcedureService');
+      const taskId = procedureService.currentTaskId;
+      
+      if (!taskId) return;
+
+      const response = await fetch(`/api/media/process?taskId=${taskId}`);
+      if (!response.ok) return;
+
+      const data = await response.json();
+      if (data.success) {
+        const statusMap: Record<string, any> = {};
+        data.processingStatus.forEach((status: any) => {
+          statusMap[status.mediaItemId] = status;
+        });
+        
+        setProcessingStatus(statusMap);
+        
+        // Show processing feedback if any items are being processed
+        const hasProcessing = data.processingStatus.some((status: any) => 
+          ['pending', 'processing'].includes(status.status)
+        );
+        setShowProcessingFeedback(hasProcessing);
+        
+        // Show success message when all processing completes
+        if (data.summary.allCompleted && data.summary.completed > 0) {
+          toast.success(`Media processing completed! ${data.summary.completed} files processed successfully.`);
+        }
+        
+        // Show error messages for failed items
+        data.processingStatus.forEach((status: any) => {
+          if (status.status === 'failed' && status.errorMessage) {
+            toast.error(`Failed to process ${status.filename}: ${status.errorMessage}`);
+          }
+        });
+      }
+    } catch (error) {
+      console.error('Error checking processing status:', error);
+    }
+  };
+
+  const startMediaProcessing = async (mediaItemId: string) => {
+    try {
+      const { procedureService } = await import('@/lib/ProcedureService');
+      const taskId = procedureService.currentTaskId;
+      
+      if (!taskId) {
+        console.error('No task ID available for media processing');
+        return;
+      }
+
+      const response = await fetch('/api/media/process', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mediaItemId, taskId })
+      });
+
+      if (response.ok) {
+        toast.info('Started processing uploaded media...');
+        setShowProcessingFeedback(true);
+      } else {
+        const errorData = await response.json();
+        console.error('Failed to start media processing:', errorData);
+      }
+    } catch (error) {
+      console.error('Error starting media processing:', error);
+    }
+  };
 
   const handleAddUrlItem = () => {
     if (!urlInput) {
@@ -51,6 +135,9 @@ const MediaUploader = ({ mediaItems = [], onChange }: MediaUploaderProps) => {
     const newItems = [...items, newItem];
     setItems(newItems);
     onChange(newItems);
+    
+    // Start processing for URL-based media
+    startMediaProcessing(newItem.id);
     
     // Reset form
     setUrlInput("");
@@ -170,13 +257,18 @@ const MediaUploader = ({ mediaItems = [], onChange }: MediaUploaderProps) => {
               }
             }
             
-            newItems.push({
+            const newItem = {
               id: uuidv4(),
               type,
               url: responseData.data.url,
               caption: file.name,
               filePath: responseData.data.filePath
-            });
+            };
+            
+            newItems.push(newItem);
+            
+            // Start background processing for this media item
+            await startMediaProcessing(newItem.id);
           }
         } catch (fileError) {
           console.error(`Error processing file ${file.name}:`, fileError);
@@ -257,6 +349,45 @@ const MediaUploader = ({ mediaItems = [], onChange }: MediaUploaderProps) => {
     }
   };
 
+  const getProcessingStatusBadge = (itemId: string) => {
+    const status = processingStatus[itemId];
+    if (!status) return null;
+
+    const statusConfig = {
+      pending: { color: 'bg-yellow-100 text-yellow-800', text: 'Pending' },
+      processing: { color: 'bg-blue-100 text-blue-800', text: 'Processing...' },
+      completed: { color: 'bg-green-100 text-green-800', text: 'Processed' },
+      failed: { color: 'bg-red-100 text-red-800', text: 'Failed' }
+    };
+
+    const config = statusConfig[status.status as keyof typeof statusConfig] || statusConfig.pending;
+
+    return (
+      <div className="mt-2">
+        <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${config.color}`}>
+          {config.text}
+        </span>
+        {status.status === 'completed' && status.summary && (
+          <div className="mt-1 text-xs text-gray-600">
+            <p className="font-medium">Summary:</p>
+            <p>{status.summary}</p>
+            {status.keyTopics && status.keyTopics.length > 0 && (
+              <p className="mt-1">
+                <span className="font-medium">Topics:</span> {status.keyTopics.slice(0, 3).join(', ')}
+                {status.keyTopics.length > 3 && ` + ${status.keyTopics.length - 3} more`}
+              </p>
+            )}
+          </div>
+        )}
+        {status.status === 'failed' && status.errorMessage && (
+          <div className="mt-1 text-xs text-red-600">
+            Error: {status.errorMessage}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
@@ -275,6 +406,39 @@ const MediaUploader = ({ mediaItems = [], onChange }: MediaUploaderProps) => {
       </p>
       
       {showStorageSetup && <StorageSetup />}
+      
+      {/* Media Processing Status */}
+      {showProcessingFeedback && (
+        <Card className="border-blue-200 bg-blue-50">
+          <CardContent className="pt-4">
+            <div className="flex items-center gap-2 mb-2">
+              <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
+              <span className="font-medium text-blue-900">Processing Media Content</span>
+            </div>
+            <p className="text-sm text-blue-800">
+              Your uploaded media is being analyzed to extract relevant content for the interview. 
+              This process runs in the background and will enhance your interview questions with knowledge from your files.
+            </p>
+            {Object.keys(processingStatus).length > 0 && (
+              <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {Object.entries(processingStatus).map(([itemId, status]: [string, any]) => (
+                  <div key={itemId} className="flex items-center justify-between bg-white rounded p-2 text-sm">
+                    <span className="truncate">{status.filename}</span>
+                    <span className={`px-2 py-1 rounded text-xs ${
+                      status.status === 'completed' ? 'bg-green-100 text-green-800' :
+                      status.status === 'processing' ? 'bg-blue-100 text-blue-800' :
+                      status.status === 'failed' ? 'bg-red-100 text-red-800' :
+                      'bg-yellow-100 text-yellow-800'
+                    }`}>
+                      {status.status}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
       
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="grid w-full grid-cols-2">
@@ -460,6 +624,9 @@ const MediaUploader = ({ mediaItems = [], onChange }: MediaUploaderProps) => {
                       <Trash2 className="h-4 w-4" />
                     </Button>
                   </div>
+                  
+                  {/* Processing Status */}
+                  {getProcessingStatusBadge(item.id)}
                 </CardContent>
               </Card>
             ))}
