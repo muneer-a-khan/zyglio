@@ -22,6 +22,8 @@ export interface MediaProcessingJob {
   mediaType: string;
   url: string;
   taskId: string;
+  userId: string;
+  filename?: string;
 }
 
 export interface ProcessingProgress {
@@ -36,38 +38,38 @@ export interface ProcessingProgress {
  * Main function to process uploaded media and extract content
  */
 export async function processMediaContent(job: MediaProcessingJob): Promise<void> {
-  const { mediaItemId, mediaType, url, taskId } = job;
+  const { mediaItemId, mediaType, url, taskId, userId, filename } = job;
   
   try {
     // Initialize processing record
-    await updateProcessingStatus(mediaItemId, 'processing', 0, 'Starting processing...');
+    await updateProcessingStatus(mediaItemId, 'processing', 0, 'Starting processing...', { taskId, userId, filename });
 
     let extractedContent: ProcessingResult;
 
     switch (mediaType.toUpperCase()) {
       case 'PDF':
-        extractedContent = await processPDF(url, mediaItemId);
+        extractedContent = await processPDF(url, mediaItemId, { taskId, userId, filename });
         break;
       case 'VIDEO':
-        extractedContent = await processVideo(url, mediaItemId);
+        extractedContent = await processVideo(url, mediaItemId, { taskId, userId, filename });
         break;
       case 'AUDIO':
-        extractedContent = await processAudio(url, mediaItemId);
+        extractedContent = await processAudio(url, mediaItemId, { taskId, userId, filename });
         break;
       case 'IMAGE':
-        extractedContent = await processImage(url, mediaItemId);
+        extractedContent = await processImage(url, mediaItemId, { taskId, userId, filename });
         break;
       default:
         // Handle URL content (YouTube, etc.)
         if (url.includes('youtube.com') || url.includes('youtu.be')) {
-          extractedContent = await processYouTubeVideo(url, mediaItemId);
+          extractedContent = await processYouTubeVideo(url, mediaItemId, { taskId, userId, filename });
         } else {
-          extractedContent = await processWebContent(url, mediaItemId);
+          extractedContent = await processWebContent(url, mediaItemId, { taskId, userId, filename });
         }
     }
 
     // Generate summary and key topics using AI
-    await updateProcessingStatus(mediaItemId, 'processing', 80, 'Generating summary and topics...');
+    await updateProcessingStatus(mediaItemId, 'processing', 80, 'Generating summary and topics...', { taskId, userId, filename });
     const analysis = await analyzeExtractedContent(extractedContent.text);
 
     // Store the processed content
@@ -85,7 +87,13 @@ export async function processMediaContent(job: MediaProcessingJob): Promise<void
       }
     });
 
-    await updateProcessingStatus(mediaItemId, 'completed', 100, 'Processing completed successfully');
+    await updateProcessingStatus(
+      mediaItemId, 
+      'completed', 
+      100, 
+      'Processing completed successfully', 
+      { taskId, userId, filename, summary: analysis.summary, keyTopics: analysis.keyTopics }
+    );
 
     // Trigger context enhancement for the task
     await enhanceInterviewContext(taskId);
@@ -108,7 +116,13 @@ export async function processMediaContent(job: MediaProcessingJob): Promise<void
       }
     });
 
-    await updateProcessingStatus(mediaItemId, 'failed', 0, error instanceof Error ? error.message : 'Processing failed');
+    await updateProcessingStatus(
+      mediaItemId, 
+      'failed', 
+      0, 
+      error instanceof Error ? error.message : 'Processing failed',
+      { taskId, userId, filename, errorMessage: error instanceof Error ? error.message : 'Unknown error' }
+    );
   }
 }
 
@@ -123,20 +137,20 @@ interface ProcessingResult {
 /**
  * Process PDF files using PDF parsing
  */
-async function processPDF(url: string, mediaItemId: string): Promise<ProcessingResult> {
+async function processPDF(url: string, mediaItemId: string, context: { taskId: string, userId: string, filename?: string }): Promise<ProcessingResult> {
   const startTime = Date.now();
-  await updateProcessingStatus(mediaItemId, 'processing', 20, 'Downloading PDF...');
+  await updateProcessingStatus(mediaItemId, 'processing', 20, 'Downloading PDF...', context);
 
   // Download the PDF
   const response = await fetch(url);
   const pdfBuffer = await response.arrayBuffer();
 
-  await updateProcessingStatus(mediaItemId, 'processing', 40, 'Extracting text from PDF...');
+  await updateProcessingStatus(mediaItemId, 'processing', 40, 'Extracting text from PDF...', context);
 
   // Extract text using pdf-parse or similar library
   const pdfText = await extractTextFromPDF(pdfBuffer);
 
-  await updateProcessingStatus(mediaItemId, 'processing', 70, 'Processing extracted text...');
+  await updateProcessingStatus(mediaItemId, 'processing', 70, 'Processing extracted text...', context);
 
   return {
     text: pdfText,
@@ -153,30 +167,30 @@ async function processPDF(url: string, mediaItemId: string): Promise<ProcessingR
 /**
  * Process video files - extract audio and get transcript + visual analysis
  */
-async function processVideo(url: string, mediaItemId: string): Promise<ProcessingResult> {
+async function processVideo(url: string, mediaItemId: string, context: { taskId: string, userId: string, filename?: string }): Promise<ProcessingResult> {
   const startTime = Date.now();
-  await updateProcessingStatus(mediaItemId, 'processing', 10, 'Downloading video...');
+  await updateProcessingStatus(mediaItemId, 'processing', 10, 'Downloading video...', context);
 
   // Download video
   const videoResponse = await fetch(url);
   const videoBlob = await videoResponse.blob();
 
-  await updateProcessingStatus(mediaItemId, 'processing', 30, 'Extracting audio from video...');
+  await updateProcessingStatus(mediaItemId, 'processing', 30, 'Extracting audio from video...', context);
 
   // Extract audio using FFmpeg (you'd need to implement this)
   const audioBlob = await extractAudioFromVideo(videoBlob);
 
-  await updateProcessingStatus(mediaItemId, 'processing', 50, 'Transcribing audio with Whisper...');
+  await updateProcessingStatus(mediaItemId, 'processing', 50, 'Transcribing audio with Whisper...', context);
 
   // Transcribe audio using OpenAI Whisper
   const transcript = await transcribeAudio(audioBlob);
 
-  await updateProcessingStatus(mediaItemId, 'processing', 70, 'Analyzing video frames...');
+  await updateProcessingStatus(mediaItemId, 'processing', 70, 'Analyzing video frames...', context);
 
   // Analyze key video frames for visual content
   const visualAnalysis = await analyzeVideoFrames(videoBlob);
 
-  await updateProcessingStatus(mediaItemId, 'processing', 90, 'Combining analysis...');
+  await updateProcessingStatus(mediaItemId, 'processing', 90, 'Combining analysis...', context);
 
   const combinedText = `
 AUDIO TRANSCRIPT:
@@ -202,14 +216,14 @@ ${visualAnalysis}
 /**
  * Process YouTube videos
  */
-async function processYouTubeVideo(url: string, mediaItemId: string): Promise<ProcessingResult> {
+async function processYouTubeVideo(url: string, mediaItemId: string, context: { taskId: string, userId: string, filename?: string }): Promise<ProcessingResult> {
   const startTime = Date.now();
-  await updateProcessingStatus(mediaItemId, 'processing', 20, 'Processing YouTube video...');
+  await updateProcessingStatus(mediaItemId, 'processing', 20, 'Processing YouTube video...', context);
 
   // Extract video ID and get transcript using YouTube API or yt-dlp
   const videoId = extractYouTubeVideoId(url);
   
-  await updateProcessingStatus(mediaItemId, 'processing', 50, 'Getting YouTube transcript...');
+  await updateProcessingStatus(mediaItemId, 'processing', 50, 'Getting YouTube transcript...', context);
 
   // Try to get existing captions first, then fall back to Whisper
   let transcript = '';
@@ -221,7 +235,7 @@ async function processYouTubeVideo(url: string, mediaItemId: string): Promise<Pr
     transcript = await transcribeAudio(audioBlob);
   }
 
-  await updateProcessingStatus(mediaItemId, 'processing', 80, 'Analyzing video content...');
+  await updateProcessingStatus(mediaItemId, 'processing', 80, 'Analyzing video content...', context);
 
   // Get video metadata and thumbnail analysis
   const metadata = await getYouTubeMetadata(videoId);
@@ -244,14 +258,14 @@ async function processYouTubeVideo(url: string, mediaItemId: string): Promise<Pr
 /**
  * Process audio files
  */
-async function processAudio(url: string, mediaItemId: string): Promise<ProcessingResult> {
+async function processAudio(url: string, mediaItemId: string, context: { taskId: string, userId: string, filename?: string }): Promise<ProcessingResult> {
   const startTime = Date.now();
-  await updateProcessingStatus(mediaItemId, 'processing', 20, 'Downloading audio...');
+  await updateProcessingStatus(mediaItemId, 'processing', 20, 'Downloading audio...', context);
 
   const audioResponse = await fetch(url);
   const audioBlob = await audioResponse.blob();
 
-  await updateProcessingStatus(mediaItemId, 'processing', 60, 'Transcribing with Whisper...');
+  await updateProcessingStatus(mediaItemId, 'processing', 60, 'Transcribing with Whisper...', context);
 
   const transcript = await transcribeAudio(audioBlob);
 
@@ -269,14 +283,14 @@ async function processAudio(url: string, mediaItemId: string): Promise<Processin
 /**
  * Process images using OCR and visual analysis
  */
-async function processImage(url: string, mediaItemId: string): Promise<ProcessingResult> {
+async function processImage(url: string, mediaItemId: string, context: { taskId: string, userId: string, filename?: string }): Promise<ProcessingResult> {
   const startTime = Date.now();
-  await updateProcessingStatus(mediaItemId, 'processing', 30, 'Analyzing image...');
+  await updateProcessingStatus(mediaItemId, 'processing', 30, 'Analyzing image...', context);
 
   // Use GPT-4 Vision to analyze the image
   const analysis = await analyzeImageWithGPT4Vision(url);
 
-  await updateProcessingStatus(mediaItemId, 'processing', 70, 'Extracting text with OCR...');
+  await updateProcessingStatus(mediaItemId, 'processing', 70, 'Extracting text with OCR...', context);
 
   // Extract any text using OCR (if needed)
   const ocrText = await extractTextFromImage(url);
@@ -304,14 +318,14 @@ ${ocrText}
 /**
  * Process web content
  */
-async function processWebContent(url: string, mediaItemId: string): Promise<ProcessingResult> {
+async function processWebContent(url: string, mediaItemId: string, context: { taskId: string, userId: string, filename?: string }): Promise<ProcessingResult> {
   const startTime = Date.now();
-  await updateProcessingStatus(mediaItemId, 'processing', 30, 'Fetching web content...');
+  await updateProcessingStatus(mediaItemId, 'processing', 30, 'Fetching web content...', context);
 
   // Fetch and parse web content
   const webContent = await fetchWebPageContent(url);
 
-  await updateProcessingStatus(mediaItemId, 'processing', 70, 'Processing content...');
+  await updateProcessingStatus(mediaItemId, 'processing', 70, 'Processing content...', context);
 
   return {
     text: webContent,
@@ -357,20 +371,41 @@ Respond in JSON format:
 }
 
 /**
- * Update processing status for real-time feedback
+ * Update processing status for real-time feedback via SSE
  */
 async function updateProcessingStatus(
   mediaItemId: string, 
   status: string, 
   progress: number, 
-  stage: string
+  stage: string,
+  context: { 
+    taskId: string, 
+    userId: string, 
+    filename?: string,
+    summary?: string,
+    keyTopics?: string[],
+    errorMessage?: string
+  }
 ): Promise<void> {
-  // This would emit to a WebSocket or SSE connection for real-time updates
-  // For now, we'll just log it
   console.log(`Media ${mediaItemId}: ${status} - ${progress}% - ${stage}`);
   
-  // You could also store this in a temporary processing status table
-  // or use Redis for real-time status updates
+  // Import the SSE broadcasting function dynamically to avoid circular imports
+  try {
+    const { broadcastProcessingUpdate } = await import('@/app/api/sse/media-processing/route');
+    
+    broadcastProcessingUpdate(context.userId, context.taskId, {
+      mediaItemId,
+      status,
+      progress,
+      stage,
+      filename: context.filename,
+      summary: context.summary,
+      keyTopics: context.keyTopics,
+      errorMessage: context.errorMessage
+    });
+  } catch (error) {
+    console.error('Failed to broadcast processing update:', error);
+  }
 }
 
 /**

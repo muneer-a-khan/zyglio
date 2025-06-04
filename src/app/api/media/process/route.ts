@@ -33,12 +33,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Media item not found' }, { status: 404 });
     }
 
-    // Create processing job
+    // Create processing job with user info for SSE broadcasting
     const job: MediaProcessingJob = {
       mediaItemId: mediaItem.id,
       mediaType: mediaItem.type,
       url: mediaItem.url,
-      taskId
+      taskId,
+      userId: session.user.id, // Include user ID for SSE targeting
+      filename: mediaItem.caption || 'Unnamed file' // Include filename for better UX
     };
 
     // Initialize processing status
