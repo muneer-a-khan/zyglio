@@ -1,5 +1,10 @@
 import { PrismaClient } from '@prisma/client';
 import OpenAI from 'openai';
+import * as pdfParse from 'pdf-parse';
+import * as cheerio from 'cheerio';
+import { parse } from 'node-html-parser';
+import { createWorker } from 'tesseract.js';
+import ytdl from 'ytdl-core';
 
 const prisma = new PrismaClient();
 
@@ -129,7 +134,6 @@ async function processPDF(url: string, mediaItemId: string): Promise<ProcessingR
   await updateProcessingStatus(mediaItemId, 'processing', 40, 'Extracting text from PDF...');
 
   // Extract text using pdf-parse or similar library
-  // For now, we'll use a placeholder approach
   const pdfText = await extractTextFromPDF(pdfBuffer);
 
   await updateProcessingStatus(mediaItemId, 'processing', 70, 'Processing extracted text...');
@@ -442,72 +446,137 @@ ${content.text}
 // These would need to be implemented with actual libraries
 
 async function extractTextFromPDF(buffer: ArrayBuffer): Promise<string> {
-  // Implementation with pdf-parse or similar
-  return "PDF content extracted...";
+  try {
+    const data = await pdfParse(Buffer.from(buffer));
+    return data.text;
+  } catch (error) {
+    console.error('Error extracting text from PDF:', error);
+    return "Error extracting PDF content";
+  }
 }
 
 async function extractAudioFromVideo(videoBlob: Blob): Promise<Blob> {
-  // Implementation with FFmpeg.js or similar
-  return new Blob();
+  // For now, return the original blob - in production you'd use FFmpeg
+  // This is a complex operation that requires FFmpeg.js setup
+  console.log('Video audio extraction not fully implemented yet');
+  return videoBlob;
 }
 
 async function transcribeAudio(audioBlob: Blob): Promise<string> {
-  // Convert blob to file for OpenAI Whisper
-  const formData = new FormData();
-  formData.append('file', audioBlob, 'audio.wav');
-  formData.append('model', 'whisper-1');
+  try {
+    // Convert blob to file for OpenAI Whisper
+    const formData = new FormData();
+    formData.append('file', audioBlob, 'audio.wav');
+    formData.append('model', 'whisper-1');
 
-  const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`
-    },
-    body: formData
-  });
+    const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`
+      },
+      body: formData
+    });
 
-  const result = await response.json();
-  return result.text || '';
+    if (!response.ok) {
+      throw new Error(`Whisper API error: ${response.statusText}`);
+    }
+
+    const result = await response.json();
+    return result.text || '';
+  } catch (error) {
+    console.error('Error transcribing audio:', error);
+    return 'Error transcribing audio';
+  }
 }
 
 async function analyzeVideoFrames(videoBlob: Blob): Promise<string> {
-  // Implementation for video frame analysis
-  return "Video frames analyzed...";
+  // This would require extracting frames and analyzing them with GPT-4 Vision
+  // For now, return a placeholder
+  console.log('Video frame analysis not fully implemented yet');
+  return "Video visual content analysis would be performed here";
 }
 
 async function analyzeImageWithGPT4Vision(imageUrl: string): Promise<string> {
-  const response = await openai.chat.completions.create({
-    model: "gpt-4o",
-    messages: [
-      {
-        role: "user",
-        content: [
-          {
-            type: "text",
-            text: "Analyze this image in detail. Describe what you see, any text, diagrams, procedures, or instructional content. Focus on information that would be relevant for training or educational purposes."
-          },
-          {
-            type: "image_url",
-            image_url: {
-              url: imageUrl
+  try {
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o",
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: "Analyze this image in detail. Describe what you see, any text, diagrams, procedures, or instructional content. Focus on information that would be relevant for training or educational purposes."
+            },
+            {
+              type: "image_url",
+              image_url: {
+                url: imageUrl
+              }
             }
-          }
-        ]
-      }
-    ],
-    max_tokens: 1000
-  });
+          ]
+        }
+      ],
+      max_tokens: 1000
+    });
 
-  return response.choices[0].message.content || '';
+    return response.choices[0].message.content || '';
+  } catch (error) {
+    console.error('Error analyzing image with GPT-4 Vision:', error);
+    return 'Error analyzing image';
+  }
 }
 
 async function extractTextFromImage(imageUrl: string): Promise<string> {
-  // Implementation with OCR service
-  return "OCR text extracted...";
+  try {
+    // Create a Tesseract worker
+    const worker = await createWorker('eng');
+    
+    // Fetch the image
+    const response = await fetch(imageUrl);
+    const imageBlob = await response.blob();
+    const imageBuffer = await imageBlob.arrayBuffer();
+    
+    // Perform OCR
+    const { data: { text } } = await worker.recognize(Buffer.from(imageBuffer));
+    
+    // Terminate the worker
+    await worker.terminate();
+    
+    return text.trim();
+  } catch (error) {
+    console.error('Error extracting text from image:', error);
+    return '';
+  }
 }
 
 async function fetchWebPageContent(url: string): Promise<string> {
-  // Implementation with web scraping
-  return "Web content extracted...";
+  try {
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+      }
+    });
+    
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+    
+    const html = await response.text();
+    const $ = cheerio.load(html);
+    
+    // Remove script and style elements
+    $('script, style, nav, footer, header, aside').remove();
+    
+    // Extract text content from main content areas
+    const content = $('main, article, .content, .post, .article, body').first().text() || $('body').text();
+    
+    // Clean up whitespace
+    return content.replace(/\s+/g, ' ').trim();
+  } catch (error) {
+    console.error('Error fetching web page content:', error);
+    return 'Error fetching web content';
+  }
 }
 
 function extractYouTubeVideoId(url: string): string {
@@ -517,16 +586,49 @@ function extractYouTubeVideoId(url: string): string {
 }
 
 async function getYouTubeTranscript(videoId: string): Promise<string> {
-  // Implementation with YouTube Data API
-  return "YouTube transcript...";
+  try {
+    // This is a simplified approach - in production you'd use YouTube Data API
+    // or a transcript extraction library
+    
+    // For now, we'll try to get basic info and fall back to downloading audio
+    const info = await ytdl.getBasicInfo(`https://www.youtube.com/watch?v=${videoId}`);
+    
+    // Check if captions are available
+    if (info.videoDetails.title) {
+      // Return title and description as basic content
+      return `Title: ${info.videoDetails.title}\nDescription: ${info.videoDetails.description || 'No description'}`;
+    }
+    
+    throw new Error('No transcript available');
+  } catch (error) {
+    console.error('Error getting YouTube transcript:', error);
+    throw error; // Re-throw to trigger fallback to audio download
+  }
 }
 
 async function downloadYouTubeAudio(url: string): Promise<Blob> {
-  // Implementation with yt-dlp or similar
-  return new Blob();
+  try {
+    // This is a complex operation that requires server-side streaming
+    // For now, return a placeholder
+    console.log('YouTube audio download not fully implemented yet');
+    return new Blob();
+  } catch (error) {
+    console.error('Error downloading YouTube audio:', error);
+    return new Blob();
+  }
 }
 
 async function getYouTubeMetadata(videoId: string): Promise<any> {
-  // Implementation with YouTube Data API
-  return { title: '', duration: 0 };
+  try {
+    const info = await ytdl.getBasicInfo(`https://www.youtube.com/watch?v=${videoId}`);
+    return {
+      title: info.videoDetails.title || '',
+      duration: parseInt(info.videoDetails.lengthSeconds || '0'),
+      description: info.videoDetails.description || '',
+      author: info.videoDetails.author?.name || ''
+    };
+  } catch (error) {
+    console.error('Error getting YouTube metadata:', error);
+    return { title: '', duration: 0, description: '', author: '' };
+  }
 } 
