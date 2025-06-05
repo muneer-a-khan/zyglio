@@ -23,6 +23,8 @@ import {
   ScenarioFlowBuilderProps,
   ScenarioStepFormData 
 } from '@/types/unified';
+import { generateId } from '@/lib/utils';
+import { voiceService, VoiceRecording } from '@/lib/voice-service';
 
 // Category icons for objects (reused from object library)
 const categoryIcons = {
@@ -83,7 +85,7 @@ export function ScenarioFlowBuilder({
   // Handle form submission
   const handleSubmitStep = () => {
     const newStep: ScenarioStep = {
-      id: editingStep || `step_${Date.now()}`,
+      id: editingStep || generateId('step'),
       instruction: stepForm.instruction,
       requiredObjects: stepForm.requiredObjects,
       requiredActions: stepForm.requiredActions,

@@ -24,6 +24,7 @@ import {
   SmartObjectFormData,
   OBJECT_CATEGORIES 
 } from '@/types/unified';
+import { generateId } from '@/lib/utils';
 
 // Form Schema
 const smartObjectSchema = z.object({
@@ -127,7 +128,7 @@ export function ObjectDefinitionPanel({
 
   const onSubmit = (data: SmartObjectFormData) => {
     const newObject: SmartObject = {
-      id: `obj_${Date.now()}`, // Temporary ID generation
+      id: generateId('object'),
       name: data.name,
       category: data.category,
       attributes: data.attributes || {},
