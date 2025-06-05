@@ -13,6 +13,8 @@ import { ScenarioFlowBuilder } from '@/components/scenarios/scenario-flow-builde
 import { TriggerLogicEditor } from '@/components/scenarios/trigger-logic-editor';
 import { PreviewMode } from '@/components/scenarios/preview-mode';
 import { AIEnhancementPanel } from '@/components/ai/ai-enhancement-panel';
+import MediaUpload from '@/components/media/media-upload';
+import MediaLibrary from '@/components/media/media-library';
 
 // Import types
 import { 
@@ -21,6 +23,7 @@ import {
   Trigger, 
   ObjectInteraction 
 } from '@/types/unified';
+import { MediaFile } from '@/lib/storage-service';
 
 export default function DemoPage() {
   // State for all components
@@ -28,6 +31,7 @@ export default function DemoPage() {
   const [scenarioSteps, setScenarioSteps] = useState<ScenarioStep[]>([]);
   const [triggers, setTriggers] = useState<Trigger[]>([]);
   const [selectedObjects, setSelectedObjects] = useState<string[]>([]);
+  const [mediaFiles, setMediaFiles] = useState<MediaFile[]>([]);
   const [activeTab, setActiveTab] = useState('objects');
 
   // Demo context IDs
@@ -108,6 +112,20 @@ export default function DemoPage() {
     }
   };
 
+  // Media handlers
+  const handleMediaUpload = (uploadedFiles: MediaFile[]) => {
+    setMediaFiles(prev => [...uploadedFiles, ...prev]);
+  };
+
+  const handleMediaDelete = (file: MediaFile) => {
+    setMediaFiles(prev => prev.filter(f => f.id !== file.id));
+  };
+
+  const handleBulkMediaDelete = (filesToDelete: MediaFile[]) => {
+    const deleteIds = new Set(filesToDelete.map(f => f.id));
+    setMediaFiles(prev => prev.filter(f => !deleteIds.has(f.id)));
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
@@ -146,7 +164,7 @@ export default function DemoPage() {
       {/* Main Content */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full">
-          <TabsList className="grid w-full grid-cols-6 mb-6">
+          <TabsList className="grid w-full grid-cols-7 mb-6">
             <TabsTrigger value="objects" className="flex items-center gap-2">
               🧪 Objects ({objects.length})
             </TabsTrigger>
@@ -158,6 +176,9 @@ export default function DemoPage() {
             </TabsTrigger>
             <TabsTrigger value="ai" className="flex items-center gap-2">
               🤖 AI Studio
+            </TabsTrigger>
+            <TabsTrigger value="media" className="flex items-center gap-2">
+              📁 Media Library
             </TabsTrigger>
             <TabsTrigger value="preview" className="flex items-center gap-2">
               ▶️ Preview
@@ -249,6 +270,77 @@ export default function DemoPage() {
                   scenarioSteps={scenarioSteps}
                   triggers={triggers}
                   onApplyEnhancements={handleApplyEnhancements}
+                />
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Media Tab */}
+          <TabsContent value="media" className="space-y-6">
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Upload Media Files</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <MediaUpload
+                    userId="demo-user"
+                    onUploadComplete={handleMediaUpload}
+                    onUploadError={(error) => console.error('Upload error:', error)}
+                    multiple={true}
+                    options={{
+                      maxSize: 100 * 1024 * 1024, // 100MB
+                      extractMetadata: true,
+                      allowedTypes: ['*']
+                    }}
+                  />
+                </CardContent>
+              </Card>
+              
+              <Card>
+                <CardHeader>
+                  <CardTitle>Media Statistics</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="text-center">
+                      <div className="text-2xl font-bold text-blue-600">{mediaFiles.length}</div>
+                      <div className="text-sm text-gray-600">Total Files</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-2xl font-bold text-green-600">
+                        {mediaFiles.filter(f => f.type.startsWith('audio/')).length}
+                      </div>
+                      <div className="text-sm text-gray-600">Audio Files</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-2xl font-bold text-purple-600">
+                        {mediaFiles.filter(f => f.type.startsWith('image/')).length}
+                      </div>
+                      <div className="text-sm text-gray-600">Images</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-2xl font-bold text-orange-600">
+                        {mediaFiles.filter(f => f.type.startsWith('video/')).length}
+                      </div>
+                      <div className="text-sm text-gray-600">Videos</div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+            
+            <Card>
+              <CardHeader>
+                <CardTitle>Media Library</CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                <MediaLibrary
+                  files={mediaFiles}
+                  onFileDelete={handleMediaDelete}
+                  onBulkDelete={handleBulkMediaDelete}
+                  selectable={true}
+                  multiSelect={true}
                 />
               </CardContent>
             </Card>

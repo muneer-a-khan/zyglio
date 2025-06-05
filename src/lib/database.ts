@@ -724,6 +724,111 @@ export class DatabaseService {
     }
   }
 
+  // ============================================================================
+  // MEDIA FILE OPERATIONS
+  // ============================================================================
+
+  /**
+   * Create media file record
+   */
+  async createMediaFile(data: {
+    userId: string
+    name: string
+    originalName: string
+    url: string
+    type: string
+    size: number
+    bucket: string
+    path: string
+    metadata: any
+  }) {
+    try {
+      return await prisma.mediaFile.create({
+        data
+      });
+    } catch (error) {
+      console.error('Error creating media file:', error);
+      throw new Error('Failed to create media file');
+    }
+  }
+
+  /**
+   * Get media file by ID
+   */
+  async getMediaFile(id: string) {
+    try {
+      return await prisma.mediaFile.findUnique({
+        where: { id }
+      });
+    } catch (error) {
+      console.error('Error getting media file:', error);
+      throw new Error('Failed to get media file');
+    }
+  }
+
+  /**
+   * Get media files for user
+   */
+  async getMediaFiles(userId: string, options?: {
+    folder?: string
+    fileType?: string
+    limit?: number
+    offset?: number
+  }) {
+    try {
+      const where: any = { userId }
+      
+      if (options?.fileType) {
+        where.type = { startsWith: options.fileType }
+      }
+
+      return await prisma.mediaFile.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        take: options?.limit || 50,
+        skip: options?.offset || 0
+      });
+    } catch (error) {
+      console.error('Error getting media files:', error);
+      throw new Error('Failed to get media files');
+    }
+  }
+
+  /**
+   * Update media file
+   */
+  async updateMediaFile(id: string, data: {
+    originalName?: string
+    metadata?: any
+  }) {
+    try {
+      return await prisma.mediaFile.update({
+        where: { id },
+        data: {
+          ...data,
+          updatedAt: new Date()
+        }
+      });
+    } catch (error) {
+      console.error('Error updating media file:', error);
+      throw new Error('Failed to update media file');
+    }
+  }
+
+  /**
+   * Delete media file
+   */
+  async deleteMediaFile(id: string) {
+    try {
+      return await prisma.mediaFile.delete({
+        where: { id }
+      });
+    } catch (error) {
+      console.error('Error deleting media file:', error);
+      throw new Error('Failed to delete media file');
+    }
+  }
+
   /**
    * Close database connection
    */
@@ -733,7 +838,7 @@ export class DatabaseService {
 }
 
 // Export singleton instance
-export const db = new DatabaseService();
+export const databaseService = new DatabaseService();
 
 // Export Prisma client for direct access when needed
 export { prisma }; 
