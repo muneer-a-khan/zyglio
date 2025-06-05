@@ -205,20 +205,11 @@ class ProcedureService {
         throw new Error('No active task to update media for');
       }
 
-      // Get the current procedure
-      const procedure = await prisma.procedure.findFirst({
-        where: { taskId: this.currentTaskId }
-      });
+      console.log(`Saving ${mediaItems.length} media items for task ${this.currentTaskId}`);
       
-      if (!procedure) {
-        throw new Error('No procedure found for the current task');
-      }
-
-      console.log(`Saving ${mediaItems.length} media items for procedure ${procedure.id}`);
-      
-      // Delete existing media items for this procedure
+      // Delete existing media items for this task
       await prisma.mediaItem.deleteMany({
-        where: { procedureId: procedure.id }
+        where: { taskId: this.currentTaskId }
       });
       
       // Create new media items
@@ -242,8 +233,7 @@ class ProcedureService {
               type: mapMediaType(item.type),
               caption: item.caption || null,
               url: item.url,
-              taskId: this.currentTaskId as string,
-              procedureId: procedure.id
+              taskId: this.currentTaskId as string
             }
           });
         }));
