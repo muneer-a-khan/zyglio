@@ -207,6 +207,33 @@ class ProcedureService {
 
       console.log(`Saving ${mediaItems.length} media items for task ${this.currentTaskId}`);
       
+      // Client-side: use API
+      if (!this.isServer) {
+        const response = await fetch('/api/media/items', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            taskId: this.currentTaskId,
+            mediaItems: mediaItems
+          }),
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.message || 'Failed to save media items');
+        }
+
+        console.log('Media items saved successfully via API');
+        return;
+      }
+      
+      // Server-side: use Prisma directly
+      if (!prisma) {
+        throw new Error('Prisma client is not available');
+      }
+
       // Delete existing media items for this task
       await prisma.mediaItem.deleteMany({
         where: { taskId: this.currentTaskId }
@@ -239,7 +266,7 @@ class ProcedureService {
         }));
       }
       
-      console.log('Media items saved successfully');
+      console.log('Media items saved successfully via Prisma');
     } catch (error) {
       console.error('Error saving media items:', error);
       throw error;
