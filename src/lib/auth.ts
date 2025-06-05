@@ -4,11 +4,7 @@ import prisma from "@/lib/prisma";
 import CredentialsProvider from "next-auth/providers/credentials";
 import { getServerSession } from 'next-auth/next';
 import { createClient } from '@supabase/supabase-js';
-
-// Create Supabase client
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-const supabase = createClient(supabaseUrl, supabaseServiceKey);
+import { supabase } from '@/integrations/supabase/client';
 
 export const authOptions: NextAuthOptions = {
   session: {
@@ -33,19 +29,23 @@ export const authOptions: NextAuthOptions = {
         }
 
         try {
-          // Authenticate with Supabase
+          const user = await prisma.users.findUnique({
+            where: {
+              email: credentials.email,
+            },
+          });
+
+          if (!user) {
+            return null;
+          }
+
+          // For Supabase auth, authenticate directly with Supabase
           const { data, error } = await supabase.auth.signInWithPassword({
             email: credentials.email,
             password: credentials.password,
           });
 
-          if (error) {
-            console.error("Supabase auth error:", error);
-            return null;
-          }
-
-          if (!data?.user) {
-            console.error("No user data returned from Supabase");
+          if (error || !data?.user) {
             return null;
           }
 
@@ -80,7 +80,7 @@ export const authOptions: NextAuthOptions = {
             name: data.user.user_metadata?.name || data.user.email?.split('@')[0] || 'User',
           };
         } catch (error) {
-          console.error("Authentication error:", error);
+          console.error("Error in credentials authorization:", error);
           return null;
         }
       },
@@ -98,6 +98,46 @@ export const authOptions: NextAuthOptions = {
         session.user.id = token.id as string;
       }
       return session;
+    },
+    async jwt({ token, user, trigger, session: newSessionData }) {
+      try {
+        if (user) {
+          return {
+            ...token,
+            id: user.id,
+            name: user.name,
+            email: user.email,
+          };
+        }
+
+        // Only attempt to fetch user if we have an ID and prisma is available
+        if ((token?.sub || token?.id) && prisma && typeof prisma.users?.findUnique === 'function') {
+          const userIdToFetch = token.id || token.sub;
+          try {
+            const dbUser = await prisma.users.findUnique({
+              where: { id: userIdToFetch as string },
+            });
+
+            if (dbUser) {
+              return {
+                ...token,
+                id: dbUser.id,
+                name: dbUser.name,
+                email: dbUser.email,
+              };
+            }
+          } catch (error) {
+            console.error("Error fetching user in JWT callback:", error);
+            // Continue with the existing token if DB lookup fails
+          }
+        }
+        
+        return token;
+      } catch (error) {
+        console.error("JWT callback error:", error);
+        // Return the token as is in case of error
+        return token;
+      }
     },
   },
   debug: process.env.NODE_ENV === "development",
@@ -160,13 +200,6 @@ export async function verifySession(request: Request) {
       }
     }
 
-    // For server-side calls, accept any user for now
-    // Remove this in production!
-    if (request.headers.get('user-agent')?.includes('node')) {
-      console.log('Auth bypassed for server-side API call');
-      return { user: { id: 'server', email: 'server@example.com', name: 'Server' } };
-    }
-
     console.log('No valid auth method found in request');
     // No valid session found
     return null;
@@ -183,19 +216,32 @@ async function verifyToken(token: string) {
   try {
     const { data, error } = await supabase.auth.getUser(token);
     
-    if (error || !data.user) {
+    if (error || !data?.user) {
       return null;
     }
-    
+
     return {
       user: {
         id: data.user.id,
-        email: data.user.email,
-        name: data.user.user_metadata?.name || null
+        email: data.user.email || '',
+        name: data.user.user_metadata?.name || data.user.email?.split('@')[0] || 'User'
       }
     };
   } catch (error) {
     console.error('Error verifying token:', error);
+    return null;
+  }
+}
+
+/**
+ * Get current user ID from session
+ */
+export async function getCurrentUserId(): Promise<string | null> {
+  try {
+    const session = await getAuthSession();
+    return session?.user?.id || null;
+  } catch (error) {
+    console.error('Error getting current user ID:', error);
     return null;
   }
 } 
