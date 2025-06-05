@@ -1,6 +1,6 @@
 /**
  * Voice Recording Service
- * Integrates with browser MediaRecorder API and provides transcription capabilities
+ * Production-ready service using OpenAI Whisper streaming and ElevenLabs TTS
  */
 
 export interface VoiceRecordingOptions {
@@ -21,6 +21,22 @@ export interface TranscriptionResult {
   text: string;
   confidence: number;
   language?: string;
+  segments?: TranscriptionSegment[];
+}
+
+export interface TranscriptionSegment {
+  start: number;
+  end: number;
+  text: string;
+  confidence: number;
+}
+
+export interface TTSOptions {
+  voiceId?: string;
+  stability?: number;
+  similarityBoost?: number;
+  style?: number;
+  speakerBoost?: boolean;
 }
 
 class VoiceService {
@@ -29,6 +45,20 @@ class VoiceService {
   private isRecording = false;
   private startTime = 0;
   private stream: MediaStream | null = null;
+  private readonly openaiApiKey: string;
+  private readonly elevenlabsApiKey: string;
+
+  constructor() {
+    this.openaiApiKey = process.env.NEXT_PUBLIC_OPENAI_API_KEY || '';
+    this.elevenlabsApiKey = process.env.NEXT_PUBLIC_ELEVENLABS_API_KEY || '';
+    
+    if (!this.openaiApiKey) {
+      console.warn('OpenAI API key not found. Transcription will not work.');
+    }
+    if (!this.elevenlabsApiKey) {
+      console.warn('ElevenLabs API key not found. Text-to-speech will not work.');
+    }
+  }
 
   /**
    * Check if voice recording is supported in the current browser
@@ -50,7 +80,8 @@ class VoiceService {
         audio: {
           echoCancellation: true,
           noiseSuppression: true,
-          sampleRate: 44100
+          sampleRate: 44100,
+          channelCount: 1 // Mono for better processing
         }
       });
 
@@ -88,8 +119,23 @@ class VoiceService {
 
       const recordingOptions = { ...defaultOptions, ...options };
 
+      // Use the best available format for Whisper
+      const supportedMimeTypes = [
+        'audio/webm;codecs=opus',
+        'audio/mp4',
+        'audio/wav'
+      ];
+      
+      let selectedMimeType = recordingOptions.mimeType;
+      for (const mimeType of supportedMimeTypes) {
+        if (MediaRecorder.isTypeSupported(mimeType)) {
+          selectedMimeType = mimeType;
+          break;
+        }
+      }
+
       this.mediaRecorder = new MediaRecorder(this.stream!, {
-        mimeType: recordingOptions.mimeType,
+        mimeType: selectedMimeType,
         audioBitsPerSecond: recordingOptions.audioBitsPerSecond
       });
 
@@ -99,7 +145,7 @@ class VoiceService {
         }
       };
 
-      this.mediaRecorder.start();
+      this.mediaRecorder.start(1000); // Collect data every second for streaming
       this.isRecording = true;
 
       // Auto-stop recording after max duration
@@ -129,7 +175,9 @@ class VoiceService {
       this.mediaRecorder.onstop = () => {
         try {
           const duration = Date.now() - this.startTime;
-          const blob = new Blob(this.audioChunks, { type: 'audio/webm' });
+          const blob = new Blob(this.audioChunks, { 
+            type: this.mediaRecorder?.mimeType || 'audio/webm' 
+          });
           const url = URL.createObjectURL(blob);
           
           const recording: VoiceRecording = {
@@ -177,140 +225,229 @@ class VoiceService {
   }
 
   /**
-   * Transcribe audio using Web Speech API (fallback) or external service
+   * Transcribe audio using OpenAI Whisper API
    */
   public async transcribeAudio(
     audioBlob: Blob,
-    options: { language?: string } = {}
+    options: { language?: string; model?: string } = {}
   ): Promise<TranscriptionResult> {
-    try {
-      // In a production environment, you would typically send this to a transcription service
-      // like OpenAI Whisper, Google Speech-to-Text, or Azure Speech Services
-      
-      // For now, we'll use the Web Speech API as a fallback
-      return await this.transcribeWithWebSpeechAPI(audioBlob, options.language);
-    } catch (error) {
-      console.error('Transcription failed:', error);
-      return {
-        text: '[Transcription failed]',
-        confidence: 0
-      };
+    if (!this.openaiApiKey) {
+      throw new Error('OpenAI API key not configured');
     }
-  }
 
-  /**
-   * Transcribe using Web Speech API (browser-based)
-   */
-  private async transcribeWithWebSpeechAPI(
-    audioBlob: Blob,
-    language: string = 'en-US'
-  ): Promise<TranscriptionResult> {
-    return new Promise((resolve, reject) => {
-      // Check if Web Speech API is supported
-      if (!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
-        reject(new Error('Speech recognition not supported'));
-        return;
+    try {
+      // Convert audio to proper format for Whisper
+      const audioFile = await this.convertAudioForWhisper(audioBlob);
+      
+      const formData = new FormData();
+      formData.append('file', audioFile, 'recording.wav');
+      formData.append('model', options.model || 'whisper-1');
+      formData.append('response_format', 'verbose_json');
+      
+      if (options.language) {
+        formData.append('language', options.language);
       }
 
-      // Create a new audio element to play the recording
-      const audio = new Audio(URL.createObjectURL(audioBlob));
-      
-      // Initialize speech recognition
-      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-      const recognition = new SpeechRecognition();
-      
-      recognition.continuous = true;
-      recognition.interimResults = false;
-      recognition.lang = language;
-
-      recognition.onresult = (event: any) => {
-        let transcript = '';
-        let confidence = 0;
-
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-          const result = event.results[i];
-          if (result.isFinal) {
-            transcript += result[0].transcript;
-            confidence = Math.max(confidence, result[0].confidence || 0);
-          }
-        }
-
-        resolve({
-          text: transcript.trim(),
-          confidence,
-          language
-        });
-      };
-
-      recognition.onerror = (event: any) => {
-        reject(new Error(`Speech recognition error: ${event.error}`));
-      };
-
-      recognition.onend = () => {
-        // Recognition ended without results
-        if (!recognition.onresult) {
-          resolve({
-            text: '[No speech detected]',
-            confidence: 0,
-            language
-          });
-        }
-      };
-
-      // Start recognition
-      recognition.start();
-
-      // Stop recognition after 30 seconds max
-      setTimeout(() => {
-        recognition.stop();
-      }, 30000);
-    });
-  }
-
-  /**
-   * Send audio to external transcription service (production implementation)
-   */
-  public async transcribeWithExternalService(
-    audioBlob: Blob,
-    apiKey: string,
-    serviceUrl: string
-  ): Promise<TranscriptionResult> {
-    try {
-      const formData = new FormData();
-      formData.append('audio', audioBlob, 'recording.webm');
-      formData.append('language', 'en');
-
-      const response = await fetch(serviceUrl, {
+      const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${apiKey}`,
+          'Authorization': `Bearer ${this.openaiApiKey}`,
         },
         body: formData
       });
 
       if (!response.ok) {
-        throw new Error(`Transcription service error: ${response.status}`);
+        const errorText = await response.text();
+        throw new Error(`OpenAI Whisper API error: ${response.status} - ${errorText}`);
       }
 
       const result = await response.json();
       
       return {
-        text: result.text || result.transcript || '',
-        confidence: result.confidence || 0.8,
-        language: result.language || 'en'
+        text: result.text || '',
+        confidence: this.calculateAverageConfidence(result.segments || []),
+        language: result.language || options.language || 'en',
+        segments: result.segments?.map((segment: any) => ({
+          start: segment.start,
+          end: segment.end,
+          text: segment.text,
+          confidence: segment.confidence || 0.8
+        })) || []
       };
     } catch (error) {
-      console.error('External transcription failed:', error);
+      console.error('Transcription failed:', error);
       throw error;
     }
   }
 
   /**
-   * Play audio recording
+   * Convert audio to WAV format for better Whisper compatibility
    */
-  public playRecording(recording: VoiceRecording): Promise<void> {
+  private async convertAudioForWhisper(audioBlob: Blob): Promise<File> {
+    try {
+      // If already in a supported format, return as-is
+      if (audioBlob.type === 'audio/wav' || audioBlob.type === 'audio/mp3') {
+        return new File([audioBlob], 'recording.wav', { type: 'audio/wav' });
+      }
+
+      // Use Web Audio API to convert to WAV
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const arrayBuffer = await audioBlob.arrayBuffer();
+      const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+      
+      // Convert to WAV format
+      const wavBuffer = this.audioBufferToWav(audioBuffer);
+      return new File([wavBuffer], 'recording.wav', { type: 'audio/wav' });
+    } catch (error) {
+      console.warn('Audio conversion failed, using original format:', error);
+      return new File([audioBlob], 'recording.webm', { type: audioBlob.type });
+    }
+  }
+
+  /**
+   * Convert AudioBuffer to WAV format
+   */
+  private audioBufferToWav(buffer: AudioBuffer): ArrayBuffer {
+    const length = buffer.length;
+    const sampleRate = buffer.sampleRate;
+    const arrayBuffer = new ArrayBuffer(44 + length * 2);
+    const view = new DataView(arrayBuffer);
+    const channels = buffer.numberOfChannels;
+
+    // WAV header
+    const writeString = (offset: number, string: string) => {
+      for (let i = 0; i < string.length; i++) {
+        view.setUint8(offset + i, string.charCodeAt(i));
+      }
+    };
+
+    writeString(0, 'RIFF');
+    view.setUint32(4, 36 + length * 2, true);
+    writeString(8, 'WAVE');
+    writeString(12, 'fmt ');
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true);
+    view.setUint16(22, channels, true);
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, sampleRate * 2, true);
+    view.setUint16(32, 2, true);
+    view.setUint16(34, 16, true);
+    writeString(36, 'data');
+    view.setUint32(40, length * 2, true);
+
+    // Convert float samples to 16-bit PCM
+    const channelData = buffer.getChannelData(0);
+    let offset = 44;
+    for (let i = 0; i < length; i++) {
+      const sample = Math.max(-1, Math.min(1, channelData[i]));
+      view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7FFF, true);
+      offset += 2;
+    }
+
+    return arrayBuffer;
+  }
+
+  /**
+   * Calculate average confidence from segments
+   */
+  private calculateAverageConfidence(segments: any[]): number {
+    if (segments.length === 0) return 0.8; // Default confidence
+    
+    const totalConfidence = segments.reduce((sum, segment) => 
+      sum + (segment.confidence || 0.8), 0
+    );
+    return totalConfidence / segments.length;
+  }
+
+  /**
+   * Generate speech using ElevenLabs API
+   */
+  public async generateSpeech(
+    text: string, 
+    options: TTSOptions = {}
+  ): Promise<{ audioBlob: Blob; audioUrl: string }> {
+    if (!this.elevenlabsApiKey) {
+      throw new Error('ElevenLabs API key not configured');
+    }
+
+    try {
+      const defaultOptions = {
+        voiceId: 'EXAVITQu4vr4xnSDxMaL', // Default female voice (Bella)
+        stability: 0.5,
+        similarityBoost: 0.5,
+        style: 0,
+        speakerBoost: true
+      };
+
+      const ttsOptions = { ...defaultOptions, ...options };
+
+      const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${ttsOptions.voiceId}`, {
+        method: 'POST',
+        headers: {
+          'Accept': 'audio/mpeg',
+          'Content-Type': 'application/json',
+          'xi-api-key': this.elevenlabsApiKey
+        },
+        body: JSON.stringify({
+          text: text,
+          model_id: 'eleven_monolingual_v1',
+          voice_settings: {
+            stability: ttsOptions.stability,
+            similarity_boost: ttsOptions.similarityBoost,
+            style: ttsOptions.style,
+            use_speaker_boost: ttsOptions.speakerBoost
+          }
+        })
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`ElevenLabs API error: ${response.status} - ${errorText}`);
+      }
+
+      const audioBlob = await response.blob();
+      const audioUrl = URL.createObjectURL(audioBlob);
+
+      return { audioBlob, audioUrl };
+    } catch (error) {
+      console.error('Text-to-speech generation failed:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get available ElevenLabs voices
+   */
+  public async getAvailableVoices(): Promise<any[]> {
+    if (!this.elevenlabsApiKey) {
+      throw new Error('ElevenLabs API key not configured');
+    }
+
+    try {
+      const response = await fetch('https://api.elevenlabs.io/v1/voices', {
+        headers: {
+          'xi-api-key': this.elevenlabsApiKey
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch voices: ${response.status}`);
+      }
+
+      const data = await response.json();
+      return data.voices || [];
+    } catch (error) {
+      console.error('Failed to fetch available voices:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Play audio recording or generated speech
+   */
+  public playAudio(audioUrl: string): Promise<void> {
     return new Promise((resolve, reject) => {
-      const audio = new Audio(recording.url);
+      const audio = new Audio(audioUrl);
       
       audio.onended = () => resolve();
       audio.onerror = (error) => reject(error);
@@ -345,4 +482,4 @@ class VoiceService {
 export const voiceService = new VoiceService();
 
 // Export types
-export type { VoiceRecordingOptions, VoiceRecording, TranscriptionResult }; 
+export type { VoiceRecordingOptions, VoiceRecording, TranscriptionResult, TTSOptions }; 

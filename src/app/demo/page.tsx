@@ -12,6 +12,7 @@ import { ObjectLibrary } from '@/components/objects/object-library';
 import { ScenarioFlowBuilder } from '@/components/scenarios/scenario-flow-builder';
 import { TriggerLogicEditor } from '@/components/scenarios/trigger-logic-editor';
 import { PreviewMode } from '@/components/scenarios/preview-mode';
+import { AIEnhancementPanel } from '@/components/ai/ai-enhancement-panel';
 
 // Import types
 import { 
@@ -90,6 +91,23 @@ export default function DemoPage() {
     // In production, this would update analytics, trigger events, etc.
   };
 
+  // AI enhancement handler
+  const handleApplyEnhancements = (enhancements: {
+    objects?: SmartObject[];
+    steps?: ScenarioStep[];
+    triggers?: Trigger[];
+  }) => {
+    if (enhancements.objects) {
+      setObjects(enhancements.objects);
+    }
+    if (enhancements.steps) {
+      setScenarioSteps(enhancements.steps);
+    }
+    if (enhancements.triggers) {
+      setTriggers(enhancements.triggers);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
@@ -128,7 +146,7 @@ export default function DemoPage() {
       {/* Main Content */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full">
-          <TabsList className="grid w-full grid-cols-5 mb-6">
+          <TabsList className="grid w-full grid-cols-6 mb-6">
             <TabsTrigger value="objects" className="flex items-center gap-2">
               🧪 Objects ({objects.length})
             </TabsTrigger>
@@ -137,6 +155,9 @@ export default function DemoPage() {
             </TabsTrigger>
             <TabsTrigger value="triggers" className="flex items-center gap-2">
               ⚡ Triggers ({triggers.length})
+            </TabsTrigger>
+            <TabsTrigger value="ai" className="flex items-center gap-2">
+              🤖 AI Studio
             </TabsTrigger>
             <TabsTrigger value="preview" className="flex items-center gap-2">
               ▶️ Preview
@@ -211,6 +232,23 @@ export default function DemoPage() {
                   onUpdateTrigger={handleUpdateTrigger}
                   onDeleteTrigger={handleDeleteTrigger}
                   currentScenarioId={demoScenarioId}
+                />
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* AI Enhancement Tab */}
+          <TabsContent value="ai" className="h-[calc(100vh-16rem)]">
+            <Card className="h-full">
+              <CardHeader>
+                <CardTitle>AI Enhancement Studio</CardTitle>
+              </CardHeader>
+              <CardContent className="h-full p-0">
+                <AIEnhancementPanel
+                  objects={objects}
+                  scenarioSteps={scenarioSteps}
+                  triggers={triggers}
+                  onApplyEnhancements={handleApplyEnhancements}
                 />
               </CardContent>
             </Card>
@@ -375,6 +413,14 @@ export default function DemoPage() {
                     disabled={objects.length === 0}
                   >
                     Add Triggers
+                  </Button>
+                  <Button 
+                    onClick={() => setActiveTab('ai')}
+                    variant="outline"
+                    disabled={objects.length === 0 || scenarioSteps.length === 0}
+                    className="bg-purple-50 border-purple-200 text-purple-700 hover:bg-purple-100"
+                  >
+                    🤖 AI Enhance
                   </Button>
                   <Button 
                     onClick={() => setActiveTab('preview')}
