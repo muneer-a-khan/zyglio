@@ -1,56 +1,135 @@
-import { NextResponse } from 'next/server';
-import prisma from '@/lib/prisma';
+import { NextRequest, NextResponse } from "next/server";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
+import { db } from "@/lib/database";
+import { z } from "zod";
 
-// GET handler to fetch all learning tasks
-export async function GET() {
+// Validation schema for creating learning tasks
+const createTaskSchema = z.object({
+  title: z.string().min(1, "Title is required").max(200, "Title too long"),
+  description: z.string().optional(),
+  objectives: z.array(z.string()).optional(),
+  difficulty: z.enum(["Easy", "Medium", "Hard"]).optional(),
+  estimatedTime: z.number().min(1).max(480).optional(), // 1-480 minutes
+  category: z.string().optional(),
+  industry: z.string().optional(),
+  tags: z.array(z.string()).optional()
+});
+
+/**
+ * GET /api/tasks - Get all learning tasks for the authenticated user
+ */
+export async function GET(request: NextRequest) {
   try {
-    const tasks = await prisma.learningTask.findMany({
-      include: {
-        users: true,
-      },
-    });
+    const session = await getServerSession(authOptions);
     
-    return NextResponse.json(tasks);
+    if (!session?.user?.email) {
+      return NextResponse.json(
+        { error: "Authentication required" }, 
+        { status: 401 }
+      );
+    }
+
+    // Get or create user
+    const user = await db.getOrCreateUser(session.user.email, session.user.name);
+    
+    // Get user's learning tasks
+    const tasks = await db.getLearningTasksForUser(user.id, true);
+    
+    return NextResponse.json({
+      success: true,
+      tasks: tasks.map(task => ({
+        id: task.id,
+        title: task.title,
+        description: task.description,
+        objectives: task.objectives,
+        difficulty: task.difficulty,
+        estimatedTime: task.estimatedTime,
+        status: task.status,
+        category: task.category,
+        industry: task.industry,
+        tags: task.tags,
+        voiceRecording: task.voiceRecording,
+        transcript: task.transcript,
+        mediaUrls: task.mediaUrls,
+        yamlContent: task.yamlContent,
+        flowchartData: task.flowchartData,
+        createdAt: task.createdAt,
+        updatedAt: task.updatedAt,
+        smartObjects: task.smartObjects,
+        procedures: task.procedures
+      }))
+    });
   } catch (error) {
-    console.error('Error fetching tasks:', error);
+    console.error("Error fetching tasks:", error);
     return NextResponse.json(
-      { error: 'Failed to fetch tasks' },
+      { error: "Failed to fetch learning tasks" },
       { status: 500 }
     );
   }
 }
 
-// POST handler to create a new learning task
-export async function POST(request: Request) {
+/**
+ * POST /api/tasks - Create a new learning task
+ */
+export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
+    const session = await getServerSession(authOptions);
     
-    const { title, kpiTech, kpiConcept, presenter, affiliation, date, userId } = body;
-    
-    if (!title || !presenter || !date || !userId) {
+    if (!session?.user?.email) {
       return NextResponse.json(
-        { error: 'Missing required fields' },
+        { error: "Authentication required" }, 
+        { status: 401 }
+      );
+    }
+
+    // Parse and validate request body
+    const body = await request.json();
+    const validationResult = createTaskSchema.safeParse(body);
+    
+    if (!validationResult.success) {
+      return NextResponse.json(
+        { 
+          error: "Invalid input data",
+          details: validationResult.error.errors
+        },
         { status: 400 }
       );
     }
+
+    const data = validationResult.data;
+
+    // Get or create user
+    const user = await db.getOrCreateUser(session.user.email, session.user.name);
     
-    const task = await prisma.learningTask.create({
-      data: {
-        title,
-        kpiTech,
-        kpiConcept,
-        presenter,
-        affiliation,
-        date: new Date(date),
-        userId,
-      },
+    // Create learning task
+    const task = await db.createLearningTask({
+      title: data.title,
+      description: data.description,
+      objectives: data.objectives || [],
+      difficulty: data.difficulty,
+      estimatedTime: data.estimatedTime,
+      userId: user.id
     });
-    
-    return NextResponse.json(task, { status: 201 });
+
+    return NextResponse.json({
+      success: true,
+      task: {
+        id: task.id,
+        title: task.title,
+        description: task.description,
+        objectives: task.objectives,
+        difficulty: task.difficulty,
+        estimatedTime: task.estimatedTime,
+        status: task.status,
+        createdAt: task.createdAt,
+        updatedAt: task.updatedAt
+      }
+    }, { status: 201 });
   } catch (error) {
-    console.error('Error creating task:', error);
+    console.error("Error creating task:", error);
     return NextResponse.json(
-      { error: 'Failed to create task' },
+      { error: "Failed to create learning task" },
       { status: 500 }
     );
   }
