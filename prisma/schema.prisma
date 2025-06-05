@@ -174,7 +174,7 @@ model users {
 
 model ParsedMediaContent {
   id               String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  mediaItemId      String    @db.Uuid
+  mediaItemId      String    @unique @db.Uuid
   contentType      String
   extractedText    String
   summary          String?
@@ -195,7 +195,7 @@ model ParsedMediaContent {
 
 model InterviewContext {
   id              String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  taskId          String    @db.Uuid
+  taskId          String    @unique @db.Uuid
   baseContext     String
   enhancedContext String
   mediaProcessed  Boolean?  @default(false)
