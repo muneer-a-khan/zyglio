@@ -68,7 +68,7 @@ model MediaItem {
   createdAt           DateTime               @default(now()) @db.Timestamptz(6)
   taskId              String                 @db.Uuid
   stepId              String?                @db.Uuid
-  ParsedMediaContent  ParsedMediaContent[]
+  parsedMediaContent  ParsedMediaContent[]
 
   @@index([stepId])
   @@index([taskId])
@@ -186,6 +186,8 @@ model ParsedMediaContent {
   metadata         Json?
   createdAt        DateTime? @default(now()) @db.Timestamptz(6)
   updatedAt        DateTime? @default(now()) @updatedAt @db.Timestamptz(6)
+  
+  mediaItem        MediaItem @relation(fields: [mediaItemId], references: [id], onDelete: Cascade)
 
   @@index([mediaItemId])
   @@index([processingStatus])

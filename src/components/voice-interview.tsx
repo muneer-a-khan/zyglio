@@ -800,6 +800,17 @@ Generate one specific follow-up question to get more detail. Be concise.`
     try {
       setIsPlaying(true);
       
+      // Stop any existing audio first
+      if (audioPlayerRef.current) {
+        audioPlayerRef.current.pause();
+        audioPlayerRef.current.currentTime = 0;
+      }
+      
+      // Cancel any browser TTS that might be playing
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      }
+      
       // Call our Eleven Labs TTS API
       const response = await fetch('/api/speech/synthesize', {
         method: 'POST',
@@ -814,15 +825,10 @@ Generate one specific follow-up question to get more detail. Be concise.`
 
       if (!response.ok) {
         const errorData = await response.json();
-        
-        // If Eleven Labs fails, fallback to browser TTS
-        if (errorData.fallback) {
-          console.warn('Falling back to browser TTS:', errorData.details);
-          await fallbackToBrowserTTS(text);
-          return;
-        }
-        
-        throw new Error(errorData.error || 'Failed to synthesize speech');
+        console.error('ElevenLabs TTS failed:', errorData);
+        setIsPlaying(false);
+        toast.error('Text-to-speech is currently unavailable. You can read the question above.');
+        return; // Do not fallback to browser TTS
       }
 
       const data = await response.json();
@@ -853,55 +859,8 @@ Generate one specific follow-up question to get more detail. Be concise.`
     } catch (error) {
       console.error('Error with Eleven Labs TTS:', error);
       setIsPlaying(false);
-      
-      // Fallback to browser TTS if Eleven Labs fails
-      await fallbackToBrowserTTS(text);
-    }
-  };
-
-  // Fallback to browser TTS if Eleven Labs fails
-  const fallbackToBrowserTTS = async (text: string) => {
-    try {
-      if ('speechSynthesis' in window) {
-        // Cancel any ongoing speech
-        window.speechSynthesis.cancel();
-        
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.rate = 0.9;
-        utterance.pitch = 1.0;
-        utterance.volume = 1.0;
-        
-        utterance.onstart = () => {
-          setIsPlaying(true);
-        };
-        
-        utterance.onend = () => {
-          setIsPlaying(false);
-        };
-        
-        utterance.onerror = (event) => {
-          console.error('Browser TTS error:', event);
-          setIsPlaying(false);
-        };
-        
-        // Try to use a more natural voice if available
-        const voices = window.speechSynthesis.getVoices();
-        const preferredVoice = voices.find(voice => 
-          voice.name.includes('Google') || 
-          voice.name.includes('Microsoft') || 
-          voice.lang.startsWith('en')
-        );
-        
-        if (preferredVoice) {
-          utterance.voice = preferredVoice;
-        }
-        
-        window.speechSynthesis.speak(utterance);
-      }
-    } catch (error) {
-      console.error('Error with browser TTS fallback:', error);
-      setIsPlaying(false);
-      toast.error('Failed to play audio. You can still read the question above.');
+      toast.error('Text-to-speech is currently unavailable. You can read the question above.');
+      // Remove fallback to browser TTS completely
     }
   };
 

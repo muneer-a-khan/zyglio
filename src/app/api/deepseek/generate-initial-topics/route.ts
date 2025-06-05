@@ -17,11 +17,11 @@ export async function POST(request: NextRequest) {
     console.log('DeepSeek generate-initial-topics API route called.');
     console.log('DeepSeek API key available:', !!apiKey);
     
-    // Try multiple auth methods
+    // Use getAuthSession which handles cookies properly
     const session = await getAuthSession();
-    const apiSession = session || await verifySession(request);
     
-    if (!apiSession?.user?.id) {
+    if (!session?.user?.id) {
+      console.error('No valid auth method found in request');
       console.error('Unauthorized access attempt to generate-initial-topics API');
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }

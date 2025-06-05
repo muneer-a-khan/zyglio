@@ -412,23 +412,21 @@ async function updateProcessingStatus(
  * Enhance interview context with parsed media content
  */
 async function enhanceInterviewContext(taskId: string): Promise<void> {
-  // Get all media items for this task
+  // Get all media items for this task with their parsed content
   const mediaItems = await prisma.mediaItem.findMany({
     where: { taskId },
     include: {
-      ParsedMediaContent: true
+      parsedMediaContent: {
+        where: {
+          processingStatus: 'completed'
+        }
+      }
     }
   });
 
   const parsedContent = mediaItems
-    .map(item => item.ParsedMediaContent)
-    .filter(content => content && content.processingStatus === 'completed')
-    .map(content => ({
-      type: content.contentType,
-      summary: content.summary,
-      keyTopics: content.keyTopics,
-      text: content.extractedText.substring(0, 2000) // Limit length
-    }));
+    .flatMap(item => item.parsedMediaContent)
+    .filter(content => content.processingStatus === 'completed');
 
   if (parsedContent.length === 0) return;
 
@@ -443,12 +441,12 @@ async function enhanceInterviewContext(taskId: string): Promise<void> {
 # UPLOADED MEDIA CONTENT
 
 ${parsedContent.map((content, i) => `
-## Media ${i + 1} (${content.type})
+## Media ${i + 1} (${content.contentType})
 Summary: ${content.summary}
 Key Topics: ${content.keyTopics.join(', ')}
 
 Relevant Content:
-${content.text}
+${content.extractedText.substring(0, 2000)}
 `).join('\n')}
 
 ---

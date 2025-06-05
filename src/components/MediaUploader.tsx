@@ -126,7 +126,7 @@ const MediaUploader = ({ mediaItems = [], onChange }: MediaUploaderProps) => {
     }
   };
 
-  const handleAddUrlItem = () => {
+  const handleAddUrlItem = async () => {
     if (!urlInput) {
       toast.error("Please enter a valid URL");
       return;
@@ -141,9 +141,11 @@ const MediaUploader = ({ mediaItems = [], onChange }: MediaUploaderProps) => {
     
     const newItems = [...items, newItem];
     setItems(newItems);
-    onChange(newItems);
     
-    // Start processing for URL-based media
+    // Wait for the media items to be saved to database before starting processing
+    await onChange(newItems);
+    
+    // Start processing for URL-based media after items are saved
     startMediaProcessing(newItem.id);
     
     // Reset form
@@ -270,7 +272,6 @@ const MediaUploader = ({ mediaItems = [], onChange }: MediaUploaderProps) => {
             };
             
             newItems.push(newItem);
-            await startMediaProcessing(newItem.id);
           }
         } catch (fileError) {
           console.error(`Error processing file ${file.name}:`, fileError);
@@ -281,7 +282,15 @@ const MediaUploader = ({ mediaItems = [], onChange }: MediaUploaderProps) => {
       if (newItems.length > 0) {
         const updatedItems = [...items, ...newItems];
         setItems(updatedItems);
-        onChange(updatedItems);
+        
+        // Wait for all media items to be saved to database first
+        await onChange(updatedItems);
+        
+        // Then start processing for all uploaded files
+        for (const newItem of newItems) {
+          await startMediaProcessing(newItem.id);
+        }
+        
         toast.success(`Successfully uploaded ${newItems.length} file(s)`);
       } else {
         toast.error("No files were uploaded successfully.");
