@@ -1,6 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import OpenAI from 'openai';
-import * as pdfParse from 'pdf-parse';
+// import * as pdfParse from 'pdf-parse';
 import * as cheerio from 'cheerio';
 import { parse } from 'node-html-parser';
 import { createWorker } from 'tesseract.js';
@@ -482,7 +482,9 @@ ${content.text}
 
 async function extractTextFromPDF(buffer: ArrayBuffer): Promise<string> {
   try {
-    const data = await pdfParse(Buffer.from(buffer));
+    // Use dynamic import to avoid webpack issues with test files
+    const pdfParse = await import('pdf-parse');
+    const data = await pdfParse.default(Buffer.from(buffer));
     return data.text;
   } catch (error) {
     console.error('Error extracting text from PDF:', error);
