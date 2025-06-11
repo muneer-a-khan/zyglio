@@ -2,9 +2,11 @@
 const nextConfig = {
   // Enable experimental features
   experimental: {
-    serverComponentsExternalPackages: ['@prisma/client'],
     optimizePackageImports: ['lucide-react', '@supabase/supabase-js']
   },
+
+  // External packages for server components
+  serverExternalPackages: ['@prisma/client'],
 
   // Image optimization
   images: {
@@ -142,7 +144,6 @@ const nextConfig = {
   // Power optimizations
   poweredByHeader: false,
   reactStrictMode: true,
-  swcMinify: true,
 
   // TypeScript configuration
   typescript: {
@@ -193,18 +194,17 @@ const nextConfig = {
 }
 
 // Production-specific optimizations
+let finalConfig = nextConfig
+
 if (process.env.NODE_ENV === 'production') {
   // Enable bundle analyzer if needed
   if (process.env.ANALYZE === 'true') {
-    const withBundleAnalyzer = require('@next/bundle-analyzer')({
+    const { default: withBundleAnalyzer } = await import('@next/bundle-analyzer')
+    const bundleAnalyzer = withBundleAnalyzer({
       enabled: true,
     })
-    module.exports = withBundleAnalyzer(nextConfig)
-  } else {
-    module.exports = nextConfig
+    finalConfig = bundleAnalyzer(nextConfig)
   }
-} else {
-  module.exports = nextConfig
 }
 
-export default nextConfig 
+export default finalConfig 

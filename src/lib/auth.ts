@@ -1,5 +1,4 @@
 import { NextAuthOptions } from "next-auth";
-import { PrismaAdapter } from "@auth/prisma-adapter";
 import prisma from "@/lib/prisma";
 import CredentialsProvider from "next-auth/providers/credentials";
 import { getServerSession } from 'next-auth/next';
@@ -50,14 +49,14 @@ export const authOptions: NextAuthOptions = {
           }
 
           // Ensure the user exists in our database
-          let user = await prisma.users.findUnique({
+          let user = await prisma.user.findUnique({
             where: { email: credentials.email }
           });
 
           // If user doesn't exist in our database, create them
           if (!user) {
             try {
-              user = await prisma.users.create({
+              user = await prisma.user.create({
                 data: {
                   id: data.user.id,  // Use the Supabase user ID
                   email: credentials.email,

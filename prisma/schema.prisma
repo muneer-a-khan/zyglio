@@ -1,6 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -11,496 +8,223 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
-// User Authentication & Profile
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  name      String?
-  avatar    String?
-  role      UserRole @default(TRAINEE)
-  settings  Json?    // User preferences, language, theme, etc.
-  
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  
-  // Relationships
-  tasks         LearningTask[]
-  procedures    Procedure[]
-  scenarios     Scenario[]
-  smartObjects  SmartObject[]
-  sessions      SimulationSession[]
-  interactions  ObjectInteraction[]
-  progress      LearningProgress[]
-  mediaFiles    MediaFile[]
-  
+  id           String         @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  email        String         @unique
+  name         String?
+  createdAt    DateTime       @default(now()) @db.Timestamptz(6)
+  role         user_role      @default(trainee)
+  LearningTask LearningTask[]
+
   @@map("users")
 }
 
-enum UserRole {
-  ADMIN
-  INSTRUCTOR
-  TRAINEE
+model AISuggestion {
+  id          String         @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  text        String
+  kind        SuggestionType
+  dictationId String         @db.Uuid
+
+  @@index([dictationId])
 }
 
-// Learning Task Management (From Zyglio)
+model Dictation {
+  id         String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  audioUrl   String
+  transcript String
+  createdAt  DateTime @default(now()) @db.Timestamptz(6)
+  taskId     String   @db.Uuid
+
+  @@index([taskId])
+}
+
+model ExternalResource {
+  id          String @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  url         String
+  description String
+  taskId      String @db.Uuid
+
+  @@index([taskId])
+}
+
+model Flowchart {
+  id      String @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  mermaid String
+  taskId  String @db.Uuid
+
+  @@index([taskId])
+}
+
+model InterviewContext {
+  id              String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  taskId          String    @unique @db.Uuid
+  baseContext     String
+  enhancedContext String
+  mediaProcessed  Boolean?  @default(false)
+  lastUpdated     DateTime? @default(now()) @db.Timestamptz(6)
+
+  @@index([taskId])
+}
+
 model LearningTask {
-  id            String    @id @default(cuid())
-  title         String
-  description   String?
-  objectives    String[]  // Learning objectives
-  difficulty    String?   // Easy, Medium, Hard
-  estimatedTime Int?      // In minutes
-  isPublic      Boolean   @default(false)
-  status        TaskStatus @default(DRAFT)
-  
-  // Media and content
-  voiceRecording String?  // Supabase storage URL
-  transcript     String?  // AI-generated transcript
-  mediaUrls      String[] // Associated media files
-  
-  // AI-generated content
-  yamlContent    String?  // Generated YAML
-  flowchartData  Json?    // Flowchart visualization data
-  
-  // Metadata
-  tags          String[]
-  category      String?
-  industry      String?
-  
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  
-  // Relationships
-  userId        String
-  user          User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  procedures    Procedure[]
-  smartObjects  SmartObject[]
-  
-  @@map("learning_tasks")
+  id          String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  title       String
+  kpiTech     String?
+  kpiConcept  String?
+  presenter   String
+  affiliation String?
+  date        DateTime @db.Timestamptz(6)
+  userId      String   @db.Uuid
+  users       User     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([userId])
 }
 
-enum TaskStatus {
-  DRAFT
-  PUBLISHED
-  ARCHIVED
+model MediaItem {
+  id                 String              @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  type               MediaType
+  caption            String?
+  url                String
+  relevance          String?
+  createdAt          DateTime            @default(now()) @db.Timestamptz(6)
+  taskId             String              @db.Uuid
+  stepId             String?             @db.Uuid
+  ParsedMediaContent ParsedMediaContent?
+
+  @@index([stepId])
+  @@index([taskId])
 }
 
-// Procedure (Collection of Scenarios)
+model ParsedMediaContent {
+  id               String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  mediaItemId      String    @unique @db.Uuid
+  contentType      String
+  extractedText    String
+  summary          String?
+  keyTopics        String[]
+  processingStatus String
+  errorMessage     String?
+  processingTime   Int?
+  confidence       Float?    @db.Real
+  metadata         Json?
+  createdAt        DateTime? @default(now()) @db.Timestamptz(6)
+  updatedAt        DateTime? @default(now()) @db.Timestamptz(6)
+  MediaItem        MediaItem @relation(fields: [mediaItemId], references: [id], onDelete: Cascade)
+
+  @@index([mediaItemId])
+  @@index([processingStatus])
+}
+
 model Procedure {
-  id            String   @id @default(cuid())
-  title         String
-  description   String?
-  version       String   @default("1.0")
-  isPublic      Boolean  @default(false)
-  
-  // Learning context
-  objectives    String[]
-  prerequisites String[]
-  
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  
-  // Relationships
-  taskId        String
-  task          LearningTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  userId        String
-  user          User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  scenarios     Scenario[]
-  
-  @@map("procedures")
+  id                 String @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  title              String
+  taskId             String @db.Uuid
+  simulationSettings Json?  @default("{}")
+
+  @@index([taskId])
 }
 
-// Smart Objects (From Objects-Scenarios)
-model SmartObject {
-  id           String            @id @default(cuid())
-  name         String
-  category     ObjectCategory
-  description  String?
-  
-  // Object properties
-  states       String[]          // Possible states
-  behaviors    String[]          // Available actions
-  signals      String[]          // Signals it can emit
-  attributes   Json              // Custom attributes
-  currentState String?           // Current state
-  
-  // Visual properties
-  icon         String?           // Icon identifier
-  color        String?           // Color code
-  position     Json?             // Position in scenarios
-  
-  // Metadata
-  isTemplate   Boolean          @default(false)  // Can be reused as template
-  tags         String[]
-  
-  createdAt    DateTime         @default(now())
-  updatedAt    DateTime         @updatedAt
-  
-  // Relationships
-  taskId       String?
-  task         LearningTask?    @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  userId       String
-  user         User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
-  // Usage in scenarios
-  triggers       Trigger[]
-  interactions   ObjectInteraction[]
-  stepObjects    ScenarioStepObject[]
-  
-  @@map("smart_objects")
+model ProcedureStep {
+  id                String   @id
+  procedureId       String
+  content           String
+  index             Int
+  isCheckpoint      Boolean  @default(false)
+  expectedResponses Json     @default("[]")
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime
+
+  @@index([procedureId])
 }
 
-enum ObjectCategory {
-  INGREDIENT
-  TOOL
-  EQUIPMENT
-  PERSON
-  LOCATION
+model Question {
+  id          String       @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  type        QuestionType
+  content     String
+  options     String?
+  correct     String?
+  dictationId String?      @db.Uuid
+  stepId      String?      @db.Uuid
+
+  @@index([dictationId])
+  @@index([stepId])
 }
 
-// Scenarios (From Objects-Scenarios)
-model Scenario {
-  id            String   @id @default(cuid())
-  title         String
-  description   String?
-  
-  // Scenario properties
-  estimatedTime Int?     // In minutes
-  difficulty    Int      @default(1) // 1-10 scale
-  isPublic      Boolean  @default(false)
-  
-  // Learning context
-  objectives    String[]
-  tags          String[]
-  
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  
-  // Relationships
-  procedureId   String
-  procedure     Procedure      @relation(fields: [procedureId], references: [id], onDelete: Cascade)
-  userId        String
-  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
-  steps         ScenarioStep[]
-  triggers      Trigger[]
-  sessions      SimulationSession[]
-  
-  @@map("scenarios")
+model Simulation {
+  id     String @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  taskId String @db.Uuid
+
+  @@index([taskId])
 }
 
-// Scenario Steps (Enhanced from Objects-Scenarios)
-model ScenarioStep {
-  id                String       @id @default(cuid())
-  instruction       String
-  stepIndex         Int
-  isCheckpoint      Boolean      @default(false)
-  
-  // Requirements
-  requiredObjects   String[]     // Object IDs that must be used
-  requiredActions   String[]     // Actions that must be performed
-  conditions        String[]     // Conditions that must be met
-  expectedResponses String[]     // Expected user responses
-  
-  // Voice integration (From Zyglio)
-  voiceRecordingUrl String?      // Supabase storage URL
-  transcript        String?      // AI-generated transcript
-  audioInstructions String?      // Generated audio instructions URL
-  
-  // Feedback and hints
-  feedback          String?      // Success message
-  hints             String[]     // Helpful hints
-  errorMessages     Json?        // Error messages for different failures
-  
-  // Visual properties
-  position          Json?        // Position in flow diagram
-  
-  createdAt         DateTime     @default(now())
-  updatedAt         DateTime     @updatedAt
-  
-  // Relationships
-  scenarioId        String
-  scenario          Scenario     @relation(fields: [scenarioId], references: [id], onDelete: Cascade)
-  
-  // Many-to-many with objects
-  stepObjects       ScenarioStepObject[]
-  
-  @@map("scenario_steps")
+model SimulationStep {
+  id               String  @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  prompt           String
+  expectedAnswer   String?
+  mediaUrl         String?
+  latencyThreshold Int?
+  feedback         String?
+  simulationId     String  @db.Uuid
+
+  @@index([simulationId])
 }
 
-// Junction table for many-to-many relationship between ScenarioStep and SmartObject
-model ScenarioStepObject {
-  id           String      @id @default(cuid())
-  stepId       String
-  objectId     String
-  isRequired   Boolean     @default(true)
-  
-  step         ScenarioStep @relation(fields: [stepId], references: [id], onDelete: Cascade)
-  object       SmartObject  @relation(fields: [objectId], references: [id], onDelete: Cascade)
-  
-  @@unique([stepId, objectId])
-  @@map("scenario_step_objects")
+model YamlOutput {
+  id      String @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  content String
+  taskId  String @db.Uuid
+
+  @@index([taskId])
 }
 
-// Trigger System (From Objects-Scenarios)
-model Trigger {
-  id          String      @id @default(cuid())
-  signal      String      // What triggers this
-  condition   String      // When it should fire
-  action      String      // What happens
-  isActive    Boolean     @default(true)
-  priority    Int         @default(1)
-  
-  // Trigger context
-  description String?
-  category    TriggerCategory @default(INTERACTION)
-  
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
-  
-  // Relationships
-  objectId    String
-  object      SmartObject @relation(fields: [objectId], references: [id], onDelete: Cascade)
-  scenarioId  String
-  scenario    Scenario    @relation(fields: [scenarioId], references: [id], onDelete: Cascade)
-  
-  @@map("triggers")
+model chunks {
+  id             String                 @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  documentId     String                 @db.Uuid
+  text           String
+  embedding      Unsupported("vector")?
+  sequenceNumber Int
+  metadata       Json?
+  createdAt      DateTime               @default(now()) @db.Timestamptz(6)
+  updatedAt      DateTime               @default(now()) @db.Timestamptz(6)
+  documents      documents              @relation(fields: [documentId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_document")
+
+  @@index([documentId])
+  @@index([embedding])
 }
 
-enum TriggerCategory {
-  INTERACTION     // User-object interaction
-  STATE_CHANGE    // Object state changes
-  TIME_BASED      // Time-based triggers
-  CONDITION       // Conditional triggers
-  SYSTEM          // System-level triggers
-}
-
-// Simulation Sessions
-model SimulationSession {
-  id              String            @id @default(cuid())
-  status          SessionStatus     @default(ACTIVE)
-  startTime       DateTime          @default(now())
-  endTime         DateTime?
-  
-  // Performance metrics
-  score           Int               @default(0)
-  completedSteps  Int               @default(0)
-  totalSteps      Int
-  timeSpent       Int               @default(0) // In seconds
-  
-  // Progress tracking
-  currentStepId   String?
-  objectStates    Json              // Current state of all objects
-  stepProgress    Json              // Progress on each step
-  
-  // Session context
-  sessionNotes    String?
-  errorLog        Json[]            // Errors and issues encountered
-  
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
-  
-  // Relationships
-  scenarioId      String
-  scenario        Scenario          @relation(fields: [scenarioId], references: [id], onDelete: Cascade)
-  userId          String
-  user            User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
-  interactions    ObjectInteraction[]
-  progress        LearningProgress[]
-  
-  @@map("simulation_sessions")
-}
-
-enum SessionStatus {
-  ACTIVE
-  COMPLETED
-  PAUSED
-  FAILED
-  ABANDONED
-}
-
-// Object Interactions (Detailed tracking)
-model ObjectInteraction {
-  id            String            @id @default(cuid())
-  action        String            // Action performed
-  result        InteractionResult
-  feedback      String?           // Feedback provided to user
-  
-  // Interaction context
-  stepContext   String?           // Which step this relates to
-  triggersFired String[]          // Triggers that fired from this interaction
-  stateChanges  Json?             // Object state changes
-  
-  // Performance metrics
-  responseTime  Int?              // Time taken to perform action (ms)
-  attempts      Int               @default(1) // Number of attempts for this action
-  isCorrect     Boolean           @default(true)
-  
-  timestamp     DateTime          @default(now())
-  
-  // Relationships
-  objectId      String
-  object        SmartObject       @relation(fields: [objectId], references: [id], onDelete: Cascade)
-  sessionId     String
-  session       SimulationSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  userId        String
-  user          User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
-  @@map("object_interactions")
-}
-
-enum InteractionResult {
-  SUCCESS
-  FAILURE
-  PARTIAL
-  RETRY
-}
-
-// Learning Progress Tracking
-model LearningProgress {
-  id                String            @id @default(cuid())
-  
-  // Progress metrics
-  completionRate    Float             @default(0.0) // 0.0 to 1.0
-  averageScore      Float             @default(0.0)
-  totalTimeSpent    Int               @default(0) // In minutes
-  sessionsCompleted Int               @default(0)
-  
-  // Skill development
-  masteredConcepts  String[]          // Concepts user has mastered
-  strugglingAreas   String[]          // Areas where user needs improvement
-  skillProgression  Json              // Detailed skill progression data
-  
-  // AI-driven insights
-  personalizedTips  String[]          // AI-generated learning tips
-  nextRecommended   String[]          // Recommended next tasks/scenarios
-  learningPath      Json              // Adaptive learning path
-  
-  // Streak and motivation
-  streakDays        Int               @default(0)
-  achievements      String[]          // Unlocked achievements
-  badges            String[]          // Earned badges
-  
-  lastActivity      DateTime          @default(now())
-  createdAt         DateTime          @default(now())
-  updatedAt         DateTime          @updatedAt
-  
-  // Relationships
-  userId            String
-  user              User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  sessionId         String?
-  session           SimulationSession? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
-  
-  @@map("learning_progress")
-}
-
-// AI-Generated Content and Enhancements
-model AIGeneration {
-  id            String          @id @default(cuid())
-  type          GenerationType
-  prompt        String          // Original prompt
-  result        Json            // Generated content
-  confidence    Float           // AI confidence score
-  
-  // Context
-  sourceType    String?         // What was enhanced (object, scenario, etc.)
-  sourceId      String?         // ID of source item
-  
-  // Validation
-  isApproved    Boolean         @default(false)
-  feedback      String?         // Human feedback on generation
-  
-  // Metadata
-  model         String          // AI model used
-  parameters    Json?           // Generation parameters
-  
-  createdAt     DateTime        @default(now())
-  updatedAt     DateTime        @updatedAt
-  
-  @@map("ai_generations")
-}
-
-enum GenerationType {
-  SCENARIO_ENHANCEMENT
-  OBJECT_ENHANCEMENT
-  CONTENT_GENERATION
-  TRIGGER_SUGGESTION
-  LEARNING_OBJECTIVE
-  INSTRUCTION_IMPROVEMENT
-}
-
-// Media Storage (Integration with Supabase)
-model MediaFile {
-  id            String      @id @default(cuid())
-  filename      String
-  originalName  String
-  mimeType      String
-  size          Int         // File size in bytes
-  url           String      // Supabase storage URL
-  
-  // Media metadata
-  mediaType     MediaType
-  duration      Int?        // For audio/video in seconds
-  dimensions    Json?       // For images/videos {width, height}
-  
-  // Usage context
-  description   String?
-  tags          String[]
-  isPublic      Boolean     @default(false)
-  
-  // AI processing
-  transcript    String?     // For audio/video files
-  aiAnalysis    Json?       // AI-generated analysis/tags
-  
-  createdAt     DateTime    @default(now())
-  updatedAt     DateTime    @updatedAt
-  
-  // Relationships
-  uploadedBy    String
-  user          User        @relation(fields: [uploadedBy], references: [id], onDelete: Cascade)
-  
-  @@map("media_files")
+model documents {
+  id         String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  title      String
+  url        String
+  broadTopic String
+  sourceType String
+  content    String?
+  createdAt  DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt  DateTime @default(now()) @db.Timestamptz(6)
+  chunks     chunks[]
 }
 
 enum MediaType {
   IMAGE
-  AUDIO
   VIDEO
-  DOCUMENT
+  AUDIO
+  PDF
 }
 
-// System Configuration and Settings
-model SystemConfig {
-  id            String      @id @default(cuid())
-  key           String      @unique
-  value         Json
-  description   String?
-  category      String      @default("general")
-  
-  createdAt     DateTime    @default(now())
-  updatedAt     DateTime    @updatedAt
-  
-  @@map("system_config")
+enum QuestionType {
+  MCQ
+  OPEN_ENDED
 }
 
-// Analytics and Reporting
-model AnalyticsEvent {
-  id            String      @id @default(cuid())
-  eventType     String      // Type of event
-  eventData     Json        // Event-specific data
-  
-  // Context
-  sessionId     String?     // Session context
-  userId        String?     // User context
-  objectId      String?     // Object context
-  scenarioId    String?     // Scenario context
-  
-  // Metadata
-  userAgent     String?
-  ipAddress     String?
-  
-  timestamp     DateTime    @default(now())
-  
-  @@map("analytics_events")
+enum SuggestionType {
+  INSERTION
+  CLARIFYING_QUESTION
+  MCQ
+  OPEN_ENDED
+}
+
+enum user_role {
+  sme
+  trainee
+  admin
 }

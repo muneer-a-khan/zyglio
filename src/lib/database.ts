@@ -838,7 +838,4 @@ export class DatabaseService {
 }
 
 // Export singleton instance
-export const databaseService = new DatabaseService();
-
-// Export Prisma client for direct access when needed
-export { prisma }; 
+export const databaseService = new DatabaseService(); 
