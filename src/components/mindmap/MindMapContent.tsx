@@ -132,10 +132,35 @@ const MindMapContent: React.FC<MindMapProps> = ({ nodes, edges, onSaveNodeData }
   useEffect(() => {
     if (mindMapNodes.length > 0 && reactFlowInstance) {
       setTimeout(() => {
-        reactFlowInstance.fitView({ padding: 0.5 });
+        // For procedure flowcharts, focus on the beginning (top-left area)
+        const hasProcedureSteps = mindMapNodes.some(node => 
+          node.data.metadata?.type === 'decision_step' || 
+          node.data.metadata?.type === 'regular_step' || 
+          node.data.metadata?.type === 'terminal_step' ||
+          node.id.startsWith('step_')
+        );
+        
+        if (hasProcedureSteps) {
+          // Find the first/root nodes (nodes with no incoming edges)
+          const rootNodes = mindMapNodes.filter(node => 
+            !mindMapEdges.some(edge => edge.target === node.id)
+          );
+          
+          if (rootNodes.length > 0) {
+            // Focus on the first root node area
+            const firstNode = rootNodes[0];
+            reactFlowInstance.setCenter(firstNode.position.x + 150, firstNode.position.y + 100, { zoom: 0.8 });
+          } else {
+            // Fallback to standard fit view with higher zoom
+            reactFlowInstance.fitView({ padding: 0.3, minZoom: 0.7, maxZoom: 1.2 });
+          }
+        } else {
+          // For mind maps, use standard fit view
+          reactFlowInstance.fitView({ padding: 0.5 });
+        }
       }, 300);
     }
-  }, [mindMapNodes, reactFlowInstance]);
+  }, [mindMapNodes, mindMapEdges, reactFlowInstance]);
 
   // Handle closing the side panel
   const handleCloseSidePanel = useCallback(() => {
@@ -146,10 +171,35 @@ const MindMapContent: React.FC<MindMapProps> = ({ nodes, edges, onSaveNodeData }
   // Fixed the error by properly typing the onInit callback
   const onInit: OnInit = useCallback((instance) => {
     console.log("ReactFlow initialized");
+    
     setTimeout(() => {
-      instance.fitView({ padding: 0.5 });
+      // Check if this is a procedure flowchart
+      const hasProcedureSteps = mindMapNodes.some(node => 
+        node.data.metadata?.type === 'decision_step' || 
+        node.data.metadata?.type === 'regular_step' || 
+        node.data.metadata?.type === 'terminal_step' ||
+        node.id.startsWith('step_')
+      );
+      
+      if (hasProcedureSteps && mindMapNodes.length > 0) {
+        // Find the first/root nodes for procedure flowcharts
+        const rootNodes = mindMapNodes.filter(node => 
+          !mindMapEdges.some(edge => edge.target === node.id)
+        );
+        
+        if (rootNodes.length > 0) {
+          // Focus on the first root node area with better zoom
+          const firstNode = rootNodes[0];
+          instance.setCenter(firstNode.position.x + 150, firstNode.position.y + 100, { zoom: 0.8 });
+        } else {
+          instance.fitView({ padding: 0.4, minZoom: 0.7, maxZoom: 1.2 });
+        }
+      } else {
+        // For mind maps, use standard fit view
+        instance.fitView({ padding: 0.5 });
+      }
     }, 300);
-  }, []);
+  }, [mindMapNodes, mindMapEdges]);
 
   // Improved node click handler with better event handling
   const onNodeClick = useCallback((event: React.MouseEvent, node: Node) => {
@@ -262,7 +312,7 @@ const MindMapContent: React.FC<MindMapProps> = ({ nodes, edges, onSaveNodeData }
             minZoom={0.05} // Allow zooming out further
             maxZoom={2} // Allow closer zoom
             fitView
-            fitViewOptions={{ padding: 0.7 }} 
+            fitViewOptions={{ padding: 0.4, minZoom: 0.6, maxZoom: 1.5 }} // Improved fit view options
             attributionPosition="bottom-right"
             className="border-2 border-gray-100"
             proOptions={{ hideAttribution: true }}
@@ -272,7 +322,7 @@ const MindMapContent: React.FC<MindMapProps> = ({ nodes, edges, onSaveNodeData }
             zoomOnScroll={true}
             panOnScroll={false}
             panOnDrag={true}
-            defaultViewport={{ x: 0, y: 0, zoom: 0.6 }} // Increased from 0.4 to 0.6 for better readability with compact layout
+            defaultViewport={{ x: 0, y: 0, zoom: 0.75 }} // Increased from 0.6 to 0.75 for better initial zoom
           >
             <Background color="#94a3b8" gap={16} size={1} />
             <Controls className="bg-white shadow-md rounded border border-gray-200" />
