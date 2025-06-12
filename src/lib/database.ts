@@ -249,10 +249,6 @@ export class DatabaseService {
   async deleteSmartObject(objectId: string) {
     try {
       // Delete related records first
-      await prisma.scenarioStepObject.deleteMany({
-        where: { objectId }
-      });
-      
       await prisma.trigger.deleteMany({
         where: { objectId }
       });
