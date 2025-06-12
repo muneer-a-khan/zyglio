@@ -204,6 +204,113 @@ model documents {
   chunks     chunks[]
 }
 
+model ObjectInteraction {
+  id            String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  objectId      String    @db.Uuid
+  sessionId     String    @db.Uuid
+  userId        String    @db.Uuid
+  action        String
+  result        String
+  feedback      String?
+  stepContext   String?
+  triggersFired String[]  @default([])
+  stateChanges  Json?
+  responseTime  Int?
+  attempts      Int?      @default(1)
+  isCorrect     Boolean?  @default(true)
+  timestamp     DateTime? @default(now()) @db.Timestamptz(6)
+
+  @@index([objectId])
+  @@index([sessionId])
+  @@index([timestamp])
+  @@index([userId])
+}
+
+model ScenarioStep {
+  id                String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  instruction       String
+  requiredObjects   String[]  @default([])
+  requiredActions   String[]  @default([])
+  conditions        String[]  @default([])
+  feedback          String?
+  position          Json?
+  stepIndex         Int
+  isCheckpoint      Boolean?  @default(false)
+  expectedResponses Json?     @default("[]")
+  voiceRecordingUrl String?
+  transcript        String?
+  procedureId       String?   @db.Uuid
+  scenarioId        String?   @db.Uuid
+  createdAt         DateTime? @default(now()) @db.Timestamptz(6)
+  updatedAt         DateTime? @default(now()) @db.Timestamptz(6)
+
+  @@index([procedureId])
+  @@index([scenarioId])
+  @@index([stepIndex])
+}
+
+model SimulationSession {
+  id             String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  scenarioId     String    @db.Uuid
+  userId         String    @db.Uuid
+  status         String
+  score          Int?
+  completedSteps Int?      @default(0)
+  totalSteps     Int
+  timeSpent      Int?      @default(0)
+  currentStepId  String?
+  objectStates   Json?     @default("{}")
+  stepProgress   Json?     @default("{}")
+  startTime      DateTime? @default(now()) @db.Timestamptz(6)
+  endTime        DateTime? @db.Timestamptz(6)
+
+  @@index([scenarioId])
+  @@index([startTime])
+  @@index([status])
+  @@index([userId])
+}
+
+model SmartObject {
+  id           String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  name         String
+  category     String
+  description  String?
+  states       String[]  @default([])
+  behaviors    String[]  @default([])
+  signals      String[]  @default([])
+  attributes   Json?
+  currentState String?
+  taskId       String?   @db.Uuid
+  userId       String    @db.Uuid
+  isTemplate   Boolean?  @default(false)
+  tags         String[]  @default([])
+  createdAt    DateTime? @default(now()) @db.Timestamptz(6)
+  updatedAt    DateTime? @default(now()) @db.Timestamptz(6)
+
+  @@index([category])
+  @@index([isTemplate])
+  @@index([taskId])
+  @@index([userId])
+}
+
+model Trigger {
+  id          String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  objectId    String    @db.Uuid
+  signal      String
+  condition   String
+  action      String
+  scenarioId  String?   @db.Uuid
+  isActive    Boolean?  @default(true)
+  priority    Int?      @default(0)
+  description String?
+  category    String?
+  createdAt   DateTime? @default(now()) @db.Timestamptz(6)
+
+  @@index([isActive])
+  @@index([objectId])
+  @@index([scenarioId])
+}
+
 enum MediaType {
   IMAGE
   VIDEO
