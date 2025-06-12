@@ -4,6 +4,14 @@
 
 The Voice Procedural Craftsman now includes automatic generation of simulation objects, scenarios, and triggers based on YAML procedure definitions. This feature intelligently parses YAML content and creates comprehensive simulation elements to enhance the learning experience.
 
+## Quick Start
+
+1. **Create or Edit a Procedure**: Navigate to the create page or edit an existing procedure
+2. **Generate YAML**: Use the YAML tab to create your procedure definition
+3. **Auto-Generate Simulation**: In the Simulation tab, click "Generate from YAML" 
+4. **Review Elements**: Explore the automatically created objects, scenarios, and triggers
+5. **Test**: Use `/test-yaml-generation` to experiment with different YAML structures
+
 ## How It Works
 
 ### 1. YAML Parsing
