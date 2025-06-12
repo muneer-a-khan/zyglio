@@ -19,9 +19,10 @@ interface ReactFlowChartProps {
   yamlContent: string;
   className?: string;
   useMindMap?: boolean; // New prop to choose between old flow and new mind map
+  forceInitialCenter?: boolean; // Force aggressive initial centering for flowchart pages
 }
 
-const ReactFlowChart: React.FC<ReactFlowChartProps> = ({ yamlContent, className = 'h-[600px]', useMindMap = true }) => {
+const ReactFlowChart: React.FC<ReactFlowChartProps> = ({ yamlContent, className = 'h-[600px]', useMindMap = true, forceInitialCenter = false }) => {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [error, setError] = useState<string | null>(null);
@@ -92,6 +93,7 @@ const ReactFlowChart: React.FC<ReactFlowChartProps> = ({ yamlContent, className 
         <MindMap 
           nodes={nodes} 
           edges={edges} 
+          forceInitialCenter={forceInitialCenter}
           onSaveNodeData={(nodeId, data) => {
             console.log('Node data saved:', nodeId, data);
           }}
