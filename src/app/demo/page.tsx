@@ -198,6 +198,7 @@ export default function DemoPage() {
                 <CardContent className="h-full p-0">
                   <ObjectDefinitionPanel
                     onAddObject={handleAddObject}
+                    objects={objects}
                     currentTaskId={demoTaskId}
                   />
                 </CardContent>

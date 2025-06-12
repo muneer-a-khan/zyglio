@@ -366,10 +366,10 @@ export function ObjectDefinitionPanel({
         </form>
 
         {/* Object Count */}
-        {objects.length > 0 && (
+        {objects && objects.length > 0 && (
           <div className="mt-6 p-4 bg-blue-50 rounded-lg">
             <p className="text-sm text-blue-700">
-              <strong>{objects.length}</strong> object{objects.length !== 1 ? 's' : ''} defined for this task
+              <strong>{objects?.length || 0}</strong> object{(objects?.length || 0) !== 1 ? 's' : ''} defined for this task
             </p>
           </div>
         )}

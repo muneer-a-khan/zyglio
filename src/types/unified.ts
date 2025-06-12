@@ -202,7 +202,7 @@ export interface TriggerFormData {
 
 export interface ObjectDefinitionPanelProps {
   onAddObject: (object: SmartObject) => void;
-  objects: SmartObject[];
+  objects?: SmartObject[];
   currentTaskId?: string;
 }
 
