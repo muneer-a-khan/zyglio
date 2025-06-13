@@ -1,3 +1,5 @@
+import { generateYamlFromSteps } from './deepseek';
+
 /**
  * OpenAI integration for generating procedure YAML from steps
  */
@@ -12,39 +14,53 @@ interface GenerateYamlResult {
  */
 export async function generateProcedureYaml(steps: string[]): Promise<GenerateYamlResult> {
   try {
-    // Check if we have DeepSeek API available
-    const response = await fetch('/api/deepseek/generate-yaml', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ 
-        steps: steps.map((step, index) => ({
-          id: `step_${index + 1}`,
-          content: step,
-          comments: []
-        })),
-        procedureName: 'Generated Procedure'
-      }),
-    });
-
-    if (!response.ok) {
-      console.warn('DeepSeek API failed, using fallback YAML generation');
+    // Validate input
+    if (!steps || !Array.isArray(steps) || steps.length === 0) {
+      console.warn('generateProcedureYaml: Invalid steps input, using fallback');
       return {
-        yaml: generateFallbackYaml(steps),
-        error: 'AI generation failed, using fallback YAML'
+        yaml: generateFallbackYaml(steps || []),
+        error: 'Invalid input: steps must be a non-empty array'
       };
     }
 
-    const data = await response.json();
+    // Filter out empty steps
+    const validSteps = steps.filter(step => typeof step === 'string' && step.trim() !== '');
+    
+    if (validSteps.length === 0) {
+      console.warn('generateProcedureYaml: No valid steps found, using fallback');
+      return {
+        yaml: generateFallbackYaml(steps),
+        error: 'No valid steps provided'
+      };
+    }
+
+    console.log('generateProcedureYaml: Calling DeepSeek API with steps:', validSteps);
+    
+    // Convert string steps to Step objects for DeepSeek API
+    const stepObjects = validSteps.map((step, index) => ({
+      id: `step_${index + 1}`,
+      content: step.trim(),
+      comments: []
+    }));
+    
+    // Try to generate YAML using DeepSeek
+    const yamlResult = await generateYamlFromSteps(stepObjects, 'AI-Generated Procedure');
+    
+    if (yamlResult && typeof yamlResult === 'string' && yamlResult.trim()) {
+      console.log('generateProcedureYaml: Successfully generated YAML via DeepSeek');
+      return { yaml: yamlResult };
+    } else {
+      console.warn('generateProcedureYaml: DeepSeek returned empty or invalid YAML, using fallback');
+      return {
+        yaml: generateFallbackYaml(validSteps),
+        error: 'AI generated empty or invalid YAML'
+      };
+    }
+  } catch (error: any) {
+    console.error('generateProcedureYaml: Error calling DeepSeek API:', error);
     return {
-      yaml: data.yaml
-    };
-  } catch (error) {
-    console.error('Error in generateProcedureYaml:', error);
-    return {
-      yaml: generateFallbackYaml(steps),
-      error: error instanceof Error ? error.message : 'Unknown error occurred'
+      yaml: generateFallbackYaml(steps || []),
+      error: `Failed to generate YAML: ${error.message}`
     };
   }
 }
@@ -53,49 +69,66 @@ export async function generateProcedureYaml(steps: string[]): Promise<GenerateYa
  * Generate fallback YAML when AI generation fails
  */
 function generateFallbackYaml(steps: string[]): string {
-  let yaml = "procedure_name: Generated Procedure\n";
-  yaml += "purpose: Procedure generated from provided steps.\n";
+  console.log('generateFallbackYaml: Generating fallback YAML for steps:', steps);
+  
+  let yaml = "procedure_name: AI-Generated Procedure\n";
+  yaml += "purpose: Structured procedure based on provided steps.\n";
   
   yaml += "stages:\n";
   if (steps && steps.length > 0) {
-    steps.forEach((step, index) => {
-      yaml += `    - Step ${index + 1}: ${step || `Operation ${index + 1}`}\n`;
-    });
+    const validSteps = steps.filter(step => typeof step === 'string' && step.trim() !== '');
+    if (validSteps.length > 0) {
+      validSteps.forEach((step, index) => {
+        yaml += `    - Step ${index + 1}: ${step.trim()}\n`;
+      });
+    } else {
+      yaml += "    - No valid steps provided\n";
+    }
   } else {
     yaml += "    - No steps provided\n";
   }
   
   yaml += "considerations:\n";
   yaml += "    - pre-operative:\n";
-  yaml += "        - Review procedure requirements\n";
+  yaml += "        - Review all steps carefully.\n";
+  yaml += "        - Ensure all equipment is ready.\n";
   yaml += "    - intra-operative:\n";
-  yaml += "        - Follow each step carefully\n";
+  yaml += "        - Follow each step methodically.\n";
+  yaml += "        - Monitor progress continuously.\n";
   yaml += "    - post-operative:\n";
-  yaml += "        - Verify completion\n";
+  yaml += "        - Review completed procedure.\n";
+  yaml += "        - Document any variations.\n";
   
   yaml += "goals:\n";
-  yaml += "    - Complete procedure successfully\n";
+  yaml += "    - Complete the procedure successfully.\n";
+  yaml += "    - Ensure quality outcomes.\n";
   
   // Add internal steps section for flowchart
-  yaml += "\n# Internal mapping for flowchart\n";
+  yaml += "\n# Internal mapping for flowchart (not displayed)\n";
   yaml += "steps:\n";
   
   if (steps && steps.length > 0) {
-    steps.forEach((step, index) => {
-      const stepId = `step_${index + 1}`;
-      const nextId = index < steps.length - 1 ? `step_${index + 2}` : undefined;
-      
-      yaml += `  - id: ${stepId}\n`;
-      yaml += `    title: ${step || `Step ${index + 1}`}\n`;
-      
-      if (nextId) {
-        yaml += `    next: ${nextId}\n`;
-      } else {
-        yaml += `    is_terminal: true\n`;
-      }
-    });
+    const validSteps = steps.filter(step => typeof step === 'string' && step.trim() !== '');
+    if (validSteps.length > 0) {
+      validSteps.forEach((step, index) => {
+        const stepId = `step_${index + 1}`;
+        const nextId = index < validSteps.length - 1 ? `step_${index + 2}` : undefined;
+        const title = step.trim();
+        
+        yaml += `  - id: ${stepId}\n`;
+        yaml += `    title: ${title}\n`;
+        
+        if (nextId) {
+          yaml += `    next: ${nextId}\n`;
+        } else {
+          yaml += `    is_terminal: true\n`;
+        }
+      });
+    } else {
+      yaml += "  - id: start\n    title: Begin Procedure\n    is_terminal: true\n";
+    }
   } else {
-    yaml += "  - id: start\n    title: Start\n    is_terminal: true\n";
+    yaml += "  - id: start\n    title: Begin Procedure\n    is_terminal: true\n";
   }
   
   return yaml;
