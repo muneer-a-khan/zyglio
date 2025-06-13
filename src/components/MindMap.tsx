@@ -4,11 +4,16 @@ import MindMapContent from './mindmap/MindMapContent';
 import { MindMapProps } from './mindmap/types';
 
 // Wrapper component that provides the ReactFlow context
-const MindMap: React.FC<MindMapProps> = ({ nodes, edges, onSaveNodeData }) => {
+const MindMap: React.FC<MindMapProps> = ({ nodes, edges, forceInitialCenter, onSaveNodeData }) => {
   return (
     <div className="w-full h-full bg-gray-50 rounded-md overflow-hidden shadow-lg">
       <ReactFlowProvider>
-        <MindMapContent nodes={nodes} edges={edges} onSaveNodeData={onSaveNodeData} />
+        <MindMapContent 
+          nodes={nodes} 
+          edges={edges} 
+          forceInitialCenter={forceInitialCenter}
+          onSaveNodeData={onSaveNodeData} 
+        />
       </ReactFlowProvider>
     </div>
   );

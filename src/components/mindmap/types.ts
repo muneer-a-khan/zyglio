@@ -34,5 +34,6 @@ export interface MindMapNodeData {
 export interface MindMapProps {
   nodes: Node[];
   edges: Edge[];
+  forceInitialCenter?: boolean; // Force aggressive initial centering for flowchart pages
   onSaveNodeData?: (nodeId: string, updatedData: Partial<MindMapNodeData>) => void;
 } 
