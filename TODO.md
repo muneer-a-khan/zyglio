@@ -4,3 +4,5 @@
 - this media displays as the simulation step and has the auditory certification to go with it
 - get kaggle dataset of engine bays and add that to media library
 - add multi language support
+- Google Analytics setup for main website
+- merge VoiceProc to main website with middleware for auth (admin login)
