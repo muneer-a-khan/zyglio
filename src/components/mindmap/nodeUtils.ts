@@ -169,7 +169,7 @@ export const processEdges = (edges: Edge[]) => {
         animated: false,
         style: {
           stroke: isYesBranch ? '#10b981' : (isNoBranch ? '#ef4444' : '#64748b'),
-          strokeWidth: 2,
+          strokeWidth: 1.5,
         },
         markerEnd: {
           type: MarkerType.ArrowClosed,
@@ -190,7 +190,7 @@ export const processEdges = (edges: Edge[]) => {
       animated: false,
       style: {
         stroke: '#64748b',
-        strokeWidth: 1.5,
+        strokeWidth: 1,
       },
       markerEnd: {
         type: MarkerType.ArrowClosed,

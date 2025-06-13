@@ -15,9 +15,10 @@ import VoiceRecorder from "@/components/VoiceRecorder";
 import TranscriptEditor from "@/components/TranscriptEditor";
 import FlowchartViewer from "@/components/FlowchartViewer";
 import YamlGenerator from "@/components/YamlGenerator";
-import SimulationBuilder from "@/components/SimulationBuilder";
+import EnhancedSimulationBuilder from "@/components/EnhancedSimulationBuilder";
 import VoiceInterview from "@/components/voice-interview";
 import { procedureService, TaskDefinition, Step, MediaItem, SimulationSettings } from "@/lib/ProcedureService";
+import { EnhancedSimulationSettings } from "@/types/simulation";
 import { v4 as uuidv4 } from 'uuid';
 import { generateYamlFromSteps as generateYamlFromStepsViaAPI } from "@/lib/deepseek";
 
@@ -33,7 +34,7 @@ export default function CreateProcedure() {
   const [mediaItems, setMediaItems] = useState<MediaItem[]>([]);
   const [yamlContent, setYamlContent] = useState("");
   const [flowchartContent, setFlowchartContent] = useState("");
-  const [simulationSettings, setSimulationSettings] = useState<SimulationSettings | null>(null);
+  const [simulationSettings, setSimulationSettings] = useState<EnhancedSimulationSettings | null>(null);
   const [loading, setLoading] = useState(false);
   const [isGeneratingYaml, setIsGeneratingYaml] = useState(false);
   const [interviewSessionId, setInterviewSessionId] = useState<string | null>(null);
@@ -150,12 +151,28 @@ export default function CreateProcedure() {
     }
   };
 
-  const handleSimulationSettingsChange = async (settings: SimulationSettings) => {
+  const handleSimulationSettingsChange = async (settings: EnhancedSimulationSettings) => {
     setSimulationSettings(settings);
-    
     try {
-      // Save simulation settings to database
-      await procedureService.saveSimulationSettings(settings);
+      // Convert to basic settings for now to maintain compatibility
+      const basicSettings: SimulationSettings = {
+        enabled: settings.enabled,
+        mode: settings.mode === "scenario_based" ? "guided" : (settings.mode as "guided" | "freeform"),
+        timeLimit: settings.timeLimit || 300,
+        allowRetries: settings.allowRetries,
+        maxRetries: settings.maxRetries || 3,
+        showHints: settings.showHints,
+        requireMediaConfirmation: settings.requireMediaConfirmation,
+        feedbackDelay: settings.feedbackDelay,
+        difficulty: settings.difficulty,
+        name: settings.name || "Simulation",
+        enableVoiceInput: settings.enableVoiceInput || true,
+        enableTextInput: settings.enableTextInput || true,
+        feedbackLevel: settings.feedbackLevel || "detailed",
+        enableScoring: settings.enableScoring || true,
+        steps: settings.steps || []
+      };
+      await procedureService.saveSimulationSettings(basicSettings);
     } catch (error) {
       console.error("Error saving simulation settings:", error);
     }
@@ -528,10 +545,11 @@ export default function CreateProcedure() {
           <TabsContent value="simulation">
             <Card>
               <CardContent className="pt-6">
-                <SimulationBuilder
+                <EnhancedSimulationBuilder
                   steps={steps}
                   procedureName={taskDefinition?.name || "Procedure"}
                   initialSettings={simulationSettings || undefined}
+                  yamlContent={yamlContent}
                   onChange={handleSimulationSettingsChange}
                 />
               </CardContent>

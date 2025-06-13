@@ -167,9 +167,11 @@ const FlowchartViewer = ({ steps: stepsProp, onChange }: FlowchartViewerProps) =
         
         <div className="h-[650px] rounded-lg overflow-hidden shadow-inner">
           <ReactFlowChart 
+            key={yamlContent ? `flowchart-${yamlContent.length}` : 'empty-flowchart'}
             yamlContent={yamlContent || ""}
             className="w-full h-full rounded-lg"
             useMindMap={true}
+            forceInitialCenter={true}
           />
         </div>
       </CardContent>

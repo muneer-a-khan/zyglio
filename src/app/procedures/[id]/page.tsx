@@ -14,7 +14,7 @@ import { procedureService, Procedure } from "@/lib/ProcedureService";
 import { toast } from "sonner";
 import FlowchartViewer from "@/components/FlowchartViewer";
 import YamlGenerator from "@/components/YamlGenerator";
-import SimulationBuilder from "@/components/SimulationBuilder";
+import EnhancedSimulationBuilder from "@/components/EnhancedSimulationBuilder";
 
 export default function ProcedurePage() {
   const params = useParams();
@@ -191,11 +191,12 @@ export default function ProcedurePage() {
         </div>
         
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid w-full grid-cols-4 mb-8">
+          <TabsList className="grid w-full grid-cols-5 mb-8">
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="steps">Procedure Steps</TabsTrigger>
             <TabsTrigger value="flowchart">Flowchart</TabsTrigger>
             <TabsTrigger value="yaml">YAML</TabsTrigger>
+            <TabsTrigger value="simulation">Simulation</TabsTrigger>
           </TabsList>
           
           <TabsContent value="overview" className="space-y-6">
@@ -418,6 +419,32 @@ export default function ProcedurePage() {
                     <h2 className="text-xl font-semibold mb-2">No YAML definition available</h2>
                     <p className="text-gray-500">
                       This procedure doesn't have a YAML definition.
+                    </p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="simulation">
+            <Card>
+              <CardHeader>
+                <CardTitle>Interactive Simulation</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {procedure.yamlContent ? (
+                  <EnhancedSimulationBuilder
+                    steps={procedure.steps}
+                    procedureName={procedure.title}
+                    yamlContent={procedure.yamlContent}
+                    onChange={() => {}} // Read-only view
+                  />
+                ) : (
+                  <div className="text-center py-12 border rounded-lg">
+                    <PlayCircle className="h-12 w-12 mx-auto text-gray-400 mb-4" />
+                    <h2 className="text-xl font-semibold mb-2">No simulation available</h2>
+                    <p className="text-gray-500">
+                      This procedure doesn't have simulation settings. A YAML definition is required to generate simulation elements.
                     </p>
                   </div>
                 )}

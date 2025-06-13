@@ -49,40 +49,43 @@
 - Added helper functions for metadata rendering
 - Enhanced UI with proper spacing and visual hierarchy
 
-### 4. Visual Node Improvements ✅
-**Problem**: Limited visual distinction between node types.
+### 4. Thinner Edge Lines ✅
+**Problem**: Lines between nodes were too thick, making the flowchart look cluttered.
 
 **Solution**:
-- Added terminal step styling (green gradient)
-- Enhanced decision point styling (purple gradient)
-- Added appropriate icons:
-  - Diamond for decision points
-  - Target for terminal steps
-  - GitBranch for expansion
-- Improved color coding throughout the interface
+- Reduced stroke width for regular edges from 1.5 to 1
+- Reduced stroke width for decision edges from 2 to 1.5
+- Updated CSS hover and selected states to use thinner lines (2 instead of 3)
+- Added default edge path styling to ensure consistent thin lines
 
 **Code Changes**:
-- Updated `src/components/MindMapNode.tsx` styling
-- Added new Lucide React icons
-- Enhanced visual hierarchy
+- Updated `src/components/mindmap/nodeUtils.ts` edge processing
+- Modified `src/components/ReactFlowChart.css` edge styling
+- Improved visual hierarchy while maintaining readability
 
-### 5. Full Edit Functionality ✅
-**Problem**: Edit button only logged to console without actual editing capability.
+### 5. Better Initial Zoom and Positioning ✅
+**Problem**: Flowcharts didn't focus on the beginning/start of the procedure when first loaded.
 
 **Solution**:
-- Integrated existing `NodeEditor.tsx` component properly
-- Added edit mode transitions in `MindMapContent.tsx`
-- Enhanced `NodeEditor.tsx` with:
-  - Visual node type indicators
-  - Decision options display (read-only)
-  - Improved form layout
-  - Better data preservation during saves
-- Updated `ContentView.tsx` to trigger edit mode
+- Enhanced initial positioning to detect procedure flowcharts automatically
+- For procedure flowcharts: Focus on the first/root node with 0.8 zoom level
+- Improved fitView options with better padding and zoom constraints
+- Increased default viewport zoom from 0.6 to 0.75
+- Added smart centering on the starting nodes of procedures
 
 **Code Changes**:
-- Updated `src/components/ContentView.tsx` to accept edit handler
-- Enhanced `src/components/mindmap/MindMapContent.tsx` edit flow
-- Improved `src/components/NodeEditor.tsx` interface and functionality
+- Updated `src/components/mindmap/MindMapContent.tsx` initialization logic
+- Enhanced onInit callback to provide procedure-specific positioning
+- Improved fitView options for better initial display
+- Added root node detection and smart centering
+
+## Benefits
+
+1. **Better Visual Hierarchy**: Thinner lines reduce visual clutter while maintaining clarity
+2. **Improved User Experience**: Users immediately see the start of procedures without manual navigation
+3. **Enhanced Readability**: Better zoom levels and positioning make flowcharts easier to follow
+4. **Consistent Behavior**: Automatic detection ensures appropriate display for different content types
+5. **Professional Appearance**: Cleaner lines and better spacing create a more polished look
 
 ## Test Data
 Created comprehensive test file `test-procedure.yaml` with:
@@ -106,6 +109,24 @@ The system now automatically detects procedure flowcharts by checking for:
 - Preserves all original node data during edits
 - Smart content structure updates
 - Maintains decision options and metadata integrity
+
+### Edge Styling
+- Regular edges: 1px stroke width
+- Decision edges: 1.5px stroke width  
+- Hover state: 2px stroke width
+- Selected state: 2px stroke width
+
+### Initial Positioning
+- Procedure detection based on node metadata and IDs
+- Root node identification using edge analysis
+- Smart centering with 0.8 zoom for procedures
+- Fallback to standard fit view for mind maps
+
+### Zoom Levels
+- Default viewport: 0.75 zoom
+- Procedure focus: 0.8 zoom
+- FitView range: 0.6 to 1.5 zoom
+- Min zoom: 0.05, Max zoom: 2.0
 
 ## Usage
 1. Load any procedure YAML file
