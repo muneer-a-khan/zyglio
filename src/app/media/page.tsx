@@ -1,295 +1,413 @@
 "use client";
 
-import Link from "next/link";
-import { useEffect, useState } from "react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Search, Upload } from "lucide-react";
-import { useSession } from "next-auth/react";
-import { useRouter } from "next/navigation";
-import { MediaItem } from "@/lib/ProcedureService";
-import MediaGallery from "@/components/MediaGallery";
-import { toast } from "sonner";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Card, CardContent } from "@/components/ui/card";
+import React, { useState, useEffect } from 'react'
+import { useSession } from 'next-auth/react'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Upload, FolderOpen, BarChart3, Trash2, RefreshCw } from 'lucide-react'
+import MediaUpload from '@/components/media/media-upload'
+import MediaLibrary from '@/components/media/media-library'
+import { MediaFile } from '@/lib/storage-service'
+import { toast } from 'sonner'
 
-export default function MediaLibrary() {
-  const { data: session, status } = useSession();
-  const router = useRouter();
-  const [isLoading, setIsLoading] = useState(true);
-  const [mediaItems, setMediaItems] = useState<MediaItem[]>([]);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [filteredItems, setFilteredItems] = useState<MediaItem[]>([]);
-
-  // Redirect to sign-in if not authenticated
-  useEffect(() => {
-    if (status === "unauthenticated") {
-      router.push("/auth/signin");
+export default function MediaPage() {
+  const { data: session } = useSession()
+  const [files, setFiles] = useState<MediaFile[]>([])
+  const [loading, setLoading] = useState(true)
+  const [uploadStats, setUploadStats] = useState({
+    totalFiles: 0,
+    totalSize: 0,
+    byType: {
+      audio: { count: 0, size: 0 },
+      image: { count: 0, size: 0 },
+      video: { count: 0, size: 0 },
+      document: { count: 0, size: 0 }
     }
-  }, [status, router]);
+  })
 
-  // Load media items from the API
-  useEffect(() => {
-    const fetchMediaItems = async () => {
-      if (status !== "authenticated") return;
-      
-      try {
-        setIsLoading(true);
-        const response = await fetch('/api/media');
-        
-        if (!response.ok) {
-          const errorData = await response.json();
-          console.error("API Error:", errorData);
-          throw new Error(`Failed to fetch media items: ${errorData.message || response.statusText}`);
-        }
-        
-        const data = await response.json();
-        console.log("API Response:", data);
-        
-        if (data.success && Array.isArray(data.mediaItems)) {
-          setMediaItems(data.mediaItems);
-          setFilteredItems(data.mediaItems);
-          
-          if (data.mediaItems.length === 0) {
-            toast.info('No media items found in your account');
-          } else {
-            toast.success(`Loaded ${data.mediaItems.length} media items`);
-          }
-        } else {
-          throw new Error(data.message || 'Failed to get media data');
-        }
-      } catch (error) {
-        console.error('Error fetching media items:', error);
-        toast.error(`${error}`);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    
-    fetchMediaItems();
-  }, [status]);
+  const fetchFiles = async () => {
+    if (!session?.user) return
 
-  // Filter media items based on search term
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (searchTerm.trim()) {
-      const filtered = mediaItems.filter(item => 
-        (item.caption || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.type.toLowerCase().includes(searchTerm.toLowerCase())
-      );
-      setFilteredItems(filtered);
-    } else {
-      setFilteredItems(mediaItems);
-    }
-  };
-
-  // Handle delete media item
-  const handleDeleteMedia = async (id: string) => {
     try {
-      // Show confirmation dialog
-      if (!window.confirm('Are you sure you want to delete this media item?')) {
-        return;
-      }
-
-      toast.loading('Deleting media item...');
-      
-      // If it's a storage ID (starting with "storage-")
-      let url = id.startsWith('storage-') 
-        ? `/api/media?id=${encodeURIComponent(id.replace('storage-', ''))}` 
-        : `/api/media/${id}`;
-        
-      const response = await fetch(url, {
-        method: 'DELETE',
-      });
+      setLoading(true)
+      const response = await fetch('/api/media/upload')
       
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Failed to delete media item');
+        throw new Error('Failed to fetch files')
       }
-      
-      // Remove item from state
-      const updatedItems = mediaItems.filter(item => item.id !== id);
-      setMediaItems(updatedItems);
-      setFilteredItems(filteredItems.filter(item => item.id !== id));
-      
-      toast.success('Media item deleted successfully');
-    } catch (error) {
-      console.error('Error deleting media item:', error);
-      toast.error(`Failed to delete media item: ${error}`);
-    }
-  };
 
-  // Function to retry loading
-  const handleRefresh = async () => {
-    try {
-      setIsLoading(true);
-      toast.info('Refreshing media items...');
-      
-      // Clear cache if any
-      await fetch('/api/media/refresh-all', {
-        method: 'POST',
-      });
-      
-      // Reload items
-      const response = await fetch('/api/media');
-        
-      if (!response.ok) {
-        throw new Error('Failed to fetch media items');
-      }
-      
-      const data = await response.json();
-      
-      if (data.success && Array.isArray(data.mediaItems)) {
-        setMediaItems(data.mediaItems);
-        setFilteredItems(data.mediaItems);
-        toast.success(`Loaded ${data.mediaItems.length} media items`);
-      } else {
-        throw new Error(data.message || 'Failed to get media data');
-      }
+      const data = await response.json()
+      setFiles(data.files || [])
+      setUploadStats(data.stats || uploadStats)
     } catch (error) {
-      console.error('Error refreshing media items:', error);
-      toast.error(`${error}`);
+      console.error('Error fetching files:', error)
+      toast.error('Failed to load media files')
     } finally {
-      setIsLoading(false);
+      setLoading(false)
     }
-  };
-
-  if (status === "loading" || isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <p className="text-lg">Loading...</p>
-        </div>
-      </div>
-    );
   }
 
-  if (status === "unauthenticated") {
-    return null; // Will redirect to sign-in page via useEffect
+  useEffect(() => {
+    fetchFiles()
+  }, [session])
+
+  const handleUploadComplete = (uploadedFiles: MediaFile[]) => {
+    setFiles(prev => [...uploadedFiles, ...prev])
+    setUploadStats(prev => ({
+      ...prev,
+      totalFiles: prev.totalFiles + uploadedFiles.length,
+      totalSize: prev.totalSize + uploadedFiles.reduce((sum, file) => sum + file.size, 0)
+    }))
+    toast.success(`Successfully uploaded ${uploadedFiles.length} file(s)`)
+  }
+
+  const handleUploadError = (error: string) => {
+    toast.error(`Upload failed: ${error}`)
+  }
+
+  const handleFileDelete = async (file: MediaFile) => {
+    try {
+      const response = await fetch(`/api/media/${file.id}`, {
+        method: 'DELETE'
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to delete file')
+      }
+
+      setFiles(prev => prev.filter(f => f.id !== file.id))
+      setUploadStats(prev => ({
+        ...prev,
+        totalFiles: prev.totalFiles - 1,
+        totalSize: prev.totalSize - file.size
+      }))
+      toast.success('File deleted successfully')
+    } catch (error) {
+      console.error('Error deleting file:', error)
+      toast.error('Failed to delete file')
+    }
+  }
+
+  const handleBulkDelete = async (filesToDelete: MediaFile[]) => {
+    try {
+      const deletePromises = filesToDelete.map(file =>
+        fetch(`/api/media/${file.id}`, { method: 'DELETE' })
+      )
+
+      await Promise.all(deletePromises)
+
+      const deletedIds = new Set(filesToDelete.map(f => f.id))
+      setFiles(prev => prev.filter(f => !deletedIds.has(f.id)))
+      
+      const deletedSize = filesToDelete.reduce((sum, file) => sum + file.size, 0)
+      setUploadStats(prev => ({
+        ...prev,
+        totalFiles: prev.totalFiles - filesToDelete.length,
+        totalSize: prev.totalSize - deletedSize
+      }))
+      
+      toast.success(`Successfully deleted ${filesToDelete.length} file(s)`)
+    } catch (error) {
+      console.error('Error bulk deleting files:', error)
+      toast.error('Failed to delete some files')
+    }
+  }
+
+  const formatFileSize = (bytes: number) => {
+    if (bytes === 0) return '0 Bytes'
+    const k = 1024
+    const sizes = ['Bytes', 'KB', 'MB', 'GB']
+    const i = Math.floor(Math.log(bytes) / Math.log(k))
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
+  }
+
+  const getUsagePercentage = (used: number, limit: number = 5 * 1024 * 1024 * 1024) => {
+    return Math.round((used / limit) * 100)
+  }
+
+  if (!session) {
+    return (
+      <div className="container mx-auto py-8">
+        <Card>
+          <CardContent className="p-8 text-center">
+            <h1 className="text-2xl font-bold mb-4">Authentication Required</h1>
+            <p className="text-gray-600">Please sign in to access the media library.</p>
+          </CardContent>
+        </Card>
+      </div>
+    )
   }
 
   return (
-    <div className="min-h-screen flex flex-col">
-      <header className="border-b">
-        <div className="container flex h-16 items-center justify-between py-4">
-          <div className="flex items-center gap-2">
-            <Link href="/" className="flex items-center gap-2">
-              <div className="flex items-center justify-center rounded-md bg-blue-600 h-8 w-8">
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  className="h-4 w-4 text-white"
-                  width="24"
-                  height="24"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="3"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <path d="M19 11V9a2 2 0 0 0-2-2H8.5L3 3v18l5.5-4H17a2 2 0 0 0 2-2v-2" />
-                  <path d="M15 9h6" />
-                  <path d="M18 6v6" />
-                </svg>
+    <div className="container mx-auto py-8 space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold">Media Library</h1>
+          <p className="text-gray-600">Upload, manage, and organize your media files</p>
+        </div>
+        <div className="flex items-center space-x-2">
+          <Button
+            variant="outline"
+            onClick={fetchFiles}
+            disabled={loading}
+          >
+            <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
+        </div>
+      </div>
+
+      {/* Stats Overview */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium">Total Files</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{uploadStats.totalFiles}</div>
+            <div className="flex items-center mt-2">
+              <FolderOpen className="h-4 w-4 text-gray-500 mr-1" />
+              <span className="text-xs text-gray-500">All formats</span>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium">Storage Used</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{formatFileSize(uploadStats.totalSize)}</div>
+            <div className="flex items-center mt-2">
+              <div className="w-full bg-gray-200 rounded-full h-2 mr-2">
+                <div 
+                  className="bg-blue-600 h-2 rounded-full" 
+                  style={{ width: `${Math.min(getUsagePercentage(uploadStats.totalSize), 100)}%` }}
+                ></div>
               </div>
-              <span className="text-lg font-semibold">VoiceProc</span>
-            </Link>
-          </div>
-          <nav className="hidden md:flex items-center gap-6">
-            <Link href="/procedures" className="text-sm font-medium hover:underline">
-              Procedures
-            </Link>
-            <Link href="/media" className="text-sm font-medium hover:underline">
-              Media Library
-            </Link>
-            <Link href="/create" className="text-sm font-medium hover:underline">
-              Create
-            </Link>
-          </nav>
-          <div className="flex items-center gap-4">
-            {session?.user?.name && (
-              <span className="text-sm text-gray-600">Hi, {session.user.name}</span>
-            )}
-            <Button 
-              variant="default" 
-              onClick={() => router.push('/auth/signout')}
-            >
-              Sign Out
-            </Button>
-          </div>
-        </div>
-      </header>
-      
-      <main className="flex-1 container py-8">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
-          <div>
-            <h1 className="text-3xl font-bold mb-2">Media Library</h1>
-            <p className="text-gray-500">
-              Manage and organize your procedure-related media files
-            </p>
-          </div>
-          
-          <div className="flex space-x-2">
-            <Button 
-              onClick={handleRefresh}
-              variant="outline"
-              disabled={isLoading}
-            >
-              Refresh Media
-            </Button>
-            
-            <Button 
-              onClick={() => router.push('/create?tab=media')}
-              className="bg-blue-600 hover:bg-blue-700"
-            >
-              <Upload className="mr-2 h-4 w-4" /> Upload New Media
-            </Button>
-          </div>
-        </div>
-        
-        <div className="mb-6">
-          <form onSubmit={handleSearch} className="flex w-full max-w-sm items-center space-x-2">
-            <Input
-              type="search"
-              placeholder="Search by caption or type..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
-            <Button type="submit">
-              <Search className="h-4 w-4" />
-            </Button>
-          </form>
-        </div>
-        
-        {filteredItems.length === 0 ? (
-          <div className="text-center py-16 bg-gray-50 rounded-lg border border-dashed">
-            <p className="text-muted-foreground">
-              {mediaItems.length === 0 
-                ? "No media files found. Upload some media to get started." 
-                : "No media files match your search criteria."}
-            </p>
-            {mediaItems.length > 0 && (
-              <Button 
-                variant="link" 
-                onClick={() => {
-                  setSearchTerm("");
-                  setFilteredItems(mediaItems);
-                }}
-                className="mt-2"
-              >
-                Reset search
-              </Button>
-            )}
-          </div>
-        ) : (
-          <MediaGallery 
-            mediaItems={filteredItems} 
-            onDelete={handleDeleteMedia}
-            title="Your Media"
+              <span className="text-xs text-gray-500">
+                {getUsagePercentage(uploadStats.totalSize)}%
+              </span>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium">Images</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{uploadStats.byType.image.count}</div>
+            <div className="text-xs text-gray-500">
+              {formatFileSize(uploadStats.byType.image.size)}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium">Videos & Audio</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">
+              {uploadStats.byType.video.count + uploadStats.byType.audio.count}
+            </div>
+            <div className="text-xs text-gray-500">
+              {formatFileSize(uploadStats.byType.video.size + uploadStats.byType.audio.size)}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Main Content */}
+      <Tabs defaultValue="library" className="space-y-6">
+        <TabsList className="grid w-full grid-cols-3">
+          <TabsTrigger value="library" className="flex items-center gap-2">
+            <FolderOpen className="h-4 w-4" />
+            Library
+          </TabsTrigger>
+          <TabsTrigger value="upload" className="flex items-center gap-2">
+            <Upload className="h-4 w-4" />
+            Upload
+          </TabsTrigger>
+          <TabsTrigger value="analytics" className="flex items-center gap-2">
+            <BarChart3 className="h-4 w-4" />
+            Analytics
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="library" className="space-y-6">
+          <MediaLibrary
+            files={files}
+            onFileDelete={handleFileDelete}
+            onBulkDelete={handleBulkDelete}
+            selectable={true}
+            multiSelect={true}
           />
-        )}
-      </main>
+        </TabsContent>
+
+        <TabsContent value="upload" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Upload New Files</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <MediaUpload
+                userId={session.user.email || ''}
+                onUploadComplete={handleUploadComplete}
+                onUploadError={handleUploadError}
+                multiple={true}
+                options={{
+                  maxSize: 100 * 1024 * 1024, // 100MB
+                  extractMetadata: true,
+                  allowedTypes: ['*']
+                }}
+              />
+            </CardContent>
+          </Card>
+
+          {/* Recent Uploads */}
+          {files.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Recent Uploads</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  {files.slice(0, 5).map((file) => (
+                    <div key={file.id} className="flex items-center justify-between p-3 border rounded-lg">
+                      <div className="flex-1">
+                        <p className="font-medium">{file.originalName}</p>
+                        <div className="flex items-center space-x-4 text-sm text-gray-500">
+                          <span>{formatFileSize(file.size)}</span>
+                          <Badge variant="secondary">
+                            {file.type.split('/')[0]}
+                          </Badge>
+                        </div>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleFileDelete(file)}
+                        className="text-red-500 hover:text-red-700"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+
+        <TabsContent value="analytics" className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>File Type Distribution</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {Object.entries(uploadStats.byType).map(([type, stats]) => (
+                    <div key={type} className="flex items-center justify-between">
+                      <div className="flex items-center space-x-2">
+                        <Badge variant="outline" className="capitalize">
+                          {type}
+                        </Badge>
+                        <span className="text-sm">{stats.count} files</span>
+                      </div>
+                      <div className="text-sm text-gray-500">
+                        {formatFileSize(stats.size)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Storage Breakdown</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm">Used Storage</span>
+                    <span className="font-medium">{formatFileSize(uploadStats.totalSize)}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm">Available</span>
+                    <span className="font-medium">
+                      {formatFileSize(5 * 1024 * 1024 * 1024 - uploadStats.totalSize)}
+                    </span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-3">
+                    <div 
+                      className="bg-gradient-to-r from-blue-500 to-blue-600 h-3 rounded-full transition-all duration-300" 
+                      style={{ width: `${Math.min(getUsagePercentage(uploadStats.totalSize), 100)}%` }}
+                    ></div>
+                  </div>
+                  <div className="text-xs text-gray-500 text-center">
+                    {getUsagePercentage(uploadStats.totalSize)}% of 5GB used
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Quick Actions</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    // Filter large files
+                    const largeFiles = files.filter(f => f.size > 10 * 1024 * 1024) // > 10MB
+                    console.log('Large files:', largeFiles)
+                    toast.info(`Found ${largeFiles.length} files larger than 10MB`)
+                  }}
+                >
+                  Find Large Files
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    // Find duplicates by name
+                    const names = files.map(f => f.originalName)
+                    const duplicates = names.filter((name, index) => names.indexOf(name) !== index)
+                    toast.info(`Found ${new Set(duplicates).size} potential duplicate names`)
+                  }}
+                >
+                  Check Duplicates
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    // Export file list
+                    const fileList = files.map(f => ({
+                      name: f.originalName,
+                      size: f.size,
+                      type: f.type,
+                      created: f.createdAt
+                    }))
+                    console.log('File list:', fileList)
+                    toast.success('File list logged to console')
+                  }}
+                >
+                  Export List
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
-  );
+  )
 } 

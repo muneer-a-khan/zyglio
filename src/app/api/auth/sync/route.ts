@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
     }
 
     // Check if the user already exists in the database
-    let user = await prisma.users.findUnique({
+    let user = await prisma.user.findUnique({
       where: { email }
     });
 
@@ -35,9 +35,8 @@ export async function GET(req: NextRequest) {
     }
 
     // Create the user in the database
-    user = await prisma.users.create({
+    user = await prisma.user.create({
       data: {
-        id,
         email,
         name: name || email.split('@')[0],
       }

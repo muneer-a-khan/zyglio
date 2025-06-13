@@ -131,8 +131,8 @@ const MindMapContent: React.FC<MindMapProps> = ({ nodes, edges, forceInitialCent
   // Center the view on update
   useEffect(() => {
     if (mindMapNodes.length > 0 && reactFlowInstance) {
-      // Use more aggressive timing for flowchart pages, including immediate execution
-      const timeouts = forceInitialCenter ? [0, 50, 150] : [100, 300, 600];
+      // Use more aggressive timing for flowchart pages
+      const timeouts = forceInitialCenter ? [50, 150, 300] : [100, 300, 600];
       
       timeouts.forEach((delay) => {
         setTimeout(() => {
@@ -158,7 +158,7 @@ const MindMapContent: React.FC<MindMapProps> = ({ nodes, edges, forceInitialCent
               reactFlowInstance.setCenter(
                 firstNode.position.x + 200, 
                 firstNode.position.y + 150, 
-                { zoom: zoomLevel, duration: delay === 0 ? 0 : (delay === timeouts[timeouts.length - 1] ? 800 : 0) }
+                { zoom: zoomLevel, duration: delay === timeouts[timeouts.length - 1] ? 800 : 0 }
               );
             } else {
               // Fallback to standard fit view with higher zoom
@@ -166,14 +166,14 @@ const MindMapContent: React.FC<MindMapProps> = ({ nodes, edges, forceInitialCent
                 padding: forceInitialCenter ? 0.15 : 0.2, 
                 minZoom: forceInitialCenter ? 0.85 : 0.8, 
                 maxZoom: 1.2,
-                duration: delay === 0 ? 0 : (delay === timeouts[timeouts.length - 1] ? 800 : 0)
+                duration: delay === timeouts[timeouts.length - 1] ? 800 : 0
               });
             }
           } else {
             // For mind maps, use standard fit view
             reactFlowInstance.fitView({ 
               padding: 0.5,
-              duration: delay === 0 ? 0 : (delay === timeouts[timeouts.length - 1] ? 800 : 0)
+              duration: delay === timeouts[timeouts.length - 1] ? 800 : 0
             });
           }
         }, delay);
@@ -192,7 +192,7 @@ const MindMapContent: React.FC<MindMapProps> = ({ nodes, edges, forceInitialCent
     console.log("ReactFlow initialized");
     
     // Multiple attempts to ensure proper initial positioning
-    const initTimeouts = forceInitialCenter ? [0, 25, 100] : [50, 200, 500, 1000];
+    const initTimeouts = forceInitialCenter ? [25, 100, 250, 500] : [50, 200, 500, 1000];
     
     initTimeouts.forEach((delay) => {
       setTimeout(() => {
@@ -218,21 +218,21 @@ const MindMapContent: React.FC<MindMapProps> = ({ nodes, edges, forceInitialCent
             instance.setCenter(
               firstNode.position.x + 200, 
               firstNode.position.y + 150, 
-              { zoom: zoomLevel, duration: delay === 0 ? 0 : (delay === initTimeouts[initTimeouts.length - 1] ? 1000 : 0) }
+              { zoom: zoomLevel, duration: delay === initTimeouts[initTimeouts.length - 1] ? 1000 : 0 }
             );
           } else {
             instance.fitView({ 
               padding: forceInitialCenter ? 0.15 : 0.2, 
               minZoom: forceInitialCenter ? 0.85 : 0.8, 
               maxZoom: 1.2,
-              duration: delay === 0 ? 0 : (delay === initTimeouts[initTimeouts.length - 1] ? 1000 : 0)
+              duration: delay === initTimeouts[initTimeouts.length - 1] ? 1000 : 0
             });
           }
         } else {
           // For mind maps, use standard fit view
           instance.fitView({ 
             padding: 0.5,
-            duration: delay === 0 ? 0 : (delay === initTimeouts[initTimeouts.length - 1] ? 1000 : 0)
+            duration: delay === initTimeouts[initTimeouts.length - 1] ? 1000 : 0
           });
         }
       }, delay);
@@ -349,7 +349,7 @@ const MindMapContent: React.FC<MindMapProps> = ({ nodes, edges, forceInitialCent
             onNodeClick={onNodeClick}
             minZoom={0.05} // Allow zooming out further
             maxZoom={2} // Allow closer zoom
-            fitView={!forceInitialCenter} // Disable automatic fitView for flowchart pages
+            fitView
             fitViewOptions={{ padding: 0.4, minZoom: 0.6, maxZoom: 1.5 }} // Improved fit view options
             attributionPosition="bottom-right"
             className="border-2 border-gray-100"
@@ -360,7 +360,7 @@ const MindMapContent: React.FC<MindMapProps> = ({ nodes, edges, forceInitialCent
             zoomOnScroll={true}
             panOnScroll={false}
             panOnDrag={true}
-            defaultViewport={{ x: 0, y: 0, zoom: forceInitialCenter ? 0.9 : 0.75 }} // Higher initial zoom for flowchart pages
+            defaultViewport={{ x: 0, y: 0, zoom: 0.75 }} // Increased from 0.6 to 0.75 for better initial zoom
           >
             <Background color="#94a3b8" gap={16} size={1} />
             <Controls className="bg-white shadow-md rounded border border-gray-200" />
