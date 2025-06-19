@@ -59,4 +59,82 @@ export async function generateYamlFromSteps(steps: Step[], procedureName: string
     console.error('Error generating YAML from steps (DeepSeek):', error);
     throw error;
   }
+}
+
+/**
+ * Generate smart objects from YAML using DeepSeek API
+ */
+export async function generateObjectsFromYaml(yamlContent: string, procedureName?: string): Promise<any[]> {
+  try {
+    const response = await fetch('/api/deepseek/generate-objects', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ yamlContent, procedureName }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || 'Failed to generate objects from YAML via DeepSeek');
+    }
+
+    const data = await response.json();
+    return data.objects || [];
+  } catch (error) {
+    console.error('Error generating objects from YAML (DeepSeek):', error);
+    throw error;
+  }
+}
+
+/**
+ * Generate scenario steps from YAML using DeepSeek API
+ */
+export async function generateScenariosFromYaml(yamlContent: string, objects?: any[]): Promise<any[]> {
+  try {
+    const response = await fetch('/api/deepseek/generate-scenarios', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ yamlContent, objects }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || 'Failed to generate scenarios from YAML via DeepSeek');
+    }
+
+    const data = await response.json();
+    return data.scenarios || [];
+  } catch (error) {
+    console.error('Error generating scenarios from YAML (DeepSeek):', error);
+    throw error;
+  }
+}
+
+/**
+ * Generate triggers from YAML using DeepSeek API
+ */
+export async function generateTriggersFromYaml(yamlContent: string, objects?: any[], scenarios?: any[]): Promise<any[]> {
+  try {
+    const response = await fetch('/api/deepseek/generate-triggers', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ yamlContent, objects, scenarios }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || 'Failed to generate triggers from YAML via DeepSeek');
+    }
+
+    const data = await response.json();
+    return data.triggers || [];
+  } catch (error) {
+    console.error('Error generating triggers from YAML (DeepSeek):', error);
+    throw error;
+  }
 } 
