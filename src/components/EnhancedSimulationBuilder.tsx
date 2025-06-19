@@ -81,6 +81,7 @@ const EnhancedSimulationBuilder = ({
   );
   const [simulationState, setSimulationState] = useState<SimulationState | null>(null);
   const [isRunning, setIsRunning] = useState(false);
+  const [selectedObjects, setSelectedObjects] = useState<string[]>([]);
 
   useEffect(() => {
     if (initialSettings) {
@@ -240,28 +241,25 @@ const EnhancedSimulationBuilder = ({
     <Card className="w-full">
       <CardHeader>
         <div className="flex justify-between items-center">
-          <CardTitle className="text-xl">Enhanced Simulation Builder</CardTitle>
-          <div className="flex gap-2">
-            {yamlContent && (
-              <Button 
-                onClick={handleGenerateFromYaml}
-                variant="outline"
-                className="bg-purple-50 hover:bg-purple-100 border-purple-200"
-              >
-                <Wand2 className="w-4 h-4 mr-2" />
-                Generate from YAML
-              </Button>
-            )}
-            {isRunning ? (
-              <Button onClick={handleStopSimulation} variant="destructive">
-                Stop Simulation
-              </Button>
-            ) : (
-              <Button onClick={handleStartSimulation} className="bg-green-600 hover:bg-green-700">
-                <Play className="w-4 h-4 mr-2" />
-                Start Simulation
-              </Button>
-            )}
+          <div>
+            <CardTitle className="text-2xl font-bold text-gray-900">
+              {procedureName} Simulation
+            </CardTitle>
+            <p className="text-sm text-gray-600 mt-1">
+              Create and manage interactive simulation elements
+            </p>
+          </div>
+          
+          <div className="flex items-center gap-4">
+            <Badge variant="outline" className="bg-blue-50 border-blue-200 text-blue-800">
+              {settings.objects.length} Objects
+            </Badge>
+            <Badge variant="outline" className="bg-purple-50 border-purple-200 text-purple-800">
+              {settings.scenarios.length} Scenarios
+            </Badge>
+            <Badge variant="outline" className="bg-orange-50 border-orange-200 text-orange-800">
+              {settings.triggers.length} Triggers
+            </Badge>
           </div>
         </div>
         
@@ -296,254 +294,339 @@ const EnhancedSimulationBuilder = ({
       <CardContent>
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList className="grid w-full grid-cols-6 mb-6">
-            <TabsTrigger value="settings">
-              <Settings className="w-4 h-4 mr-2" />
+            <TabsTrigger value="settings" className="flex items-center gap-2">
+              <Settings className="w-4 h-4" />
               Settings
             </TabsTrigger>
-            <TabsTrigger value="objects">
-              <Package className="w-4 h-4 mr-2" />
-              Objects
+            <TabsTrigger value="objects" className="flex items-center gap-2">
+              <Package className="w-4 h-4" />
+              Objects ({settings.objects.length})
             </TabsTrigger>
-            <TabsTrigger value="scenarios">
-              <Target className="w-4 h-4 mr-2" />
-              Scenarios
+            <TabsTrigger value="scenarios" className="flex items-center gap-2">
+              <Target className="w-4 h-4" />
+              Scenarios ({settings.scenarios.length})
             </TabsTrigger>
-            <TabsTrigger value="triggers">
-              <Zap className="w-4 h-4 mr-2" />
-              Triggers
+            <TabsTrigger value="triggers" className="flex items-center gap-2">
+              <Zap className="w-4 h-4" />
+              Triggers ({settings.triggers.length})
             </TabsTrigger>
-            <TabsTrigger value="monitor">
-              <Monitor className="w-4 h-4 mr-2" />
+            <TabsTrigger value="monitor" className="flex items-center gap-2">
+              <Monitor className="w-4 h-4" />
               Monitor
             </TabsTrigger>
-            <TabsTrigger value="analytics">
-              <BarChart className="w-4 h-4 mr-2" />
-              Analytics
+            <TabsTrigger value="preview" className="flex items-center gap-2">
+              <Play className="w-4 h-4" />
+              Preview
             </TabsTrigger>
           </TabsList>
 
+          {/* Settings Tab */}
           <TabsContent value="settings" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Basic Settings</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {/* Basic simulation mode and settings */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-sm font-medium">Simulation Mode</label>
-                    <select 
-                      className="w-full mt-1 p-2 border rounded-md"
-                      value={settings.mode}
-                      onChange={(e) => handleSettingChange('mode', e.target.value)}
-                    >
-                      <option value="guided">Guided Mode</option>
-                      <option value="freeform">Freeform Mode</option>
-                      <option value="scenario_based">Scenario-Based Mode</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium">Environment Type</label>
-                    <select 
-                      className="w-full mt-1 p-2 border rounded-md"
-                      value={settings.environmentType}
-                      onChange={(e) => handleSettingChange('environmentType', e.target.value)}
-                    >
-                      <option value="virtual">Virtual</option>
-                      <option value="laboratory">Laboratory</option>
-                      <option value="clinical">Clinical</option>
-                      <option value="field">Field</option>
-                      <option value="hybrid">Hybrid</option>
-                    </select>
-                  </div>
-                </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">Simulation Settings</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {/* Add your settings controls here */}
+                </CardContent>
+              </Card>
 
-                <div className="grid grid-cols-3 gap-4">
-                  <div>
-                    <label className="text-sm font-medium">Difficulty Level</label>
-                    <select 
-                      className="w-full mt-1 p-2 border rounded-md"
-                      value={settings.difficulty}
-                      onChange={(e) => handleSettingChange('difficulty', e.target.value)}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">Quick Actions</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex flex-wrap gap-3">
+                    {yamlContent && (
+                      <Button 
+                        onClick={handleGenerateFromYaml}
+                        variant="outline"
+                        className="bg-purple-50 hover:bg-purple-100 border-purple-200"
+                      >
+                        <Wand2 className="w-4 h-4 mr-2" />
+                        Generate from YAML
+                      </Button>
+                    )}
+                    <Button 
+                      onClick={() => setActiveTab("objects")}
+                      variant="outline"
+                      disabled={settings.objects.length === 0}
                     >
-                      <option value="easy">Easy</option>
-                      <option value="medium">Medium</option>
-                      <option value="hard">Hard</option>
-                    </select>
+                      Manage Objects
+                    </Button>
+                    <Button 
+                      onClick={() => setActiveTab("scenarios")}
+                      variant="outline"
+                      disabled={settings.objects.length === 0}
+                    >
+                      Build Scenarios
+                    </Button>
+                    <Button 
+                      onClick={() => setActiveTab("triggers")}
+                      variant="outline"
+                      disabled={settings.objects.length === 0}
+                    >
+                      Add Triggers
+                    </Button>
+                    <Button 
+                      onClick={() => setActiveTab("preview")}
+                      variant="outline"
+                      disabled={settings.scenarios.length === 0}
+                      className="bg-green-50 hover:bg-green-100 border-green-200"
+                    >
+                      <Play className="w-4 h-4 mr-2" />
+                      Preview Simulation
+                    </Button>
                   </div>
-                  <div>
-                    <label className="text-sm font-medium">Time Limit (minutes)</label>
-                    <input 
-                      type="number"
-                      className="w-full mt-1 p-2 border rounded-md"
-                      value={settings.timeLimit || 300}
-                      onChange={(e) => handleSettingChange('timeLimit', parseInt(e.target.value) || 0)}
-                    />
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium">Max Retries</label>
-                    <input 
-                      type="number"
-                      className="w-full mt-1 p-2 border rounded-md"
-                      value={settings.maxRetries || 3}
-                      onChange={(e) => handleSettingChange('maxRetries', parseInt(e.target.value) || 0)}
-                    />
-                  </div>
-                </div>
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
 
-                {/* Feature toggles */}
-                <div className="space-y-3">
-                  <h4 className="font-medium">Advanced Features</h4>
-                  <div className="grid grid-cols-2 gap-4">
-                    {[
-                      { key: 'enableObjectInteractions', label: 'Object Interactions' },
-                      { key: 'enableDynamicScenarios', label: 'Dynamic Scenarios' },
-                      { key: 'enableAdvancedTriggers', label: 'Advanced Triggers' },
-                      { key: 'realtimeMonitoring', label: 'Realtime Monitoring' },
-                      { key: 'adaptiveDifficulty', label: 'Adaptive Difficulty' },
-                      { key: 'enableScoring', label: 'Scoring System' },
-                    ].map((feature) => (
-                      <label key={feature.key} className="flex items-center space-x-2">
-                        <input
-                          type="checkbox"
-                          checked={settings[feature.key as keyof EnhancedSimulationSettings] as boolean}
-                          onChange={(e) => handleSettingChange(feature.key as keyof EnhancedSimulationSettings, e.target.checked)}
-                          className="rounded"
-                        />
-                        <span className="text-sm">{feature.label}</span>
-                      </label>
+          {/* Objects Tab */}
+          <TabsContent value="objects" className="space-y-6">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <Card className="h-full">
+                <CardHeader>
+                  <CardTitle>Create Objects</CardTitle>
+                </CardHeader>
+                <CardContent className="h-full p-0">
+                  <ObjectManager
+                    objects={settings.objects}
+                    onAddObject={(obj) => handleObjectsChange([...settings.objects, obj])}
+                    onUpdateObject={(id, updatedObj) => 
+                      handleObjectsChange(settings.objects.map(obj => 
+                        obj.id === id ? updatedObj : obj
+                      ))
+                    }
+                    onDeleteObject={(id) => 
+                      handleObjectsChange(settings.objects.filter(obj => obj.id !== id))
+                    }
+                    onSelectObjects={setSelectedObjects}
+                    selectedObjects={selectedObjects}
+                  />
+                </CardContent>
+              </Card>
+              
+              <Card className="h-full">
+                <CardHeader>
+                  <CardTitle>Object Library</CardTitle>
+                </CardHeader>
+                <CardContent className="h-full p-0">
+                  <div className="space-y-3 max-h-[600px] overflow-y-auto p-4">
+                    {settings.objects.map((obj) => (
+                      <div key={obj.id} className="border rounded-lg p-3">
+                        <div className="flex items-center justify-between mb-2">
+                          <h4 className="font-medium">{obj.name}</h4>
+                          <Badge variant="secondary">{obj.type}</Badge>
+                        </div>
+                        <p className="text-sm text-gray-600 mb-2">{obj.description}</p>
+                        <div className="flex flex-wrap gap-1">
+                          {obj.tags.map((tag, index) => (
+                            <Badge key={index} variant="outline" className="text-xs">
+                              {tag}
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
                     ))}
+                    {settings.objects.length === 0 && (
+                      <p className="text-gray-500 text-center py-4">No objects created yet</p>
+                    )}
                   </div>
-                </div>
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
 
-                {/* Active scenario selection */}
-                {settings.scenarios.length > 0 && (
-                  <div>
-                    <label className="text-sm font-medium">Active Scenario</label>
-                    <select 
-                      className="w-full mt-1 p-2 border rounded-md"
-                      value={settings.activeScenarioId || ""}
-                      onChange={(e) => handleSettingChange('activeScenarioId', e.target.value || undefined)}
-                    >
-                      <option value="">No specific scenario</option>
-                      {settings.scenarios.map((scenario) => (
-                        <option key={scenario.id} value={scenario.id}>
-                          {scenario.name} ({scenario.difficulty})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                )}
+          {/* Scenarios Tab */}
+          <TabsContent value="scenarios" className="h-[calc(100vh-16rem)]">
+            <Card className="h-full">
+              <CardHeader>
+                <CardTitle>Scenario Flow Builder</CardTitle>
+              </CardHeader>
+              <CardContent className="h-full p-0">
+                <ScenarioManager
+                  objects={settings.objects}
+                  scenarios={settings.scenarios}
+                  onAddScenario={(scenario) => handleScenariosChange([...settings.scenarios, scenario])}
+                  onUpdateScenario={(id, updatedScenario) => 
+                    handleScenariosChange(settings.scenarios.map(scenario => 
+                      scenario.id === id ? updatedScenario : scenario
+                    ))
+                  }
+                  onDeleteScenario={(id) => 
+                    handleScenariosChange(settings.scenarios.filter(scenario => scenario.id !== id))
+                  }
+                />
               </CardContent>
             </Card>
           </TabsContent>
 
-          <TabsContent value="objects">
-            <ObjectManager
-              objects={settings.objects}
-              onObjectsChange={handleObjectsChange}
-            />
-          </TabsContent>
-
-          <TabsContent value="scenarios">
-            <ScenarioManager
-              scenarios={settings.scenarios}
-              objects={settings.objects}
-              triggers={settings.triggers}
-              onScenariosChange={handleScenariosChange}
-              onActivateScenario={handleScenarioActivation}
-            />
-          </TabsContent>
-
-          <TabsContent value="triggers">
-            <TriggerManager
-              triggers={settings.triggers}
-              objects={settings.objects}
-              onTriggersChange={handleTriggersChange}
-            />
-          </TabsContent>
-
-          <TabsContent value="monitor" className="space-y-6">
-            <Card>
+          {/* Triggers Tab */}
+          <TabsContent value="triggers" className="h-[calc(100vh-16rem)]">
+            <Card className="h-full">
               <CardHeader>
-                <CardTitle>Simulation Monitor</CardTitle>
+                <CardTitle>Trigger Logic Editor</CardTitle>
               </CardHeader>
-              <CardContent>
+              <CardContent className="h-full p-0">
+                <TriggerManager
+                  objects={settings.objects}
+                  triggers={settings.triggers}
+                  onAddTrigger={(trigger) => handleTriggersChange([...settings.triggers, trigger])}
+                  onUpdateTrigger={(id, updatedTrigger) => 
+                    handleTriggersChange(settings.triggers.map(trigger => 
+                      trigger.id === id ? updatedTrigger : trigger
+                    ))
+                  }
+                  onDeleteTrigger={(id) => 
+                    handleTriggersChange(settings.triggers.filter(trigger => trigger.id !== id))
+                  }
+                />
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Monitor Tab */}
+          <TabsContent value="monitor" className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {/* System Status */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">System Status</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-gray-600">Simulation Status</span>
+                      <Badge variant={isRunning ? "default" : "outline"} className={isRunning ? "bg-green-600" : "text-gray-600"}>
+                        {isRunning ? "Running" : "Stopped"}
+                      </Badge>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-gray-600">Active Scenario</span>
+                      <Badge variant="outline">
+                        {settings.activeScenarioId ? "Active" : "None"}
+                      </Badge>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-gray-600">Object Interactions</span>
+                      <Badge variant="outline">
+                        {settings.enableObjectInteractions ? "Enabled" : "Disabled"}
+                      </Badge>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Object Statistics */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">Object Statistics</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-gray-600">Total Objects</span>
+                      <Badge variant="outline">{settings.objects.length}</Badge>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-gray-600">Interactive</span>
+                      <Badge variant="outline">
+                        {settings.objects.filter(obj => obj.interactive).length}
+                      </Badge>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-gray-600">Selected</span>
+                      <Badge variant="outline">
+                        {selectedObjects.length}
+                      </Badge>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Scenario Statistics */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">Scenario Statistics</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-gray-600">Total Scenarios</span>
+                      <Badge variant="outline">{settings.scenarios.length}</Badge>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-gray-600">Active Triggers</span>
+                      <Badge variant="outline">
+                        {settings.triggers.filter(trigger => trigger.isActive).length}
+                      </Badge>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-gray-600">Dynamic Scenarios</span>
+                      <Badge variant="outline">
+                        {settings.enableDynamicScenarios ? "Enabled" : "Disabled"}
+                      </Badge>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
+
+          {/* Preview Tab */}
+          <TabsContent value="preview" className="h-[calc(100vh-16rem)]">
+            <Card className="h-full">
+              <CardHeader>
+                <div className="flex justify-between items-center">
+                  <CardTitle>Interactive Preview</CardTitle>
+                  <div className="flex gap-2">
+                    {isRunning ? (
+                      <Button onClick={handleStopSimulation} variant="destructive">
+                        Stop Simulation
+                      </Button>
+                    ) : (
+                      <Button 
+                        onClick={handleStartSimulation} 
+                        className="bg-green-600 hover:bg-green-700"
+                        disabled={settings.scenarios.length === 0}
+                      >
+                        <Play className="w-4 h-4 mr-2" />
+                        Start Simulation
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="h-full p-0">
                 {simulationState ? (
-                  <div className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <p className="text-sm font-medium">Session ID</p>
-                        <p className="text-sm text-gray-600">{simulationState.sessionId}</p>
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium">Current Step</p>
-                        <p className="text-sm text-gray-600">{simulationState.currentStepId}</p>
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium">Score</p>
-                        <p className="text-sm text-gray-600">{simulationState.score}</p>
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium">Status</p>
-                        <Badge variant={simulationState.isPaused ? "secondary" : "default"}>
-                          {simulationState.isPaused ? "Paused" : "Running"}
-                        </Badge>
-                      </div>
-                    </div>
-
-                    <div>
-                      <p className="text-sm font-medium mb-2">Active Objects</p>
-                      <div className="grid gap-2">
-                        {Object.entries(simulationState.activeObjects).map(([id, obj]: [string, any]) => (
-                          <div key={id} className="p-2 border rounded text-sm">
-                            <strong>{obj._meta.name}</strong> ({obj._meta.type})
-                            {obj._meta.lastInteraction && (
-                              <p className="text-xs text-gray-500">
-                                Last interaction: {new Date(obj._meta.lastInteraction).toLocaleTimeString()}
-                              </p>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div>
-                      <p className="text-sm font-medium mb-2">Recent Actions</p>
-                      <div className="space-y-1 max-h-40 overflow-y-auto">
-                        {simulationState.userActions.slice(-10).reverse().map((action, index) => (
-                          <div key={action.id} className="text-xs p-2 bg-gray-50 rounded">
-                            <span className="font-medium">{action.type}</span>
-                            <span className="text-gray-500 ml-2">
-                              {new Date(action.timestamp).toLocaleTimeString()}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
+                  <div className="h-full p-4">
+                    {/* Add your preview component here */}
+                    <p className="text-gray-500 text-center py-4">
+                      Simulation preview will be implemented here
+                    </p>
                   </div>
                 ) : (
-                  <div className="text-center py-8 text-gray-500">
-                    <Monitor className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                    <p>No active simulation to monitor</p>
-                    <p className="text-sm">Start a simulation to see real-time data</p>
+                  <div className="h-full flex items-center justify-center">
+                    <div className="text-center">
+                      <Play className="h-12 w-12 mx-auto text-gray-400 mb-4" />
+                      <h2 className="text-xl font-semibold mb-2">Start Simulation</h2>
+                      <p className="text-gray-500 mb-4">
+                        Click the "Start Simulation" button to begin the interactive preview
+                      </p>
+                      <Button 
+                        onClick={handleStartSimulation}
+                        className="bg-green-600 hover:bg-green-700"
+                        disabled={settings.scenarios.length === 0}
+                      >
+                        <Play className="w-4 h-4 mr-2" />
+                        Start Simulation
+                      </Button>
+                    </div>
                   </div>
                 )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="analytics" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Simulation Analytics</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-center py-8 text-gray-500">
-                  <BarChart className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                  <p>Analytics Dashboard</p>
-                  <p className="text-sm">Coming soon - comprehensive analytics and reporting</p>
-                </div>
               </CardContent>
             </Card>
           </TabsContent>

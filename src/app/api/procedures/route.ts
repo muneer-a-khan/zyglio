@@ -15,6 +15,23 @@ export async function POST(req: NextRequest) {
     const userId = session.user.id;
     const taskData = await req.json();
     
+    // Ensure the user exists in the database
+    let user = await prisma.user.findUnique({
+      where: { id: userId }
+    });
+
+    if (!user) {
+      // Create the user if they don't exist
+      user = await prisma.user.create({
+        data: {
+          id: userId,
+          email: session.user.email || `${userId}@example.com`,
+          name: session.user.name || 'User',
+        }
+      });
+      console.log("Created user in database:", user.id);
+    }
+    
     // Generate UUIDs for the task and procedure
     const taskId = uuidv4();
     const procedureId = uuidv4();

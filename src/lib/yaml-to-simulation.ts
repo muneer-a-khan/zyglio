@@ -4,10 +4,8 @@ import {
   SimulationObject,
   SimulationScenario,
   SimulationTrigger,
-  TriggerEvent,
-  TriggerAction,
-  ScenarioCondition,
-  ScenarioOutcome
+  SimulationCondition,
+  GeneratedSimulationElements
 } from '@/types/simulation';
 
 interface YamlStep {
@@ -34,12 +32,6 @@ interface YamlProcedure {
     'post-operative'?: string[];
   };
   goals?: string[];
-}
-
-export interface GeneratedSimulationElements {
-  objects: SimulationObject[];
-  scenarios: SimulationScenario[];
-  triggers: SimulationTrigger[];
 }
 
 /**
@@ -92,9 +84,8 @@ function generateObjectsFromYaml(yamlData: YamlProcedure): SimulationObject[] {
   objects.push({
     id: uuidv4(),
     name: 'Patient',
-    type: 'person',
-    description: 'The patient undergoing the procedure',
-    properties: {
+    category: 'Person',
+    attributes: {
       vitals: {
         bloodPressure: '120/80',
         heartRate: 72,
@@ -105,8 +96,11 @@ function generateObjectsFromYaml(yamlData: YamlProcedure): SimulationObject[] {
       consciousness: 'alert',
       status: 'stable'
     },
-    interactions: ['assess', 'position', 'monitor', 'examine'],
-    tags: ['patient', 'primary'],
+    states: ['stable', 'unstable', 'critical'],
+    behaviors: ['assess', 'position', 'monitor', 'examine'],
+    signals: ['vital_change', 'position_change', 'status_change'],
+    currentState: 'stable',
+    simulationTags: ['patient', 'primary'],
     createdAt: now,
     updatedAt: now
   });
@@ -115,15 +109,17 @@ function generateObjectsFromYaml(yamlData: YamlProcedure): SimulationObject[] {
   objects.push({
     id: uuidv4(),
     name: 'Healthcare Provider',
-    type: 'person',
-    description: 'The healthcare professional performing the procedure',
-    properties: {
+    category: 'Person',
+    attributes: {
       role: 'physician',
       experience: 'experienced',
       sterile: true
     },
-    interactions: ['perform', 'assess', 'document', 'communicate'],
-    tags: ['provider', 'staff'],
+    states: ['ready', 'busy', 'sterile', 'contaminated'],
+    behaviors: ['perform', 'assess', 'document', 'communicate'],
+    signals: ['action_start', 'action_complete', 'status_change'],
+    currentState: 'ready',
+    simulationTags: ['provider', 'staff'],
     createdAt: now,
     updatedAt: now
   });
@@ -138,16 +134,18 @@ function generateObjectsFromYaml(yamlData: YamlProcedure): SimulationObject[] {
         objects.push({
           id: uuidv4(),
           name: keyword.charAt(0).toUpperCase() + keyword.slice(1),
-          type: 'equipment',
-          description: `${keyword} used in ${step.title}`,
-          properties: {
+          category: 'Equipment',
+          attributes: {
             isReady: false,
             isCalibrated: true,
             batteryLevel: 100,
             lastMaintenance: new Date().toISOString()
           },
-          interactions: ['setup', 'calibrate', 'use', 'clean'],
-          tags: ['equipment', keyword],
+          states: ['ready', 'not_ready', 'in_use', 'maintenance_needed'],
+          behaviors: ['setup', 'calibrate', 'use', 'clean'],
+          signals: ['status_change', 'maintenance_needed', 'calibration_needed'],
+          currentState: 'not_ready',
+          simulationTags: ['equipment', keyword],
           createdAt: now,
           updatedAt: now
         });
@@ -160,15 +158,17 @@ function generateObjectsFromYaml(yamlData: YamlProcedure): SimulationObject[] {
         objects.push({
           id: uuidv4(),
           name: keyword.charAt(0).toUpperCase() + keyword.slice(1),
-          type: 'material',
-          description: `${keyword} required for ${step.title}`,
-          properties: {
+          category: 'Tool',
+          attributes: {
             quantity: 1,
             sterile: true,
             expirationDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString()
           },
-          interactions: ['prepare', 'use', 'dispose'],
-          tags: ['material', keyword],
+          states: ['available', 'in_use', 'depleted', 'expired'],
+          behaviors: ['prepare', 'use', 'dispose'],
+          signals: ['quantity_change', 'expiration_warning', 'sterility_compromised'],
+          currentState: 'available',
+          simulationTags: ['material', keyword],
           createdAt: now,
           updatedAt: now
         });
@@ -181,16 +181,18 @@ function generateObjectsFromYaml(yamlData: YamlProcedure): SimulationObject[] {
         objects.push({
           id: uuidv4(),
           name: keyword.charAt(0).toUpperCase() + keyword.slice(1),
-          type: 'environment',
-          description: `${keyword} environment for the procedure`,
-          properties: {
+          category: 'Location',
+          attributes: {
             temperature: 22,
             humidity: 45,
             lighting: 'optimal',
             sterile: stepText.includes('sterile')
           },
-          interactions: ['prepare', 'maintain', 'monitor'],
-          tags: ['environment', keyword],
+          states: ['prepared', 'in_use', 'contaminated', 'needs_cleaning'],
+          behaviors: ['prepare', 'maintain', 'monitor'],
+          signals: ['environment_change', 'contamination_detected', 'maintenance_needed'],
+          currentState: 'prepared',
+          simulationTags: ['environment', keyword],
           createdAt: now,
           updatedAt: now
         });
@@ -202,15 +204,17 @@ function generateObjectsFromYaml(yamlData: YamlProcedure): SimulationObject[] {
   objects.push({
     id: uuidv4(),
     name: 'Procedure Documentation',
-    type: 'document',
-    description: 'Documentation and records for the procedure',
-    properties: {
+    category: 'Tool',
+    attributes: {
       completed: false,
       signed: false,
       sections: ['patient_info', 'procedure_notes', 'outcomes']
     },
-    interactions: ['complete', 'sign', 'review', 'archive'],
-    tags: ['documentation', 'record'],
+    states: ['incomplete', 'in_progress', 'completed', 'signed'],
+    behaviors: ['complete', 'sign', 'review', 'archive'],
+    signals: ['section_complete', 'document_signed', 'review_needed'],
+    currentState: 'incomplete',
+    simulationTags: ['documentation', 'record'],
     createdAt: now,
     updatedAt: now
   });
@@ -228,20 +232,20 @@ function generateScenariosFromYaml(yamlData: YamlProcedure): SimulationScenario[
   // Main scenario based on the complete procedure
   const mainScenario: SimulationScenario = {
     id: uuidv4(),
-    name: yamlData.procedure_name,
-    description: yamlData.purpose,
-    objectives: yamlData.goals || [
+    instruction: yamlData.purpose,
+    requiredObjects: [], // Will be populated with object IDs
+    requiredActions: yamlData.goals || [
       'Complete the procedure successfully',
       'Maintain patient safety throughout',
       'Follow proper protocols and guidelines'
     ],
-    difficulty: 'intermediate',
-    estimatedDuration: Math.max(30, yamlData.steps.length * 3), // 3 minutes per step minimum
-    objects: [], // Will be populated with object IDs
-    triggers: [], // Will be populated with trigger IDs
-    conditions: generateConditionsFromSteps(yamlData.steps),
-    outcomes: generateOutcomesFromSteps(yamlData.steps),
-    tags: ['main', 'complete', 'procedure'],
+    conditions: [], // Base type requires string[]
+    simulationConditions: generateConditionsFromSteps(yamlData.steps), // Detailed conditions
+    feedback: 'Complete the procedure following all steps and guidelines',
+    position: { x: 0, y: 0 },
+    stepIndex: 0,
+    isCheckpoint: true,
+    simulationTags: ['main', 'complete', 'procedure'],
     createdAt: now,
     updatedAt: now
   };
@@ -255,18 +259,15 @@ function generateScenariosFromYaml(yamlData: YamlProcedure): SimulationScenario[
     if (step.options && step.options.length > 2) {
       scenarios.push({
         id: uuidv4(),
-        name: `${step.title} - Decision Training`,
-        description: `Focused training on decision-making for: ${step.description}`,
-        objectives: [
+        instruction: `Focused training on decision-making for: ${step.description}`,
+        requiredObjects: [],
+        requiredActions: [
           `Master the decision criteria for ${step.title}`,
           'Understand the implications of each choice',
           'Practice rapid decision-making'
         ],
-        difficulty: 'advanced',
-        estimatedDuration: 15,
-        objects: [],
-        triggers: [],
-        conditions: [{
+        conditions: [],
+        simulationConditions: [{
           id: uuidv4(),
           type: 'action',
           description: `Complete ${step.title} decision point`,
@@ -274,14 +275,12 @@ function generateScenariosFromYaml(yamlData: YamlProcedure): SimulationScenario[
           operator: 'exists',
           value: true
         }],
-        outcomes: step.options.map(option => ({
-          id: uuidv4(),
-          type: 'information',
-          title: option.choice,
-          description: option.condition,
-          feedback: `Selected: ${option.choice}. This leads to the next step in the procedure.`
-        })),
-        tags: ['decision', 'training', step.id],
+        feedback: 'Make the correct decision based on the situation',
+        position: { x: index * 200, y: 100 },
+        stepIndex: index + 1,
+        isCheckpoint: true,
+        expectedResponses: step.options.map(opt => opt.choice),
+        simulationTags: ['decision', 'training', step.id],
         createdAt: now,
         updatedAt: now
       });
@@ -298,18 +297,15 @@ function generateScenariosFromYaml(yamlData: YamlProcedure): SimulationScenario[
   if (emergencySteps.length > 0) {
     scenarios.push({
       id: uuidv4(),
-      name: 'Emergency Response Training',
-      description: 'Training focused on handling emergency situations and complications',
-      objectives: [
+      instruction: 'Training focused on handling emergency situations and complications',
+      requiredObjects: [],
+      requiredActions: [
         'Recognize emergency situations quickly',
         'Implement emergency protocols correctly',
         'Maintain calm under pressure'
       ],
-      difficulty: 'advanced',
-      estimatedDuration: 20,
-      objects: [],
-      triggers: [],
-      conditions: [{
+      conditions: [],
+      simulationConditions: [{
         id: uuidv4(),
         type: 'response',
         description: 'Emergency situation triggered',
@@ -317,22 +313,12 @@ function generateScenariosFromYaml(yamlData: YamlProcedure): SimulationScenario[
         operator: 'equals',
         value: true
       }],
-      outcomes: [{
-        id: uuidv4(),
-        type: 'success',
-        title: 'Emergency Handled Successfully',
-        description: 'Emergency situation was resolved appropriately',
-        score: 100,
-        feedback: 'Excellent emergency response! You followed protocols correctly.'
-      }, {
-        id: uuidv4(),
-        type: 'failure',
-        title: 'Emergency Response Needs Improvement',
-        description: 'Emergency handling could be improved',
-        score: 50,
-        feedback: 'Review emergency protocols and practice response times.'
-      }],
-      tags: ['emergency', 'advanced', 'critical'],
+      feedback: 'Handle the emergency situation appropriately',
+      position: { x: 0, y: 200 },
+      stepIndex: scenarios.length,
+      isCheckpoint: true,
+      expectedResponses: ['Call for help', 'Assess patient', 'Begin emergency protocol'],
+      simulationTags: ['emergency', 'advanced', 'critical'],
       createdAt: now,
       updatedAt: now
     });
@@ -353,30 +339,14 @@ function generateTriggersFromYaml(yamlData: YamlProcedure): SimulationTrigger[] 
     // Step start trigger
     triggers.push({
       id: uuidv4(),
-      name: `${step.title} - Start`,
-      description: `Trigger when ${step.title} begins`,
-      type: 'event',
-      event: {
-        type: 'step_start',
-        target: step.id,
-        parameters: { stepIndex: index }
-      },
-      conditions: [],
-      actions: [{
-        id: uuidv4(),
-        type: 'show_message',
-        description: `Display step instructions`,
-        parameters: {
-          title: step.title,
-          message: step.description,
-          type: 'info'
-        }
-      }],
-      priority: 'medium',
+      objectId: 'system', // System-level trigger
+      signal: 'step_start',
+      condition: `current_step == ${step.id}`,
+      action: `show_message:${step.title}:${step.description}`,
+      scenarioId: yamlData.procedure_name,
       isActive: true,
-      tags: ['step', 'guidance', step.id],
-      createdAt: now,
-      updatedAt: now
+      simulationTags: ['step', 'guidance', step.id],
+      createdAt: now
     });
 
     // Decision point triggers
@@ -384,50 +354,14 @@ function generateTriggersFromYaml(yamlData: YamlProcedure): SimulationTrigger[] 
       step.options.forEach((option, optionIndex) => {
         triggers.push({
           id: uuidv4(),
-          name: `${step.title} - ${option.choice}`,
-          description: `Trigger when user selects: ${option.choice}`,
-          type: 'user_action',
-          event: {
-            type: 'text_input',
-            target: step.id,
-            parameters: { 
-              choice: option.choice,
-              nextStep: option.next 
-            }
-          },
-          conditions: [{
-            id: uuidv4(),
-            type: 'user_progress',
-            description: `User reaches decision point ${step.id}`,
-            logic: 'AND',
-            criteria: { 
-              currentStep: step.id,
-              choiceSelected: option.choice 
-            }
-          }],
-          actions: [
-            {
-              id: uuidv4(),
-              type: 'show_message',
-              description: 'Show decision feedback',
-              parameters: {
-                title: `Choice: ${option.choice}`,
-                message: `Condition: ${option.condition}`,
-                type: 'success'
-              }
-            },
-            {
-              id: uuidv4(),
-              type: 'branch_step',
-              description: 'Branch to next step',
-              parameters: { stepId: option.next }
-            }
-          ],
-          priority: 'high',
+          objectId: 'system',
+          signal: 'user_choice',
+          condition: `current_step == ${step.id} && choice == ${option.choice}`,
+          action: `show_message:${option.choice}:${option.condition} && branch_to:${option.next}`,
+          scenarioId: yamlData.procedure_name,
           isActive: true,
-          tags: ['decision', 'branching', step.id],
-          createdAt: now,
-          updatedAt: now
+          simulationTags: ['decision', 'branching', step.id],
+          createdAt: now
         });
       });
     }
@@ -436,36 +370,15 @@ function generateTriggersFromYaml(yamlData: YamlProcedure): SimulationTrigger[] 
   // Time-based triggers for procedure monitoring
   triggers.push({
     id: uuidv4(),
-    name: 'Procedure Time Warning',
-    description: 'Warning when procedure is taking longer than expected',
-    type: 'timer',
-    event: {
-      type: 'timer_elapsed',
-      parameters: { interval: yamlData.steps.length * 180 } // 3 minutes per step
-    },
-    conditions: [{
-      id: uuidv4(),
-      type: 'time_elapsed',
-      description: 'Procedure duration exceeds expected time',
-      logic: 'AND',
-      criteria: { threshold: yamlData.steps.length * 180 }
-    }],
-    actions: [{
-      id: uuidv4(),
-      type: 'show_message',
-      description: 'Show time warning',
-      parameters: {
-        title: 'Time Management',
-        message: 'The procedure is taking longer than expected. Consider reviewing your pace.',
-        type: 'warning'
-      }
-    }],
-    priority: 'medium',
+    objectId: 'system',
+    signal: 'timer_elapsed',
+    condition: `time_elapsed > ${yamlData.steps.length * 180}`,
+    action: 'show_message:Time Management:The procedure is taking longer than expected. Consider reviewing your pace.',
+    scenarioId: yamlData.procedure_name,
     isActive: true,
     cooldown: 300, // 5 minute cooldown
-    tags: ['timing', 'warning'],
-    createdAt: now,
-    updatedAt: now
+    simulationTags: ['timing', 'warning'],
+    createdAt: now
   });
 
   // Completion trigger
@@ -473,82 +386,29 @@ function generateTriggersFromYaml(yamlData: YamlProcedure): SimulationTrigger[] 
   if (finalStep) {
     triggers.push({
       id: uuidv4(),
-      name: 'Procedure Completion',
-      description: 'Trigger when the procedure is completed',
-      type: 'event',
-      event: {
-        type: 'step_complete',
-        target: finalStep.id,
-        parameters: { procedureComplete: true }
-      },
-      conditions: [],
-      actions: [
-        {
-          id: uuidv4(),
-          type: 'show_message',
-          description: 'Show completion message',
-          parameters: {
-            title: 'Procedure Complete!',
-            message: `Congratulations! You have successfully completed ${yamlData.procedure_name}.`,
-            type: 'success'
-          }
-        },
-        {
-          id: uuidv4(),
-          type: 'end_simulation',
-          description: 'End the simulation',
-          parameters: { reason: 'successful_completion' }
-        }
-      ],
-      priority: 'high',
+      objectId: 'system',
+      signal: 'step_complete',
+      condition: `current_step == ${finalStep.id}`,
+      action: `show_message:Procedure Complete!:Congratulations! You have successfully completed ${yamlData.procedure_name}. && end_simulation:successful_completion`,
+      scenarioId: yamlData.procedure_name,
       isActive: true,
       maxActivations: 1,
-      tags: ['completion', 'success'],
-      createdAt: now,
-      updatedAt: now
+      simulationTags: ['completion', 'success'],
+      createdAt: now
     });
   }
 
   // Error handling triggers
   triggers.push({
     id: uuidv4(),
-    name: 'Critical Error Handler',
-    description: 'Handle critical errors during the procedure',
-    type: 'system_state',
-    event: {
-      type: 'step_complete',
-      parameters: { errorType: 'critical' }
-    },
-    conditions: [{
-      id: uuidv4(),
-      type: 'custom',
-      description: 'Critical error detected',
-      logic: 'OR',
-      criteria: { errorLevel: 'critical' }
-    }],
-    actions: [
-      {
-        id: uuidv4(),
-        type: 'show_message',
-        description: 'Show error message',
-        parameters: {
-          title: 'Critical Error',
-          message: 'A critical error has occurred. Please review your actions and try again.',
-          type: 'error'
-        }
-      },
-      {
-        id: uuidv4(),
-        type: 'play_audio',
-        description: 'Play error sound',
-        parameters: { audioUrl: '/sounds/error.mp3' }
-      }
-    ],
-    priority: 'critical',
+    objectId: 'system',
+    signal: 'error_detected',
+    condition: 'error_level == critical',
+    action: 'show_message:Critical Error:A critical error has occurred. Please review your actions and try again. && play_audio:/sounds/error.mp3',
+    scenarioId: yamlData.procedure_name,
     isActive: true,
-    tags: ['error', 'critical'],
-    createdAt: now,
-    updatedAt: now
+    simulationTags: ['error', 'critical'],
+    createdAt: now
   });
 
   return triggers;
@@ -557,8 +417,8 @@ function generateTriggersFromYaml(yamlData: YamlProcedure): SimulationTrigger[] 
 /**
  * Generate scenario conditions from YAML steps
  */
-function generateConditionsFromSteps(steps: YamlStep[]): ScenarioCondition[] {
-  const conditions: ScenarioCondition[] = [];
+function generateConditionsFromSteps(steps: YamlStep[]): SimulationCondition[] {
+  const conditions: SimulationCondition[] = [];
 
   // Add completion condition
   conditions.push({
@@ -586,52 +446,13 @@ function generateConditionsFromSteps(steps: YamlStep[]): ScenarioCondition[] {
 /**
  * Generate scenario outcomes from YAML steps
  */
-function generateOutcomesFromSteps(steps: YamlStep[]): ScenarioOutcome[] {
-  const outcomes: ScenarioOutcome[] = [];
-
-  // Success outcome
-  outcomes.push({
-    id: uuidv4(),
-    type: 'success',
-    title: 'Procedure Completed Successfully',
-    description: 'All steps were completed correctly and efficiently',
-    score: 100,
-    feedback: 'Excellent work! You successfully completed the entire procedure following best practices.',
-    nextAction: 'review_performance'
-  });
-
-  // Partial completion outcome
-  outcomes.push({
-    id: uuidv4(),
-    type: 'warning',
-    title: 'Procedure Partially Completed',
-    description: 'Most steps were completed but some areas need improvement',
-    score: 75,
-    feedback: 'Good effort! Review the areas that need improvement and practice those specific steps.',
-    nextAction: 'review_mistakes'
-  });
-
-  // Time exceeded outcome
-  outcomes.push({
-    id: uuidv4(),
-    type: 'warning',
-    title: 'Time Limit Exceeded',
-    description: 'Procedure was completed but took longer than expected',
-    score: 60,
-    feedback: 'The procedure was completed correctly but took too long. Focus on improving efficiency.',
-    nextAction: 'time_management_training'
-  });
-
-  // Failure outcome
-  outcomes.push({
-    id: uuidv4(),
-    type: 'failure',
-    title: 'Procedure Incomplete',
-    description: 'The procedure was not completed successfully',
-    score: 25,
-    feedback: 'The procedure was not completed. Review the requirements and try again.',
-    nextAction: 'restart_training'
-  });
+function generateOutcomesFromSteps(steps: YamlStep[]): string[] {
+  const outcomes: string[] = [
+    'Procedure Completed Successfully - All steps were completed correctly and efficiently',
+    'Procedure Partially Completed - Most steps were completed but some areas need improvement',
+    'Time Limit Exceeded - Procedure was completed but took longer than expected',
+    'Procedure Incomplete - The procedure was not completed successfully'
+  ];
 
   return outcomes;
 } 

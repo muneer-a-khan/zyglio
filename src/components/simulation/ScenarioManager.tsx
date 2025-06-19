@@ -30,13 +30,14 @@ import {
 import { toast } from "sonner";
 import { SimulationScenario, SimulationObject, SimulationTrigger, ScenarioOutcome } from "@/types/simulation";
 import { simulationEngine } from "@/lib/simulation-engine";
+import { v4 as uuidv4 } from "uuid";
 
-interface ScenarioManagerProps {
-  scenarios: SimulationScenario[];
+export interface ScenarioManagerProps {
   objects: SimulationObject[];
-  triggers: SimulationTrigger[];
-  onScenariosChange: (scenarios: SimulationScenario[]) => void;
-  onActivateScenario?: (scenarioId: string) => void;
+  scenarios: SimulationScenario[];
+  onAddScenario: (scenario: SimulationScenario) => void;
+  onUpdateScenario: (id: string, updatedScenario: SimulationScenario) => void;
+  onDeleteScenario: (id: string) => void;
 }
 
 const DIFFICULTY_LEVELS = [
@@ -52,13 +53,13 @@ const OUTCOME_TYPES = [
   { value: "information", label: "Information", icon: Info, color: "text-blue-600" },
 ];
 
-const ScenarioManager = ({
-  scenarios,
+const ScenarioManager: React.FC<ScenarioManagerProps> = ({
   objects,
-  triggers,
-  onScenariosChange,
-  onActivateScenario
-}: ScenarioManagerProps) => {
+  scenarios,
+  onAddScenario,
+  onUpdateScenario,
+  onDeleteScenario
+}) => {
   const [isCreating, setIsCreating] = useState(false);
   const [editingScenario, setEditingScenario] = useState<SimulationScenario | null>(null);
   const [formData, setFormData] = useState({
@@ -91,57 +92,38 @@ const ScenarioManager = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+    if (!formData.name || !formData.description) {
+      toast.error("Please fill in all required fields");
+      return;
+    }
+
     try {
-      let objectives: string[] = [];
-      let tags: string[] = [];
+      // Parse objectives, outcomes and tags as arrays
+      const objectives = formData.objectives.trim() ? formData.objectives.split("\n").map(o => o.trim()).filter(Boolean) : [];
+      const tags = formData.tags.trim() ? formData.tags.split(",").map(t => t.trim()).filter(Boolean) : [];
+      const outcomes: ScenarioOutcome[] = []; // TODO: Add outcome parsing if needed
 
-      // Parse objectives
-      if (formData.objectives.trim()) {
-        objectives = formData.objectives.split("\n").map(o => o.trim()).filter(Boolean);
-      }
-
-      // Parse tags
-      if (formData.tags.trim()) {
-        tags = formData.tags.split(",").map(t => t.trim()).filter(Boolean);
-      }
-
-      const scenarioData = {
+      const newScenario: SimulationScenario = {
+        id: editingScenario?.id || uuidv4(),
         name: formData.name,
         description: formData.description,
-        objectives,
         difficulty: formData.difficulty,
         estimatedDuration: formData.estimatedDuration,
-        objects: formData.objects,
-        triggers: formData.triggers,
-        conditions: [], // Will be added in future enhancement
+        objectives,
         outcomes,
+        objects: formData.objects,
         tags,
+        triggers: [], // TODO: Add trigger handling if needed
+        conditions: [], // TODO: Add condition handling if needed
+        createdAt: new Date(),
+        updatedAt: new Date()
       };
 
-      let updatedScenarios: SimulationScenario[];
-
       if (editingScenario) {
-        // Update existing scenario
-        const updatedScenario = await simulationEngine.createScenario({
-          ...scenarioData,
-          id: editingScenario.id,
-          createdAt: editingScenario.createdAt,
-          updatedAt: new Date()
-        });
-        
-        updatedScenarios = scenarios.map(scenario => 
-          scenario.id === editingScenario.id ? updatedScenario : scenario
-        );
-        toast.success("Scenario updated successfully");
+        onUpdateScenario(editingScenario.id, newScenario);
       } else {
-        // Create new scenario
-        const newScenario = await simulationEngine.createScenario(scenarioData);
-        updatedScenarios = [...scenarios, newScenario];
-        toast.success("Scenario created successfully");
+        onAddScenario(newScenario);
       }
-
-      onScenariosChange(updatedScenarios);
       resetForm();
     } catch (error) {
       console.error("Error saving scenario:", error);
@@ -170,22 +152,11 @@ const ScenarioManager = ({
 
     try {
       const updatedScenarios = scenarios.filter(scenario => scenario.id !== scenarioId);
-      onScenariosChange(updatedScenarios);
+      onDeleteScenario(scenarioId);
       toast.success("Scenario deleted successfully");
     } catch (error) {
       console.error("Error deleting scenario:", error);
       toast.error("Failed to delete scenario");
-    }
-  };
-
-  const handleActivate = async (scenarioId: string) => {
-    try {
-      await simulationEngine.activateScenario(scenarioId);
-      onActivateScenario?.(scenarioId);
-      toast.success("Scenario activated successfully");
-    } catch (error) {
-      console.error("Error activating scenario:", error);
-      toast.error("Failed to activate scenario");
     }
   };
 
@@ -220,7 +191,7 @@ const ScenarioManager = ({
   };
 
   return (
-    <div className="space-y-6">
+    <div className="h-full flex flex-col">
       <div className="flex justify-between items-center">
         <h3 className="text-lg font-medium">Simulation Scenarios</h3>
         <Button
@@ -345,41 +316,6 @@ const ScenarioManager = ({
                 </div>
               </div>
 
-              {/* Trigger Selection */}
-              <div>
-                <Label>Associated Triggers</Label>
-                <div className="mt-2 space-y-2 max-h-40 overflow-y-auto border rounded-md p-3">
-                  {triggers.length === 0 ? (
-                    <p className="text-sm text-gray-500">No triggers available</p>
-                  ) : (
-                    triggers.map((trigger) => (
-                      <div key={trigger.id} className="flex items-center space-x-2">
-                        <Checkbox
-                          id={`trigger-${trigger.id}`}
-                          checked={formData.triggers.includes(trigger.id)}
-                          onCheckedChange={(checked) => {
-                            if (checked) {
-                              setFormData({
-                                ...formData,
-                                triggers: [...formData.triggers, trigger.id]
-                              });
-                            } else {
-                              setFormData({
-                                ...formData,
-                                triggers: formData.triggers.filter(id => id !== trigger.id)
-                              });
-                            }
-                          }}
-                        />
-                        <Label htmlFor={`trigger-${trigger.id}`} className="text-sm">
-                          {trigger.name} ({trigger.type})
-                        </Label>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-
               {/* Outcomes */}
               <div>
                 <div className="flex justify-between items-center mb-3">
@@ -484,170 +420,77 @@ const ScenarioManager = ({
         </Card>
       )}
 
-      {/* Scenarios List */}
-      <div className="grid gap-4">
-        {scenarios.length === 0 ? (
-          <Card className="p-8 text-center">
-            <div className="text-gray-500">
-              <Target className="w-12 h-12 mx-auto mb-4 opacity-50" />
-              <h3 className="text-lg font-medium mb-2">No Scenarios Created</h3>
-              <p>Create scenarios to define different learning paths and objectives.</p>
-            </div>
-          </Card>
-        ) : (
-          scenarios.map((scenario) => {
-            const difficultyConfig = getDifficultyConfig(scenario.difficulty);
-            return (
-              <Card key={scenario.id}>
-                <CardContent className="p-6">
-                  <div className="flex justify-between items-start">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-3 mb-3">
-                        <h4 className="font-medium text-lg">{scenario.name}</h4>
-                        <Badge className={difficultyConfig.color}>
-                          {difficultyConfig.label}
+      {/* Scenario List */}
+      <div className="flex-1 overflow-y-auto p-4">
+        <div className="space-y-4">
+          {scenarios.map((scenario) => (
+            <div key={scenario.id} className="border rounded-lg p-4">
+              <div className="flex items-center justify-between mb-2">
+                <div>
+                  <h3 className="font-medium">{scenario.name}</h3>
+                  <p className="text-sm text-gray-600">{scenario.description}</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Badge variant="secondary">{scenario.difficulty}</Badge>
+                  <Badge variant="outline">{scenario.estimatedDuration} min</Badge>
+                </div>
+              </div>
+              
+              <div className="mt-2 space-y-2">
+                <div>
+                  <h4 className="text-sm font-medium mb-1">Objectives</h4>
+                  <ul className="text-sm text-gray-600 list-disc list-inside">
+                    {scenario.objectives.map((obj, index) => (
+                      <li key={index}>{obj}</li>
+                    ))}
+                  </ul>
+                </div>
+                
+                <div>
+                  <h4 className="text-sm font-medium mb-1">Objects</h4>
+                  <div className="flex flex-wrap gap-1">
+                    {scenario.objects.map((objId) => {
+                      const obj = objects.find(o => o.id === objId);
+                      return obj ? (
+                        <Badge key={objId} variant="outline" className="text-xs">
+                          {obj.name}
                         </Badge>
-                        <div className="flex items-center gap-1 text-sm text-gray-500">
-                          <Clock className="w-4 h-4" />
-                          {scenario.estimatedDuration} min
-                        </div>
-                      </div>
-
-                      {scenario.description && (
-                        <p className="text-gray-600 mb-3">{scenario.description}</p>
-                      )}
-
-                      {scenario.objectives.length > 0 && (
-                        <div className="mb-3">
-                          <p className="text-sm font-medium text-gray-700 mb-2">
-                            Learning Objectives:
-                          </p>
-                          <ul className="list-disc list-inside text-sm text-gray-600 space-y-1">
-                            {scenario.objectives.map((objective, index) => (
-                              <li key={index}>{objective}</li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-
-                      <div className="grid grid-cols-2 gap-4 mb-3">
-                        {scenario.objects.length > 0 && (
-                          <div>
-                            <p className="text-sm font-medium text-gray-700 mb-1">
-                              Required Objects ({scenario.objects.length}):
-                            </p>
-                            <div className="flex flex-wrap gap-1">
-                              {scenario.objects.slice(0, 3).map((objectId) => {
-                                const object = objects.find(o => o.id === objectId);
-                                return (
-                                  <Badge key={objectId} variant="outline" className="text-xs">
-                                    {object?.name || 'Unknown'}
-                                  </Badge>
-                                );
-                              })}
-                              {scenario.objects.length > 3 && (
-                                <Badge variant="outline" className="text-xs">
-                                  +{scenario.objects.length - 3} more
-                                </Badge>
-                              )}
-                            </div>
-                          </div>
-                        )}
-
-                        {scenario.triggers.length > 0 && (
-                          <div>
-                            <p className="text-sm font-medium text-gray-700 mb-1">
-                              Triggers ({scenario.triggers.length}):
-                            </p>
-                            <div className="flex flex-wrap gap-1">
-                              {scenario.triggers.slice(0, 3).map((triggerId) => {
-                                const trigger = triggers.find(t => t.id === triggerId);
-                                return (
-                                  <Badge key={triggerId} variant="outline" className="text-xs">
-                                    {trigger?.name || 'Unknown'}
-                                  </Badge>
-                                );
-                              })}
-                              {scenario.triggers.length > 3 && (
-                                <Badge variant="outline" className="text-xs">
-                                  +{scenario.triggers.length - 3} more
-                                </Badge>
-                              )}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-
-                      {scenario.outcomes.length > 0 && (
-                        <div className="mb-3">
-                          <p className="text-sm font-medium text-gray-700 mb-2">
-                            Possible Outcomes:
-                          </p>
-                          <div className="flex flex-wrap gap-2">
-                            {scenario.outcomes.map((outcome, index) => {
-                              const outcomeConfig = getOutcomeTypeConfig(outcome.type);
-                              return (
-                                <div key={index} className="flex items-center gap-1 text-xs">
-                                  <outcomeConfig.icon className={`w-3 h-3 ${outcomeConfig.color}`} />
-                                  <span>{outcome.title}</span>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      )}
-
-                      {scenario.tags.length > 0 && (
-                        <div className="flex flex-wrap gap-1 mb-3">
-                          {scenario.tags.map((tag, index) => (
-                            <Badge key={index} variant="outline" className="text-xs">
-                              {tag}
-                            </Badge>
-                          ))}
-                        </div>
-                      )}
-
-                      <div className="text-xs text-gray-500">
-                        Created: {new Date(scenario.createdAt).toLocaleDateString()}
-                        {scenario.updatedAt !== scenario.createdAt && (
-                          <span className="ml-2">
-                            Updated: {new Date(scenario.updatedAt).toLocaleDateString()}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="flex gap-2 ml-4">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleActivate(scenario.id)}
-                        className="text-green-600 hover:text-green-700"
-                      >
-                        <Play className="w-4 h-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleEdit(scenario)}
-                      >
-                        <Edit className="w-4 h-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleDelete(scenario.id)}
-                        className="text-red-600 hover:text-red-700"
-                      >
-                        <Trash className="w-4 h-4" />
-                      </Button>
-                    </div>
+                      ) : null;
+                    })}
                   </div>
-                </CardContent>
-              </Card>
-            );
-          })
-        )}
+                </div>
+                
+                <div>
+                  <h4 className="text-sm font-medium mb-1">Tags</h4>
+                  <div className="flex flex-wrap gap-1">
+                    {scenario.tags.map((tag, index) => (
+                      <Badge key={index} variant="outline" className="text-xs">
+                        {tag}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              </div>
+              
+              <div className="mt-4 flex justify-end gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleEdit(scenario)}
+                >
+                  Edit
+                </Button>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => handleDelete(scenario.id)}
+                >
+                  Delete
+                </Button>
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
