@@ -50,7 +50,7 @@ export class DatabaseService {
         create: {
           email,
           name,
-          role: 'TRAINEE'
+          role: 'trainee'
         }
       });
       return user;
