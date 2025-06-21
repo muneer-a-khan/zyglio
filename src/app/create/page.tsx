@@ -7,7 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useSession, signOut } from "next-auth/react";
+import { useSession } from "next-auth/react";
 import { toast } from "sonner";
 import TaskDefinitionForm from "@/components/TaskDefinitionForm";
 import MediaUploader from "@/components/MediaUploader";
@@ -41,7 +41,7 @@ export default function CreateProcedure() {
   const [interviewConversation, setInterviewConversation] = useState<Array<{role: 'ai'|'user', content: string}>>([]);
   const [showTranscriptEditor, setShowTranscriptEditor] = useState(false);
 
-  // Redirect to sign-in if not authenticated
+  // Redirect to sign-in if not authenticated (but wait for loading to complete)
   useEffect(() => {
     if (status === "unauthenticated") {
       router.push("/auth/signin");
@@ -58,11 +58,7 @@ export default function CreateProcedure() {
     }
   }, [status]);
 
-  // Handle sign out
-  const handleSignOut = async () => {
-    await signOut({ redirect: false });
-    router.push("/auth/signin");
-  };
+
 
   const handleTaskSubmit = async (taskData: TaskDefinition) => {
     try {
@@ -318,64 +314,23 @@ export default function CreateProcedure() {
     );
   }
 
+  if (status === "loading") {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-lg">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
   if (status === "unauthenticated") {
     return null; // Will redirect to sign-in page via useEffect
   }
 
   return (
-    <div className="min-h-screen flex flex-col">
-      <header className="border-b">
-        <div className="container flex h-16 items-center justify-between py-4">
-          <div className="flex items-center gap-2">
-            <Link href="/" className="flex items-center gap-2">
-              <div className="flex items-center justify-center rounded-md bg-blue-600 h-8 w-8">
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  className="h-4 w-4 text-white"
-                  width="24"
-                  height="24"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="3"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <path d="M19 11V9a2 2 0 0 0-2-2H8.5L3 3v18l5.5-4H17a2 2 0 0 0 2-2v-2" />
-                  <path d="M15 9h6" />
-                  <path d="M18 6v6" />
-                </svg>
-              </div>
-              <span className="text-lg font-semibold">VoiceProc</span>
-            </Link>
-          </div>
-          <nav className="hidden md:flex items-center gap-6">
-            <Link
-              href="/procedures"
-              className="text-sm font-medium hover:underline"
-            >
-              Procedures
-            </Link>
-            <Link href="/media" className="text-sm font-medium hover:underline">
-              Media Library
-            </Link>
-            <Link
-              href="/create"
-              className="text-sm font-medium hover:underline"
-            >
-              Create
-            </Link>
-          </nav>
-          <div className="flex items-center gap-4">
-            {session?.user?.name && (
-              <span className="text-sm text-gray-600">Hi, {session.user.name}</span>
-            )}
-            <Button variant="default" onClick={handleSignOut}>Sign Out</Button>
-          </div>
-        </div>
-      </header>
-
-      <main className="flex-1 container py-8">
+    <div className="min-h-screen">
+      <main className="container py-8">
         <div className="mb-8">
           <h1 className="text-3xl font-bold mb-2">Create New Procedure</h1>
           <p className="text-gray-500">
@@ -592,10 +547,10 @@ export default function CreateProcedure() {
                   <path d="M18 6v6" />
                 </svg>
               </div>
-              <span className="text-lg font-semibold">VoiceProc</span>
+              <span className="text-lg font-semibold">Zyglio</span>
             </div>
             <p className="text-sm text-gray-500">
-              © 2025 VoiceProc. All rights reserved.
+              © 2025 Zyglio. All rights reserved.
             </p>
           </div>
         </div>

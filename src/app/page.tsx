@@ -4,55 +4,13 @@ import { Button } from "@/components/ui/button";
 export default function Home() {
   return (
     <div className="min-h-screen flex flex-col">
-      <header className="border-b">
-        <div className="container flex h-16 items-center justify-between py-4">
-          <div className="flex items-center gap-2">
-            <div className="flex items-center justify-center rounded-md bg-blue-600 h-8 w-8">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                className="h-4 w-4 text-white"
-                width="24"
-                height="24"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="3"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M19 11V9a2 2 0 0 0-2-2H8.5L3 3v18l5.5-4H17a2 2 0 0 0 2-2v-2" />
-                <path d="M15 9h6" />
-                <path d="M18 6v6" />
-              </svg>
-            </div>
-            <span className="text-lg font-semibold">VoiceProc</span>
-          </div>
-          <nav className="hidden md:flex items-center gap-6">
-            <Link href="/procedures" className="text-sm font-medium hover:underline">
-              Procedures
-            </Link>
-            <Link href="/media" className="text-sm font-medium hover:underline">
-              Media Library
-            </Link>
-            <Link href="/create" className="text-sm font-medium hover:underline">
-              Create
-            </Link>
-          </nav>
-          <div>
-            <Button variant="default" asChild>
-              <Link href="/auth/signin">Sign In</Link>
-            </Button>
-          </div>
-        </div>
-      </header>
-      
       <main className="flex-1">
         <section className="py-12 md:py-24 lg:py-32">
           <div className="container px-4 md:px-6">
             <div className="grid gap-6 lg:grid-cols-2 lg:gap-12 items-center">
               <div className="space-y-4">
                 <div className="inline-block rounded-lg bg-blue-100 px-3 py-1 text-sm text-blue-800">
-                  Introducing VoiceProc
+                  Introducing Zyglio
                 </div>
                 <h1 className="text-3xl font-bold tracking-tighter sm:text-4xl md:text-5xl xl:text-6xl/none">
                   Voice-Based Procedural Skills Documentation
@@ -202,10 +160,10 @@ export default function Home() {
                   <path d="M18 6v6" />
                 </svg>
               </div>
-              <span className="text-lg font-semibold">VoiceProc</span>
+              <span className="text-lg font-semibold">Zyglio</span>
             </div>
             <p className="text-sm text-gray-500">
-              © 2025 VoiceProc. All rights reserved.
+              © 2025 Zyglio. All rights reserved.
             </p>
           </div>
         </div>

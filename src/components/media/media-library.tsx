@@ -157,7 +157,7 @@ export function MediaLibrary({
   }
 
   const handleBulkDelete = () => {
-    const filesToDelete = files.filter(f => selectedFiles.has(f.id))
+    const filesToDelete = files.filter(f => selectedFiles.has(f.id) && f.canDelete)
     onBulkDelete?.(filesToDelete)
     setSelectedFiles(new Set())
   }
@@ -242,7 +242,13 @@ export function MediaLibrary({
                   {selectable && (
                     <Checkbox
                       checked={selectedFiles.has(file.id)}
-                      onChange={() => handleFileSelect(file)}
+                      onCheckedChange={(checked) => {
+                        if (checked) {
+                          handleFileSelect(file);
+                        } else {
+                          handleFileSelect(file);
+                        }
+                      }}
                       onClick={(e) => e.stopPropagation()}
                     />
                   )}
@@ -297,7 +303,7 @@ export function MediaLibrary({
                   </Tooltip>
                 </TooltipProvider>
 
-                {onFileDelete && (
+                {onFileDelete && file.canDelete && (
                   <TooltipProvider>
                     <Tooltip>
                       <TooltipTrigger asChild>
@@ -341,7 +347,13 @@ export function MediaLibrary({
               {selectable && (
                 <Checkbox
                   checked={selectedFiles.has(file.id)}
-                  onChange={() => handleFileSelect(file)}
+                  onCheckedChange={(checked) => {
+                    if (checked) {
+                      handleFileSelect(file);
+                    } else {
+                      handleFileSelect(file);
+                    }
+                  }}
                   onClick={(e) => e.stopPropagation()}
                 />
               )}
@@ -397,7 +409,7 @@ export function MediaLibrary({
                   <Download className="h-4 w-4" />
                 </Button>
 
-                {onFileDelete && (
+                {onFileDelete && file.canDelete && (
                   <Button
                     variant="ghost"
                     size="sm"

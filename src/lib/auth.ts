@@ -86,6 +86,18 @@ export const authOptions: NextAuthOptions = {
     }),
   ],
   callbacks: {
+    async redirect({ url, baseUrl }) {
+      // After sign in, redirect to home page
+      if (url.startsWith(baseUrl + "/auth/signin") || url === baseUrl + "/create") {
+        return baseUrl;
+      }
+      // Allow other internal redirects
+      if (url.startsWith(baseUrl)) {
+        return url;
+      }
+      // Default to home page
+      return baseUrl;
+    },
     async jwt({ token, user }) {
       if (user) {
         token.id = user.id;

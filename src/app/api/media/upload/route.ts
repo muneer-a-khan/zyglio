@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Get user from database
-    const user = await databaseService.getUserByEmail(session.user.email)
+    const user = await databaseService.getOrCreateUser(session.user.email, session.user.name)
     if (!user) {
       return NextResponse.json(
         { error: 'User not found' },
@@ -92,21 +92,9 @@ export async function POST(request: NextRequest) {
       try {
         const mediaFile = await storageService.uploadFile(file, user.id, options)
         
-        // Store media file record in database
-        const dbMediaFile = await databaseService.createMediaFile({
-          userId: user.id,
-          name: mediaFile.name,
-          originalName: mediaFile.originalName,
-          url: mediaFile.url,
-          type: mediaFile.type,
-          size: mediaFile.size,
-          bucket: mediaFile.bucket,
-          path: mediaFile.path,
-          metadata: mediaFile.metadata || {},
-        })
-
+        // Return the uploaded file info directly (no database storage needed)
         uploadResults.push({
-          id: dbMediaFile.id,
+          id: mediaFile.id,
           ...mediaFile,
           success: true
         })
@@ -155,7 +143,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Get user from database
-    const user = await databaseService.getUserByEmail(session.user.email)
+    const user = await databaseService.getOrCreateUser(session.user.email, session.user.name)
     if (!user) {
       return NextResponse.json(
         { error: 'User not found' },
@@ -170,26 +158,8 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '50')
     const offset = parseInt(searchParams.get('offset') || '0')
 
-    // Get files from database
-    const files = await databaseService.getMediaFiles(user.id, {
-      folder,
-      fileType,
-      limit,
-      offset
-    })
-
-    // Get storage stats
-    const stats = await storageService.getStorageStats(user.id)
-
-    return NextResponse.json({
-      files,
-      stats,
-      pagination: {
-        limit,
-        offset,
-        total: files.length
-      }
-    })
+    // Since we're using Supabase storage directly, redirect to the main media API
+    return NextResponse.redirect(new URL('/api/media', request.url))
 
   } catch (error) {
     console.error('Get files error:', error)

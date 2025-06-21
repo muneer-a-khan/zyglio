@@ -28,6 +28,7 @@ export interface MediaFile {
   }
   createdAt: Date
   updatedAt: Date
+  canDelete?: boolean // Whether the current user can delete this file
 }
 
 export interface UploadOptions {

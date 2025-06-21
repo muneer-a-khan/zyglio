@@ -24,291 +24,149 @@ model AISuggestion {
   text        String
   kind        SuggestionType
   dictationId String         @db.Uuid
+  Dictation   Dictation      @relation(fields: [dictationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@index([dictationId])
 }
 
 model Dictation {
-  id         String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  audioUrl   String
-  transcript String
-  createdAt  DateTime @default(now()) @db.Timestamptz(6)
-  taskId     String   @db.Uuid
+  id           String         @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  audioUrl     String
+  transcript   String
+  createdAt    DateTime       @default(now()) @db.Timestamptz(6)
+  taskId       String         @db.Uuid
+  AISuggestion AISuggestion[]
+  LearningTask LearningTask   @relation(fields: [taskId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  Question     Question[]
 
   @@index([taskId])
 }
 
 model ExternalResource {
-  id          String @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  url         String
-  description String
-  taskId      String @db.Uuid
+  id           String       @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  url          String
+  description  String
+  taskId       String       @db.Uuid
+  LearningTask LearningTask @relation(fields: [taskId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@index([taskId])
 }
 
 model Flowchart {
-  id      String @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  mermaid String
-  taskId  String @db.Uuid
-
-  @@index([taskId])
-}
-
-model InterviewContext {
-  id              String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  taskId          String    @unique @db.Uuid
-  baseContext     String
-  enhancedContext String
-  mediaProcessed  Boolean?  @default(false)
-  lastUpdated     DateTime? @default(now()) @db.Timestamptz(6)
+  id           String       @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  mermaid      String
+  taskId       String       @db.Uuid
+  LearningTask LearningTask @relation(fields: [taskId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@index([taskId])
 }
 
 model LearningTask {
-  id          String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  title       String
-  kpiTech     String?
-  kpiConcept  String?
-  presenter   String
-  affiliation String?
-  date        DateTime @db.Timestamptz(6)
-  userId      String   @db.Uuid
-  users       User     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  id               String             @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  title            String
+  kpiTech          String?
+  kpiConcept       String?
+  presenter        String
+  affiliation      String?
+  date             DateTime           @db.Timestamptz(6)
+  userId           String             @db.Uuid
+  Dictation        Dictation[]
+  ExternalResource ExternalResource[]
+  Flowchart        Flowchart[]
+  users            User               @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  MediaItem        MediaItem[]
+  Procedure        Procedure[]
+  Simulation       Simulation[]
+  YamlOutput       YamlOutput[]
 
   @@index([userId])
 }
 
 model MediaItem {
-  id                 String              @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  type               MediaType
-  caption            String?
-  url                String
-  relevance          String?
-  createdAt          DateTime            @default(now()) @db.Timestamptz(6)
-  taskId             String              @db.Uuid
-  stepId             String?             @db.Uuid
-  ParsedMediaContent ParsedMediaContent?
+  id            String         @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  type          MediaType
+  caption       String?
+  url           String
+  relevance     String?
+  createdAt     DateTime       @default(now()) @db.Timestamptz(6)
+  taskId        String         @db.Uuid
+  stepId        String?        @db.Uuid
+  ProcedureStep ProcedureStep? @relation(fields: [stepId], references: [id], onUpdate: NoAction)
+  LearningTask  LearningTask   @relation(fields: [taskId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@index([stepId])
   @@index([taskId])
 }
 
-model ParsedMediaContent {
-  id               String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  mediaItemId      String    @unique @db.Uuid
-  contentType      String
-  extractedText    String
-  summary          String?
-  keyTopics        String[]
-  processingStatus String
-  errorMessage     String?
-  processingTime   Int?
-  confidence       Float?    @db.Real
-  metadata         Json?
-  createdAt        DateTime? @default(now()) @db.Timestamptz(6)
-  updatedAt        DateTime? @default(now()) @db.Timestamptz(6)
-  MediaItem        MediaItem @relation(fields: [mediaItemId], references: [id], onDelete: Cascade)
-
-  @@index([mediaItemId])
-  @@index([processingStatus])
-}
-
 model Procedure {
-  id                 String @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  id                 String          @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
   title              String
-  taskId             String @db.Uuid
-  simulationSettings Json?  @default("{}")
+  taskId             String          @db.Uuid
+  simulationSettings Json?           @default("{}")
+  LearningTask       LearningTask    @relation(fields: [taskId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  ProcedureStep      ProcedureStep[]
 
   @@index([taskId])
 }
 
 model ProcedureStep {
-  id                String   @id
-  procedureId       String
-  content           String
-  index             Int
-  isCheckpoint      Boolean  @default(false)
-  expectedResponses Json     @default("[]")
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime
+  id          String      @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  index       Int
+  content     String
+  notes       String?
+  conditions  String?
+  procedureId String      @db.Uuid
+  MediaItem   MediaItem[]
+  Procedure   Procedure   @relation(fields: [procedureId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  Question    Question[]
 
   @@index([procedureId])
 }
 
 model Question {
-  id          String       @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  type        QuestionType
-  content     String
-  options     String?
-  correct     String?
-  dictationId String?      @db.Uuid
-  stepId      String?      @db.Uuid
+  id            String         @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  type          QuestionType
+  content       String
+  options       String?
+  correct       String?
+  dictationId   String?        @db.Uuid
+  stepId        String?        @db.Uuid
+  Dictation     Dictation?     @relation(fields: [dictationId], references: [id], onUpdate: NoAction)
+  ProcedureStep ProcedureStep? @relation(fields: [stepId], references: [id], onUpdate: NoAction)
 
   @@index([dictationId])
   @@index([stepId])
 }
 
 model Simulation {
-  id     String @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  taskId String @db.Uuid
+  id             String           @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  taskId         String           @db.Uuid
+  LearningTask   LearningTask     @relation(fields: [taskId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  SimulationStep SimulationStep[]
 
   @@index([taskId])
 }
 
 model SimulationStep {
-  id               String  @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  id               String     @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
   prompt           String
   expectedAnswer   String?
   mediaUrl         String?
   latencyThreshold Int?
   feedback         String?
-  simulationId     String  @db.Uuid
+  simulationId     String     @db.Uuid
+  Simulation       Simulation @relation(fields: [simulationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@index([simulationId])
 }
 
 model YamlOutput {
-  id      String @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  content String
-  taskId  String @db.Uuid
+  id           String       @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  content      String
+  taskId       String       @db.Uuid
+  LearningTask LearningTask @relation(fields: [taskId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@index([taskId])
-}
-
-model chunks {
-  id             String                 @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  documentId     String                 @db.Uuid
-  text           String
-  embedding      Unsupported("vector")?
-  sequenceNumber Int
-  metadata       Json?
-  createdAt      DateTime               @default(now()) @db.Timestamptz(6)
-  updatedAt      DateTime               @default(now()) @db.Timestamptz(6)
-  documents      documents              @relation(fields: [documentId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_document")
-
-  @@index([documentId])
-  @@index([embedding])
-}
-
-model documents {
-  id         String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  title      String
-  url        String
-  broadTopic String
-  sourceType String
-  content    String?
-  createdAt  DateTime @default(now()) @db.Timestamptz(6)
-  updatedAt  DateTime @default(now()) @db.Timestamptz(6)
-  chunks     chunks[]
-}
-
-model ObjectInteraction {
-  id            String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  objectId      String    @db.Uuid
-  sessionId     String    @db.Uuid
-  userId        String    @db.Uuid
-  action        String
-  result        String
-  feedback      String?
-  stepContext   String?
-  triggersFired String[]  @default([])
-  stateChanges  Json?
-  responseTime  Int?
-  attempts      Int?      @default(1)
-  isCorrect     Boolean?  @default(true)
-  timestamp     DateTime? @default(now()) @db.Timestamptz(6)
-
-  @@index([objectId])
-  @@index([sessionId])
-  @@index([timestamp])
-  @@index([userId])
-}
-
-model ScenarioStep {
-  id                String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  instruction       String
-  requiredObjects   String[]  @default([])
-  requiredActions   String[]  @default([])
-  conditions        String[]  @default([])
-  feedback          String?
-  position          Json?
-  stepIndex         Int
-  isCheckpoint      Boolean?  @default(false)
-  expectedResponses Json?     @default("[]")
-  voiceRecordingUrl String?
-  transcript        String?
-  procedureId       String?   @db.Uuid
-  scenarioId        String?   @db.Uuid
-  createdAt         DateTime? @default(now()) @db.Timestamptz(6)
-  updatedAt         DateTime? @default(now()) @db.Timestamptz(6)
-
-  @@index([procedureId])
-  @@index([scenarioId])
-  @@index([stepIndex])
-}
-
-model SimulationSession {
-  id             String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  scenarioId     String    @db.Uuid
-  userId         String    @db.Uuid
-  status         String
-  score          Int?
-  completedSteps Int?      @default(0)
-  totalSteps     Int
-  timeSpent      Int?      @default(0)
-  currentStepId  String?
-  objectStates   Json?     @default("{}")
-  stepProgress   Json?     @default("{}")
-  startTime      DateTime? @default(now()) @db.Timestamptz(6)
-  endTime        DateTime? @db.Timestamptz(6)
-
-  @@index([scenarioId])
-  @@index([startTime])
-  @@index([status])
-  @@index([userId])
-}
-
-model SmartObject {
-  id           String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  name         String
-  category     String
-  description  String?
-  states       String[]  @default([])
-  behaviors    String[]  @default([])
-  signals      String[]  @default([])
-  attributes   Json?
-  currentState String?
-  taskId       String?   @db.Uuid
-  userId       String    @db.Uuid
-  isTemplate   Boolean?  @default(false)
-  tags         String[]  @default([])
-  createdAt    DateTime? @default(now()) @db.Timestamptz(6)
-  updatedAt    DateTime? @default(now()) @db.Timestamptz(6)
-
-  @@index([category])
-  @@index([isTemplate])
-  @@index([taskId])
-  @@index([userId])
-}
-
-model Trigger {
-  id          String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  objectId    String    @db.Uuid
-  signal      String
-  condition   String
-  action      String
-  scenarioId  String?   @db.Uuid
-  isActive    Boolean?  @default(true)
-  priority    Int?      @default(0)
-  description String?
-  category    String?
-  createdAt   DateTime? @default(now()) @db.Timestamptz(6)
-
-  @@index([isActive])
-  @@index([objectId])
-  @@index([scenarioId])
 }
 
 enum MediaType {

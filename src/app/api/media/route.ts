@@ -40,47 +40,59 @@ export async function GET(req: NextRequest) {
       }, { status: 404 });
     }
     
-    // List all files from main bucket
+    // List all files from main bucket and subdirectories
     const { data: storageFiles, error } = await supabase
       .storage
       .from('user-uploads')
-      .list('', { sortBy: { column: 'created_at', order: 'desc' } });
+      .list('', { 
+        sortBy: { column: 'created_at', order: 'desc' },
+        limit: 1000
+      });
 
     if (!error && storageFiles) {
-      allBucketFiles = storageFiles;
-    }
-    
-    // List files from subdirectories too (images, videos, etc.)
-    const subdirectories = ['images', 'videos', 'audios', 'pdfs'];
-    
-    for (const dir of subdirectories) {
-      const { data: dirFiles, error: dirError } = await supabase
-        .storage
-        .from('user-uploads')
-        .list(dir, { sortBy: { column: 'created_at', order: 'desc' } });
-        
-      if (!dirError && dirFiles && dirFiles.length > 0) {
-        // Add directory prefix to file names
-        const filesWithPath = dirFiles.map(file => ({
-          ...file,
-          name: `${dir}/${file.name}`,
-          path: `${dir}/${file.name}`
-        }));
-        allBucketFiles = [...allBucketFiles, ...filesWithPath];
+      allBucketFiles = [...storageFiles];
+      console.log(`Raw storage files:`, storageFiles.map(f => ({ name: f.name, id: f.id })));
+      
+      // Also check subdirectories for files
+      const subDirectories = ['videos', 'images', 'audios', 'pdfs'];
+      
+      for (const dir of subDirectories) {
+        const { data: subFiles, error: subError } = await supabase
+          .storage
+          .from('user-uploads')
+          .list(dir, { 
+            sortBy: { column: 'created_at', order: 'desc' },
+            limit: 1000
+          });
+          
+        if (!subError && subFiles) {
+          // Add path prefix to files
+          const prefixedFiles = subFiles.map(file => ({
+            ...file,
+            name: `${dir}/${file.name}`,
+            path: `${dir}/${file.name}`
+          }));
+          allBucketFiles.push(...prefixedFiles);
+          console.log(`Found ${subFiles.length} files in ${dir} directory`);
+        }
       }
     }
     
-    // Try multiple user ID formats - sometimes the ID formatting can be inconsistent
-    const possibleUserIds = [
-      session.user.id,
-      session.user.id.replace(/-/g, ''),
-      // Add any other possible formats your system might use
-    ];
-    
-    // Filter files to include those belonging to this user with any ID format
-    const userFiles = allBucketFiles.filter(file => {
-      // Check if file name contains any of the possible user IDs
-      return possibleUserIds.some(id => file.name.includes(id));
+    // Filter to get actual files (not directories or placeholders) - show ALL files to ANY logged-in user
+    const validFiles = allBucketFiles.filter(file => {
+      // Filter out directories, empty placeholders, and other non-files
+      const isValidFile = file.name && 
+             !file.name.endsWith('/') && 
+             file.name !== '.emptyFolderPlaceholder' &&
+             file.name !== 'pdfs' &&
+             file.name !== 'images' &&
+             file.name !== 'videos' &&
+             file.name !== 'audios' &&
+             file.metadata && // Valid files should have metadata
+             file.metadata.size > 0; // And should have a size greater than 0
+      
+      console.log(`File ${file.name}: valid=${isValidFile}, id=${file.id}, size=${file.metadata?.size || 0}`);
+      return isValidFile;
     });
     
     // Also fetch from database as backup
@@ -91,22 +103,30 @@ export async function GET(req: NextRequest) {
       select: { id: true }
     });
     
+    console.log(`Found ${userTasks.length} user tasks for user ${session.user.id}`);
+    
     const userTaskIds = userTasks.map(task => task.id);
     
-    const dbMediaItems = await prisma.mediaItem.findMany({
-      where: {
-        taskId: {
-          in: userTaskIds
+    // Only query database media items if user has tasks
+    let dbMediaItems: any[] = [];
+    if (userTaskIds.length > 0) {
+      dbMediaItems = await prisma.mediaItem.findMany({
+        where: {
+          taskId: {
+            in: userTaskIds
+          }
+        },
+        orderBy: {
+          createdAt: 'desc'
         }
-      },
-      orderBy: {
-        createdAt: 'desc'
-      }
-    });
+      });
+    }
+    
+    console.log(`Found ${dbMediaItems.length} database media items`);
     
     // Generate media items from storage files
     const storageMediaItems = await Promise.all(
-      userFiles.map(async (file) => {
+      validFiles.map(async (file) => {
         // Check if this file is already in our database items
         const existingItem = dbMediaItems.find(item => 
           item.url.includes(file.name)
@@ -167,6 +187,9 @@ export async function GET(req: NextRequest) {
           ? file.name.split('_').slice(1).join('_') 
           : file.name;
 
+        // Check if this file was uploaded by the current user (for delete permissions)
+        const wasUploadedByCurrentUser = file.name.includes(session.user.id);
+
         const mediaItem = {
           id: `storage-${filePath}`,
           type,
@@ -174,7 +197,8 @@ export async function GET(req: NextRequest) {
           url: data?.signedUrl || '',
           filePath: filePath,
           createdAt: file.created_at || new Date(),
-          presenter: ''
+          presenter: '',
+          canDelete: wasUploadedByCurrentUser // Add permission flag
         };
         
         return mediaItem;
@@ -184,9 +208,18 @@ export async function GET(req: NextRequest) {
     // Combine all media items, prioritizing storage items
     const allMediaItems = storageMediaItems.filter(Boolean);
 
+    console.log(`Found ${allBucketFiles.length} total files in bucket`);
+    console.log(`Filtered to ${validFiles.length} valid files`);
+    console.log(`Generated ${allMediaItems.length} media items`);
+
     return NextResponse.json({
       success: true,
-      mediaItems: allMediaItems
+      mediaItems: allMediaItems,
+      debug: {
+        totalBucketFiles: allBucketFiles.length,
+        filteredFiles: validFiles.length,
+        mediaItems: allMediaItems.length
+      }
     });
     
   } catch (error: any) {
