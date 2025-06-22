@@ -15,6 +15,7 @@ import { toast } from "sonner";
 import FlowchartViewer from "@/components/FlowchartViewer";
 import YamlGenerator from "@/components/YamlGenerator";
 import EnhancedSimulationBuilder from "@/components/EnhancedSimulationBuilder";
+import { GenerateTrainingButton } from "@/components/training/generate-training-button";
 
 export default function ProcedurePage() {
   const params = useParams();
@@ -136,6 +137,7 @@ export default function ProcedurePage() {
               >
                 <PlayCircle className="mr-2 h-5 w-5" /> Start Simulation
               </Button>
+              <GenerateTrainingButton procedureId={procedure.id} />
             </div>
           </div>
         </div>

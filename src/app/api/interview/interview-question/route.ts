@@ -142,18 +142,9 @@ export async function POST(request: NextRequest) {
  */
 async function getEnhancedContextIfAvailable(taskId: string, fallbackContext: string): Promise<string> {
   try {
-    const prisma = new (await import('@prisma/client')).PrismaClient();
-    
-    const interviewContext = await prisma.interviewContext.findFirst({
-      where: { taskId }
-    });
-
-    if (interviewContext?.mediaProcessed && interviewContext.enhancedContext) {
-      console.log('Using enhanced context with parsed media content');
-      return interviewContext.enhancedContext;
-    }
-
-    console.log('Using original context (media not yet processed or no media)');
+    // For now, just return the fallback context since interviewContext table doesn't exist
+    // TODO: Implement enhanced context when media processing is added
+    console.log('Using original context (enhanced context not yet implemented)');
     return fallbackContext;
   } catch (error) {
     console.error('Error getting enhanced context:', error);

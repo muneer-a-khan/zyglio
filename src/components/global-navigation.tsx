@@ -4,11 +4,12 @@ import Link from "next/link";
 import { useSession, signOut } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { usePathname } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
 export default function GlobalNavigation() {
   const { data: session, status, update } = useSession();
   const pathname = usePathname();
+  const [isClient, setIsClient] = useState(false);
 
   // Force session update when status changes
   useEffect(() => {
@@ -17,9 +18,15 @@ export default function GlobalNavigation() {
     }
   }, [status, session, update]);
 
+  // Ensure we're on the client side to prevent hydration mismatches
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
 
-
-  const isActive = (path: string) => pathname === path;
+  const isActive = (path: string) => {
+    if (!isClient) return false; // Prevent hydration mismatch
+    return pathname === path;
+  };
 
   return (
     <header className="border-b sticky top-0 z-50 w-full bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -57,22 +64,38 @@ export default function GlobalNavigation() {
               <Link href="/create">New Procedure</Link>
             </Button>
             <Button 
-              variant={isActive('/media') ? "default" : "ghost"} 
-              asChild 
-              className="text-sm font-medium"
-            >
-              <Link href="/media">Media Library</Link>
-            </Button>
-            <Button 
               variant={isActive('/procedures') ? "default" : "ghost"} 
               asChild 
               className="text-sm font-medium"
             >
               <Link href="/procedures">Procedures</Link>
             </Button>
+            <Button 
+              variant={isActive('/training') ? "default" : "ghost"} 
+              asChild 
+              className="text-sm font-medium"
+            >
+              <Link href="/training">Training</Link>
+            </Button>
+            {isClient && session?.user?.role === 'sme' && (
+              <Button 
+                variant={isActive('/sme/training') ? "default" : "ghost"} 
+                asChild 
+                className="text-sm font-medium"
+              >
+                <Link href="/sme/training">Review Training</Link>
+              </Button>
+            )}
+            <Button 
+              variant={isActive('/media') ? "default" : "ghost"} 
+              asChild 
+              className="text-sm font-medium"
+            >
+              <Link href="/media">Media Library</Link>
+            </Button>
           </div>
           <div className="flex items-center space-x-2">
-            {session?.user ? (
+            {isClient && session?.user ? (
               <div className="flex items-center space-x-2">
                 <span className="text-sm text-gray-600 hidden sm:inline">
                   Hi, {session.user.name || session.user.email}
@@ -85,7 +108,7 @@ export default function GlobalNavigation() {
                   Sign Out
                 </Button>
               </div>
-            ) : (
+            ) : isClient ? (
               <Button 
                 size="sm" 
                 className="bg-blue-600 hover:bg-blue-700"
@@ -93,6 +116,9 @@ export default function GlobalNavigation() {
               >
                 <Link href="/auth/signin">Sign In</Link>
               </Button>
+            ) : (
+              // Placeholder for SSR to prevent hydration mismatch
+              <div className="w-20 h-8" />
             )}
           </div>
         </nav>

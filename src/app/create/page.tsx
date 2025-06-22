@@ -21,6 +21,7 @@ import { procedureService, TaskDefinition, Step, MediaItem, SimulationSettings }
 import { EnhancedSimulationSettings } from "@/types/simulation";
 import { v4 as uuidv4 } from 'uuid';
 import { generateYamlFromSteps as generateYamlFromStepsViaAPI } from "@/lib/deepseek";
+import { UserSyncButton } from "@/components/user-sync-button";
 
 export default function CreateProcedure() {
   const { data: session, status } = useSession();
@@ -332,15 +333,25 @@ export default function CreateProcedure() {
     <div className="min-h-screen">
       <main className="container py-8">
         <div className="mb-8">
-          <h1 className="text-3xl font-bold mb-2">Create New Procedure</h1>
-          <p className="text-gray-500">
-            Document your procedure step by step using our voice-based platform.
-          </p>
-          {taskDefinition && (
-            <p className="mt-2 font-medium text-blue-700">
-              {taskDefinition.name}
-            </p>
-          )}
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-3xl font-bold mb-2">Create New Procedure</h1>
+              <p className="text-gray-500">
+                Document your procedure step by step using our voice-based platform.
+              </p>
+              {taskDefinition && (
+                <p className="mt-2 font-medium text-blue-700">
+                  {taskDefinition.name}
+                </p>
+              )}
+            </div>
+            <div className="flex flex-col gap-2">
+              <UserSyncButton />
+              <p className="text-xs text-gray-500 text-center">
+                If you get user errors, try syncing
+              </p>
+            </div>
+          </div>
         </div>
 
         <Tabs

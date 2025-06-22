@@ -61,15 +61,25 @@ export const authOptions: NextAuthOptions = {
                   id: data.user.id,  // Use the Supabase user ID
                   email: credentials.email,
                   name: data.user.user_metadata?.name || credentials.email.split('@')[0] || 'User',
+                  role: 'trainee' // Set default role explicitly
                 }
               });
-              console.log("Created new user in database:", user.id);
+              console.log("Created new user in database:", user.id, user.email);
             } catch (createError) {
               console.error("Error creating user in database:", createError);
-              // If we can't create the user, we still want to continue with the auth flow
+              
+              // Try to find the user again in case of race condition
+              user = await prisma.user.findUnique({
+                where: { email: credentials.email }
+              });
+              
+              if (!user) {
+                console.error("Failed to create or find user, aborting auth");
+                return null;
+              }
             }
           } else {
-            console.log("Found existing user in database:", user.id);
+            console.log("Found existing user in database:", user.id, user.email);
           }
 
           // Return the user for NextAuth
@@ -101,12 +111,24 @@ export const authOptions: NextAuthOptions = {
     async jwt({ token, user }) {
       if (user) {
         token.id = user.id;
+        // Fetch user role from database
+        try {
+          const dbUser = await prisma.user.findUnique({
+            where: { id: user.id },
+            select: { role: true }
+          });
+          token.role = dbUser?.role || 'trainee';
+        } catch (error) {
+          console.error('Error fetching user role:', error);
+          token.role = 'trainee';
+        }
       }
       return token;
     },
     async session({ session, token }) {
       if (session.user) {
         session.user.id = token.id as string;
+        session.user.role = token.role as string;
       }
       return session;
     },

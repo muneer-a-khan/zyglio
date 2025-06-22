@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Mic, MicOff, Loader2, Volume2, AlertCircle, CheckCircle, Play, Pause, StopCircle, Sparkles, Brain, HelpCircle, MessageSquare, Activity } from "lucide-react";
 import { toast } from "sonner";
+import { MicrophoneTest } from './microphone-test';
 import { Badge } from "@/components/ui/badge";
 import TopicChecklist from "@/components/topic-checklist";
 import ConversationChat from "@/components/conversation-chat";
@@ -69,6 +70,8 @@ export default function VoiceInterview({
   const [isProcessing, setIsProcessing] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [hasInitialized, setHasInitialized] = useState(false);
+  const [microphonePermission, setMicrophonePermission] = useState<'unknown' | 'granted' | 'denied'>('unknown');
   const [conversationHistory, setConversationHistory] = useState<ConversationEntry[]>([]);
   const [currentAIQuestion, setCurrentAIQuestion] = useState<string | null>(null);
   const [audioContext, setAudioContext] = useState<AudioContext | null>(null);
@@ -100,17 +103,24 @@ export default function VoiceInterview({
   const processingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastProcessedTranscriptRef = useRef<string>('');
   const accumulatedFinalTranscriptRef = useRef<string>('');
+  const currentTTSRequestRef = useRef<string>('');
+  const isTTSPlayingRef = useRef<boolean>(false);
+  const initializationStartedRef = useRef<boolean>(false);
   
   // Initialize the interview session
   useEffect(() => {
-    initializeSession();
-    initializeSpeechRecognition();
-    
-    // Initialize audio context
-    if (!audioContext) {
-      setAudioContext(new (window.AudioContext || (window as any).webkitAudioContext)());
+    if (!hasInitialized && !initializationStartedRef.current) {
+      initializationStartedRef.current = true;
+      initializeSession();
+      initializeSpeechRecognition();
+      // Don't check microphone permission automatically - let user trigger it
+      
+      // Initialize audio context
+      if (!audioContext) {
+        setAudioContext(new (window.AudioContext || (window as any).webkitAudioContext)());
+      }
     }
-  }, []);
+  }, []); // Empty dependency array - only run once on mount
   
   // Initialize audio player
   useEffect(() => {
@@ -427,13 +437,103 @@ Generate one specific follow-up question to get more detail. Be concise.`
 
     } catch (error) {
       console.error('Error with streaming agents:', error);
+        }
+  };
+
+  // Check microphone permission status
+  const checkMicrophonePermission = async () => {
+    try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        setMicrophonePermission('denied');
+        return 'denied';
+      }
+
+      // Check current permission status
+      const result = await navigator.permissions.query({ name: 'microphone' as PermissionName });
+      
+      if (result.state === 'granted') {
+        setMicrophonePermission('granted');
+        return 'granted';
+      } else if (result.state === 'denied') {
+        setMicrophonePermission('denied');
+        return 'denied';
+      } else {
+        setMicrophonePermission('unknown');
+        return 'unknown';
+      }
+    } catch (error) {
+      console.log('Permission API not supported, will request on first use');
+      setMicrophonePermission('unknown');
+      return 'unknown';
     }
   };
-  
+
+  // Request microphone permission explicitly
+  const requestMicrophonePermission = async () => {
+    try {
+      console.log('Requesting microphone permission...');
+      
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        toast.error('Microphone access not supported in this browser. Please use Chrome, Firefox, or Safari.');
+        setMicrophonePermission('denied');
+        return;
+      }
+
+      toast.info('Requesting microphone permission... Please allow access when prompted.');
+
+      // Request microphone access - this MUST be triggered by user interaction
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          sampleRate: 16000,
+          channelCount: 1,
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true
+        }
+      });
+
+      console.log('Microphone permission granted!');
+      
+      // Stop the stream immediately - we just wanted permission
+      stream.getTracks().forEach(track => track.stop());
+      
+      setMicrophonePermission('granted');
+      toast.success('Microphone access granted! You can now record your answers.');
+
+    } catch (error: any) {
+      console.error('Microphone permission error:', error);
+      
+      if (error.name === 'NotAllowedError') {
+        setMicrophonePermission('denied');
+        toast.error('Microphone permission denied. Please click the microphone icon in your browser address bar and allow access.');
+      } else if (error.name === 'NotFoundError') {
+        setMicrophonePermission('denied');
+        toast.error('No microphone found. Please connect a microphone and try again.');
+      } else if (error.name === 'NotReadableError') {
+        setMicrophonePermission('denied');
+        toast.error('Microphone is being used by another application. Please close other apps and try again.');
+      } else if (error.name === 'AbortError') {
+        setMicrophonePermission('unknown');
+        toast.error('Microphone access was aborted. Please try again.');
+      } else {
+        setMicrophonePermission('denied');
+        toast.error(`Unable to access microphone: ${error.message || 'Unknown error'}. Please check your browser settings.`);
+      }
+    }
+  };
+
   // Initialize the session
   const initializeSession = async () => {
+    if (hasInitialized) {
+      console.log('Session already initialized, skipping...');
+      return;
+    }
+
     try {
       setIsInitializing(true);
+      setHasInitialized(true);
+      
+      console.log('Initializing session for procedure:', procedureId);
       
       // Start with the first question
       const response = await fetch('/api/interview/interview-question', {
@@ -470,6 +570,8 @@ Generate one specific follow-up question to get more detail. Be concise.`
     } catch (error) {
       console.error('Error initializing interview session:', error);
       toast.error('Failed to initialize interview. Please try again.');
+      setHasInitialized(false); // Reset on error so user can try again
+      initializationStartedRef.current = false; // Reset ref on error
     } finally {
       setIsInitializing(false);
     }
@@ -478,16 +580,34 @@ Generate one specific follow-up question to get more detail. Be concise.`
   // Start recording with both speech recognition and audio recording
   const startRecording = async () => {
     try {
+      console.log('Starting recording...');
+      
+      // We should already have permission at this point
+      if (microphonePermission !== 'granted') {
+        toast.error('Microphone permission required. Please click "Enable Microphone" first.');
+        return;
+      }
+
       // Request microphone access
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          sampleRate: 16000, // Optimal for speech recognition
-          channelCount: 1,
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true
-        }
-      });
+      let stream;
+      try {
+        console.log('Getting microphone stream...');
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            sampleRate: 16000, // Optimal for speech recognition
+            channelCount: 1,
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true
+          }
+        });
+        console.log('Microphone stream obtained!');
+      } catch (streamError: any) {
+        console.error('Failed to get microphone stream:', streamError);
+        toast.error('Failed to access microphone. Please try enabling microphone again.');
+        setMicrophonePermission('unknown'); // Reset so user can try again
+        return;
+      }
 
       // Start audio recording for Whisper transcription
       let mimeType = 'audio/webm; codecs=opus';
@@ -798,6 +918,14 @@ Generate one specific follow-up question to get more detail. Be concise.`
   // Speak a question using Eleven Labs TTS
   const speakQuestion = async (text: string) => {
     try {
+      // Prevent duplicate calls for the same text
+      if (currentTTSRequestRef.current === text || isTTSPlayingRef.current) {
+        console.log('TTS call prevented - duplicate or already playing:', text.substring(0, 50));
+        return;
+      }
+
+      currentTTSRequestRef.current = text;
+      isTTSPlayingRef.current = true;
       setIsPlaying(true);
       
       // Call our Eleven Labs TTS API
@@ -836,10 +964,14 @@ Generate one specific follow-up question to get more detail. Be concise.`
           audioPlayerRef.current.src = audioUrl;
           audioPlayerRef.current.onended = () => {
             setIsPlaying(false);
+            isTTSPlayingRef.current = false;
+            currentTTSRequestRef.current = '';
             URL.revokeObjectURL(audioUrl); // Clean up
           };
           audioPlayerRef.current.onerror = () => {
             setIsPlaying(false);
+            isTTSPlayingRef.current = false;
+            currentTTSRequestRef.current = '';
             URL.revokeObjectURL(audioUrl);
             toast.error('Failed to play audio');
           };
@@ -853,6 +985,8 @@ Generate one specific follow-up question to get more detail. Be concise.`
     } catch (error) {
       console.error('Error with Eleven Labs TTS:', error);
       setIsPlaying(false);
+      isTTSPlayingRef.current = false;
+      currentTTSRequestRef.current = '';
       
       // Fallback to browser TTS if Eleven Labs fails
       await fallbackToBrowserTTS(text);
@@ -877,11 +1011,15 @@ Generate one specific follow-up question to get more detail. Be concise.`
         
         utterance.onend = () => {
           setIsPlaying(false);
+          isTTSPlayingRef.current = false;
+          currentTTSRequestRef.current = '';
         };
         
         utterance.onerror = (event) => {
           console.error('Browser TTS error:', event);
           setIsPlaying(false);
+          isTTSPlayingRef.current = false;
+          currentTTSRequestRef.current = '';
         };
         
         // Try to use a more natural voice if available
@@ -1217,15 +1355,79 @@ Generate one specific follow-up question to get more detail. Be concise.`
                 <p className="text-sm text-gray-600">
                   This system uses AI-powered transcription (OpenAI Whisper) for maximum accuracy, with real-time browser recognition for immediate feedback.
                 </p>
+                
+                {/* Microphone Test Component */}
+                <div className="mt-4 p-4 bg-gray-50 rounded-lg">
+                  <p className="text-sm font-medium text-gray-700 mb-3">
+                    🎤 Test your microphone before starting:
+                  </p>
+                  <MicrophoneTest />
+                </div>
               </CardHeader>
               <CardContent className="space-y-4">
+                {/* Microphone Permission Status */}
+                {microphonePermission === 'unknown' && (
+                  <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                    <div className="flex items-center gap-2 text-blue-700">
+                      <Mic className="w-4 h-4" />
+                      <span className="font-medium">Microphone Permission Required</span>
+                    </div>
+                    <p className="text-sm text-blue-600 mt-1">
+                      Click "Enable Microphone" below to allow microphone access for voice recording.
+                    </p>
+                  </div>
+                )}
+                
+                {microphonePermission === 'denied' && (
+                  <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                    <div className="flex items-center gap-2 text-red-700">
+                      <AlertCircle className="w-4 h-4" />
+                      <span className="font-medium">Microphone Access Denied</span>
+                    </div>
+                    <p className="text-sm text-red-600 mt-1">
+                      Please click the microphone icon in your browser address bar and allow access, then refresh the page.
+                    </p>
+                    <Button 
+                      onClick={() => window.location.reload()} 
+                      variant="outline" 
+                      size="sm" 
+                      className="mt-2 text-red-700 border-red-300 hover:bg-red-50"
+                    >
+                      Refresh Page
+                    </Button>
+                  </div>
+                )}
+                
+                {microphonePermission === 'granted' && (
+                  <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
+                    <div className="flex items-center gap-2 text-green-700">
+                      <CheckCircle className="w-4 h-4" />
+                      <span className="font-medium">Microphone Ready</span>
+                    </div>
+                    <p className="text-sm text-green-600 mt-1">
+                      Your microphone is ready for voice recording.
+                    </p>
+                  </div>
+                )}
+
                 <div className="flex items-center gap-4">
-                  {!isReadyToSubmit ? (
+                  {microphonePermission === 'unknown' ? (
+                    <Button
+                      onClick={requestMicrophonePermission}
+                      variant="default"
+                      size="lg"
+                      disabled={isProcessing || isTranscribing}
+                      className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700"
+                    >
+                      <Mic className="w-5 h-5" />
+                      Enable Microphone
+                    </Button>
+                  ) : !isReadyToSubmit ? (
                     <Button
                       onClick={isRecording ? stopRecording : startRecording}
                       variant={isRecording ? "destructive" : "default"}
                       size="lg"
-                      disabled={isProcessing || isTranscribing}
+                      disabled={isProcessing || isTranscribing || microphonePermission === 'denied'}
                       className="flex items-center gap-2"
                     >
                       {isRecording ? (

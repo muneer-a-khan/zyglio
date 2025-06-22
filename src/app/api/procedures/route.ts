@@ -15,6 +15,23 @@ export async function POST(req: NextRequest) {
     const userId = session.user.id;
     const taskData = await req.json();
     
+    console.log('Creating procedure for user:', userId);
+    
+    // First, verify the user exists in the database
+    const user = await prisma.user.findUnique({
+      where: { id: userId }
+    });
+    
+    if (!user) {
+      console.error('User not found in database:', userId);
+      return NextResponse.json({ 
+        success: false, 
+        message: "User not found. Please try signing out and signing back in." 
+      }, { status: 400 });
+    }
+    
+    console.log('User found:', user.email);
+    
     // Generate UUIDs for the task and procedure
     const taskId = uuidv4();
     const procedureId = uuidv4();
@@ -35,6 +52,8 @@ export async function POST(req: NextRequest) {
         }
       });
       
+      console.log('Learning task created:', task.id);
+      
       // Then create the procedure linked to the task
       const procedure = await tx.procedure.create({
         data: {
@@ -43,6 +62,8 @@ export async function POST(req: NextRequest) {
           taskId: task.id,
         }
       });
+      
+      console.log('Procedure created:', procedure.id);
       
       return { taskId: task.id, procedureId: procedure.id };
     });
@@ -57,6 +78,15 @@ export async function POST(req: NextRequest) {
     
   } catch (error: any) {
     console.error('Error creating procedure:', error);
+    
+    // Check if it's a foreign key constraint error
+    if (error.code === 'P2003') {
+      return NextResponse.json({ 
+        success: false, 
+        message: "User account not properly set up. Please try signing out and signing back in." 
+      }, { status: 400 });
+    }
+    
     return NextResponse.json({ 
       success: false, 
       message: error.message || "An error occurred" 

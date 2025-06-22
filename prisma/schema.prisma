@@ -9,12 +9,16 @@ datasource db {
 }
 
 model User {
-  id           String         @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  email        String         @unique
-  name         String?
-  createdAt    DateTime       @default(now()) @db.Timestamptz(6)
-  role         user_role      @default(trainee)
-  LearningTask LearningTask[]
+  id               String             @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  email            String             @unique
+  name             String?
+  createdAt        DateTime           @default(now()) @db.Timestamptz(6)
+  role             user_role          @default(trainee)
+  certifications   Certification[]
+  LearningTask     LearningTask[]
+  quizAttempts     QuizAttempt[]
+  approvedModules  TrainingModule[]   @relation("ModuleApprover")
+  trainingProgress TrainingProgress[]
 
   @@map("users")
 }
@@ -99,12 +103,14 @@ model MediaItem {
 }
 
 model Procedure {
-  id                 String          @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  id                 String           @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
   title              String
-  taskId             String          @db.Uuid
-  simulationSettings Json?           @default("{}")
-  LearningTask       LearningTask    @relation(fields: [taskId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  taskId             String           @db.Uuid
+  simulationSettings Json?            @default("{}")
+  certifications     Certification[]
+  LearningTask       LearningTask     @relation(fields: [taskId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   ProcedureStep      ProcedureStep[]
+  trainingModules    TrainingModule[]
 
   @@index([taskId])
 }
@@ -169,6 +175,136 @@ model YamlOutput {
   @@index([taskId])
 }
 
+model TrainingModule {
+  id             String             @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  procedureId    String             @db.Uuid
+  title          String
+  subtopics      Json
+  isApproved     Boolean            @default(false)
+  approvedAt     DateTime?          @db.Timestamptz(6)
+  approvedBy     String?            @db.Uuid
+  createdAt      DateTime           @default(now()) @db.Timestamptz(6)
+  updatedAt      DateTime           @default(now()) @updatedAt @db.Timestamptz(6)
+  version        Int                @default(1)
+  certifications Certification[]
+  quizBanks      QuizBank[]
+  content        TrainingContent[]
+  approver       User?              @relation("ModuleApprover", fields: [approvedBy], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  procedure      Procedure          @relation(fields: [procedureId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  progress       TrainingProgress[]
+
+  @@index([procedureId])
+  @@index([isApproved])
+}
+
+model TrainingContent {
+  id            String              @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  moduleId      String              @db.Uuid
+  subtopic      String
+  contentType   TrainingContentType
+  title         String
+  content       Json
+  orderIndex    Int
+  estimatedTime Int
+  createdAt     DateTime            @default(now()) @db.Timestamptz(6)
+  module        TrainingModule      @relation(fields: [moduleId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([moduleId])
+  @@index([subtopic])
+}
+
+model QuizBank {
+  id           String         @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  moduleId     String         @db.Uuid
+  subtopic     String
+  questions    Json
+  passingScore Int            @default(80)
+  createdAt    DateTime       @default(now()) @db.Timestamptz(6)
+  attempts     QuizAttempt[]
+  module       TrainingModule @relation(fields: [moduleId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([moduleId])
+  @@index([subtopic])
+}
+
+model QuizAttempt {
+  id            String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  userId        String   @db.Uuid
+  quizBankId    String   @db.Uuid
+  answers       Json
+  score         Int
+  passed        Boolean
+  timeSpent     Int
+  attemptNumber Int
+  completedAt   DateTime @default(now()) @db.Timestamptz(6)
+  quizBank      QuizBank @relation(fields: [quizBankId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([userId])
+  @@index([quizBankId])
+  @@index([completedAt])
+}
+
+model Certification {
+  id                  String                   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  userId              String                   @db.Uuid
+  moduleId            String                   @db.Uuid
+  procedureId         String                   @db.Uuid
+  status              CertificationStatus      @default(NOT_STARTED)
+  quizScore           Int?
+  voiceInterviewScore Json?
+  overallScore        Int?
+  passed              Boolean                  @default(false)
+  certifiedAt         DateTime?                @db.Timestamptz(6)
+  voiceInterviewData  Json?
+  competencyScores    Json?
+  adaptiveDifficulty  String?
+  module              TrainingModule           @relation(fields: [moduleId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  procedure           Procedure                @relation(fields: [procedureId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  user                User                     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  analytics           CertificationAnalytics[]
+
+  @@unique([userId, moduleId])
+  @@index([userId])
+  @@index([moduleId])
+  @@index([status])
+  @@index([certifiedAt])
+}
+
+model TrainingProgress {
+  id                 String         @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  userId             String         @db.Uuid
+  moduleId           String         @db.Uuid
+  currentSubtopic    String?
+  completedSubtopics Json           @default("[]")
+  timeSpent          Int            @default(0)
+  lastAccessedAt     DateTime       @default(now()) @db.Timestamptz(6)
+  progressPercentage Int            @default(0)
+  module             TrainingModule @relation(fields: [moduleId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  user               User           @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([userId, moduleId])
+  @@index([userId])
+  @@index([moduleId])
+}
+
+model CertificationAnalytics {
+  id              String             @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  certificationId String             @db.Uuid
+  userId          String             @db.Uuid
+  moduleId        String             @db.Uuid
+  eventType       AnalyticsEventType
+  eventData       Json
+  timestamp       DateTime           @default(now()) @db.Timestamptz(6)
+  certification   Certification      @relation(fields: [certificationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([certificationId])
+  @@index([userId])
+  @@index([moduleId])
+  @@index([eventType])
+  @@index([timestamp])
+}
+
 enum MediaType {
   IMAGE
   VIDEO
@@ -192,4 +328,34 @@ enum user_role {
   sme
   trainee
   admin
+}
+
+enum TrainingContentType {
+  ARTICLE
+  INTERACTIVE_QUIZ
+  DRAG_DROP
+  SCENARIO_SIMULATION
+  VIDEO_CONTENT
+}
+
+enum CertificationStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  QUIZ_COMPLETED
+  VOICE_INTERVIEW_SCHEDULED
+  VOICE_INTERVIEW_IN_PROGRESS
+  COMPLETED
+  FAILED
+}
+
+enum AnalyticsEventType {
+  TRAINING_STARTED
+  CONTENT_VIEWED
+  QUIZ_ATTEMPTED
+  QUIZ_PASSED
+  QUIZ_FAILED
+  VOICE_INTERVIEW_STARTED
+  VOICE_INTERVIEW_COMPLETED
+  CERTIFICATION_ACHIEVED
+  CERTIFICATION_FAILED
 }
