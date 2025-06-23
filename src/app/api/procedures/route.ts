@@ -4,33 +4,21 @@ import { Prisma } from "@prisma/client";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { v4 as uuidv4 } from "uuid";
+import { databaseService } from "@/lib/database";
 
 export async function POST(req: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ success: false, message: "Not authenticated" }, { status: 401 });
+    if (!session?.user?.id || !session?.user?.email) {
+      return NextResponse.json({ success: false, message: "Not authenticated or missing email" }, { status: 401 });
     }
 
     const userId = session.user.id;
     const taskData = await req.json();
     
-    console.log('Creating procedure for user:', userId);
-    
-    // First, verify the user exists in the database
-    const user = await prisma.user.findUnique({
-      where: { id: userId }
-    });
-    
-    if (!user) {
-      console.error('User not found in database:', userId);
-      return NextResponse.json({ 
-        success: false, 
-        message: "User not found. Please try signing out and signing back in." 
-      }, { status: 400 });
-    }
-    
-    console.log('User found:', user.email);
+    // Get or create user using the database service
+    // We've already checked that email exists above, so we can safely assert it's a string
+    const user = await databaseService.getOrCreateUser(session.user.email as string, session.user.name || undefined);
     
     // Generate UUIDs for the task and procedure
     const taskId = uuidv4();
@@ -48,7 +36,7 @@ export async function POST(req: NextRequest) {
           presenter: taskData.presenter,
           affiliation: taskData.affiliation,
           date: new Date(taskData.date),
-          userId: userId,
+          userId: user.id,
         }
       });
       

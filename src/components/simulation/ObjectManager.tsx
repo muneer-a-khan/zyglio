@@ -30,9 +30,13 @@ import { toast } from "sonner";
 import { SimulationObject } from "@/types/simulation";
 import { simulationEngine } from "@/lib/simulation-engine";
 
-interface ObjectManagerProps {
+export interface ObjectManagerProps {
   objects: SimulationObject[];
-  onObjectsChange: (objects: SimulationObject[]) => void;
+  onAddObject: (obj: SimulationObject) => void;
+  onUpdateObject: (id: string, updatedObj: SimulationObject) => void;
+  onDeleteObject: (id: string) => void;
+  onSelectObjects: (objectIds: string[]) => void;
+  selectedObjects: string[];
 }
 
 const OBJECT_TYPES = [
@@ -43,7 +47,14 @@ const OBJECT_TYPES = [
   { value: "document", label: "Document", icon: FileText },
 ];
 
-const ObjectManager = ({ objects, onObjectsChange }: ObjectManagerProps) => {
+const ObjectManager: React.FC<ObjectManagerProps> = ({
+  objects,
+  onAddObject,
+  onUpdateObject,
+  onDeleteObject,
+  onSelectObjects,
+  selectedObjects
+}) => {
   const [isCreating, setIsCreating] = useState(false);
   const [editingObject, setEditingObject] = useState<SimulationObject | null>(null);
   const [formData, setFormData] = useState({
@@ -129,7 +140,7 @@ const ObjectManager = ({ objects, onObjectsChange }: ObjectManagerProps) => {
         toast.success("Object created successfully");
       }
 
-      onObjectsChange(updatedObjects);
+      onAddObject(updatedObjects[updatedObjects.length - 1]);
       resetForm();
     } catch (error) {
       console.error("Error saving object:", error);
@@ -158,7 +169,7 @@ const ObjectManager = ({ objects, onObjectsChange }: ObjectManagerProps) => {
       const success = await simulationEngine.deleteObject(objectId);
       if (success) {
         const updatedObjects = objects.filter(obj => obj.id !== objectId);
-        onObjectsChange(updatedObjects);
+        onDeleteObject(objectId);
         toast.success("Object deleted successfully");
       } else {
         toast.error("Failed to delete object");
