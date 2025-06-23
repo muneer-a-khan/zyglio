@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { deepseekApi } from '@/lib/deepseek';
+import { getDeepSeekApi } from '@/lib/deepseek';
 
 export async function POST(request: NextRequest) {
   try {
@@ -150,11 +150,22 @@ Adjust question difficulty based on ${adaptiveDifficulty} level.
 `;
 
     try {
-      const questionsResponse = await deepseekApi(questionPrompt);
+      const deepseekApi = getDeepSeekApi();
+      
+      const questionsResponse = await deepseekApi.chat.completions.create({
+        messages: [{ role: 'user', content: questionPrompt }],
+        model: 'deepseek-chat',
+        response_format: { type: 'json_object' }
+      });
+      
       let interviewQuestions;
       
       try {
-        interviewQuestions = JSON.parse(questionsResponse);
+        const responseContent = questionsResponse.choices[0]?.message?.content;
+        if (!responseContent) {
+          throw new Error('Empty response from DeepSeek API');
+        }
+        interviewQuestions = JSON.parse(responseContent);
       } catch {
         // Fallback questions if parsing fails
         interviewQuestions = generateFallbackQuestions(module, adaptiveDifficulty);

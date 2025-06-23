@@ -65,7 +65,14 @@ export function QuizInterface({ quizBank, onComplete }: QuizInterfaceProps) {
   
   const handleNext = () => {
     if (currentQuestionIndex < questions.length - 1) {
+      // Move to the next question but don't auto-select any answer
       setCurrentQuestionIndex(currentQuestionIndex + 1);
+      
+      // If the user hasn't selected an answer for the next question yet,
+      // ensure it remains unselected
+      if (selectedAnswers[currentQuestionIndex + 1] === undefined) {
+        // No need to do anything, as the RadioGroup will use empty string as value
+      }
     } else {
       setIsSubmitted(true);
       setShowResults(true);
@@ -203,7 +210,7 @@ export function QuizInterface({ quizBank, onComplete }: QuizInterfaceProps) {
         <div className="text-lg font-medium">{currentQuestion.question || 'Question not available'}</div>
         
         <RadioGroup 
-          value={selectedAnswers[currentQuestionIndex]?.toString()} 
+          value={selectedAnswers[currentQuestionIndex]?.toString() || ""} 
           onValueChange={(value) => handleAnswerSelect(parseInt(value))}
         >
           {(currentQuestion.options || []).map((option, index) => (

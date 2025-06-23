@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { deepseekApi } from '@/lib/deepseek';
+import { getDeepSeekApi } from '@/lib/deepseek';
 
 export async function POST(request: NextRequest) {
   try {
@@ -88,6 +88,8 @@ Make sure subtopics are logical learning chunks, not just individual steps.
 
     let subtopicsResponse;
     try {
+      const deepseekApi = getDeepSeekApi();
+      
       subtopicsResponse = await deepseekApi.chat.completions.create({
         messages: [{ role: 'user', content: subtopicsPrompt }],
         model: 'deepseek-chat',
@@ -191,6 +193,8 @@ REQUIREMENTS:
 
         let articleResponse;
         try {
+          const deepseekApi = getDeepSeekApi();
+          
           articleResponse = await deepseekApi.chat.completions.create({
             messages: [{ role: 'user', content: articlePrompt }],
             model: 'deepseek-chat',
@@ -241,6 +245,8 @@ IMPORTANT REQUIREMENTS:
 
         let quizResponse;
         try {
+          const deepseekApi = getDeepSeekApi();
+          
           quizResponse = await deepseekApi.chat.completions.create({
             messages: [{ role: 'user', content: quizPrompt }],
             model: 'deepseek-chat',
