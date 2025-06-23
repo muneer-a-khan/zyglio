@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
         isApproved: false,
         procedure: {
           LearningTask: {
-            createdBy: smeId // Assuming we add createdBy field to LearningTask
+            userId: smeId // Using userId instead of createdBy
           }
         }
       },
@@ -158,22 +158,33 @@ export async function POST(request: NextRequest) {
         }
       });
 
-      // Log approval activity
-      await prisma.certificationAnalytics.create({
-        data: {
-          userId: smeId,
+      // Check if there's an existing certification for this module and user
+      const existingCertification = await prisma.certification.findFirst({
+        where: {
           moduleId: moduleId,
-          eventType: 'TRAINING_STARTED', // We might want to add a new event type for approvals
-          eventData: {
-            action: 'module_approved',
-            approvedAt: new Date().toISOString(),
-            feedback: feedback || null
-          },
-          certificationId: null
+          userId: smeId
         }
-      }).catch(() => {
-        console.warn('Failed to log approval analytics');
       });
+
+      // Only create analytics if a certification exists
+      if (existingCertification) {
+        // Log approval activity
+        await prisma.certificationAnalytics.create({
+          data: {
+            userId: smeId,
+            moduleId: moduleId,
+            eventType: 'TRAINING_STARTED',
+            eventData: {
+              action: 'module_approved',
+              approvedAt: new Date().toISOString(),
+              feedback: feedback || null
+            },
+            certificationId: existingCertification.id
+          }
+        }).catch((err) => {
+          console.warn('Failed to log approval analytics:', err);
+        });
+      }
 
       return NextResponse.json({
         success: true,

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -40,9 +41,15 @@ interface PendingModule {
   quizCount: number;
   totalQuestions: number;
   estimatedTime: number;
-  waitingCertifications: number;
+  waitingCertifications?: number;
+  activeCertifications?: number;
   status: string;
   contentTypes: string[];
+  approvedAt?: string;
+  approvedBy?: {
+    name: string;
+    email: string;
+  };
 }
 
 interface ModuleDetail {
@@ -59,14 +66,18 @@ interface ModuleDetail {
 
 export function ContentReviewPanel({ smeId }: ContentReviewPanelProps) {
   const [pendingModules, setPendingModules] = useState<PendingModule[]>([]);
+  const [approvedModules, setApprovedModules] = useState<PendingModule[]>([]);
   const [selectedModule, setSelectedModule] = useState<ModuleDetail | null>(null);
   const [loading, setLoading] = useState(false);
   const [feedback, setFeedback] = useState('');
   const [activeTab, setActiveTab] = useState('content');
   const [currentContentIndex, setCurrentContentIndex] = useState(0);
+  const [isFixingContent, setIsFixingContent] = useState(false);
+  const [moduleListTab, setModuleListTab] = useState('pending');
 
   useEffect(() => {
     loadPendingModules();
+    loadApprovedModules();
   }, [smeId]);
 
   const loadPendingModules = async () => {
@@ -87,6 +98,21 @@ export function ContentReviewPanel({ smeId }: ContentReviewPanelProps) {
     }
   };
 
+  const loadApprovedModules = async () => {
+    try {
+      const response = await fetch(`/api/sme/training/approved?smeId=${smeId}`);
+      if (response.ok) {
+        const data = await response.json();
+        setApprovedModules(data.approvedModules);
+      } else {
+        toast.error('Failed to load approved modules');
+      }
+    } catch (error) {
+      console.error('Error loading approved modules:', error);
+      toast.error('Failed to load approved modules');
+    }
+  };
+
   const loadModuleDetails = async (moduleId: string) => {
     setLoading(true);
     try {
@@ -103,6 +129,37 @@ export function ContentReviewPanel({ smeId }: ContentReviewPanelProps) {
       toast.error('Failed to load module details');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleFixContent = async (moduleId: string) => {
+    setIsFixingContent(true);
+    try {
+      const response = await fetch('/api/training/fix-content', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ moduleId }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        toast.success(`Fixed ${data.fixedCount} quiz banks with incomplete questions`);
+        
+        // Reload module details to show updated content
+        if (selectedModule) {
+          loadModuleDetails(selectedModule.id);
+        }
+      } else {
+        const error = await response.json();
+        toast.error(error.error || 'Failed to fix content');
+      }
+    } catch (error) {
+      console.error('Error fixing content:', error);
+      toast.error('Failed to fix content');
+    } finally {
+      setIsFixingContent(false);
     }
   };
 
@@ -126,8 +183,9 @@ export function ContentReviewPanel({ smeId }: ContentReviewPanelProps) {
         const data = await response.json();
         toast.success(data.message);
         
-        // Refresh the pending modules list
+        // Refresh the modules lists
         loadPendingModules();
+        loadApprovedModules();
         
         // Clear selection and feedback
         setSelectedModule(null);
@@ -145,28 +203,37 @@ export function ContentReviewPanel({ smeId }: ContentReviewPanelProps) {
   };
 
   const renderModulesList = () => {
-    if (loading && pendingModules.length === 0) {
+    const currentModules = moduleListTab === 'pending' ? pendingModules : approvedModules;
+    const isApprovedTab = moduleListTab === 'approved';
+    
+    if (loading && currentModules.length === 0) {
       return (
         <div className="text-center py-8">
           <div className="animate-spin w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full mx-auto mb-4"></div>
-          <p>Loading pending modules...</p>
+          <p>Loading {moduleListTab} modules...</p>
         </div>
       );
     }
 
-    if (pendingModules.length === 0) {
+    if (currentModules.length === 0) {
       return (
         <div className="text-center py-8">
           <CheckCircle className="w-12 h-12 text-green-600 mx-auto mb-4" />
-          <h3 className="text-lg font-semibold mb-2">All Caught Up!</h3>
-          <p className="text-gray-600">No training modules pending your approval.</p>
+          <h3 className="text-lg font-semibold mb-2">
+            {isApprovedTab ? 'No Approved Modules' : 'All Caught Up!'}
+          </h3>
+          <p className="text-gray-600">
+            {isApprovedTab 
+              ? 'You have no approved training modules to manage.' 
+              : 'No training modules pending your approval.'}
+          </p>
         </div>
       );
     }
 
     return (
       <div className="space-y-4">
-        {pendingModules.map((module) => (
+        {currentModules.map((module) => (
           <Card 
             key={module.id} 
             className={`cursor-pointer transition-colors ${
@@ -197,10 +264,21 @@ export function ContentReviewPanel({ smeId }: ContentReviewPanelProps) {
                   </div>
                   <div className="flex items-center gap-2">
                     <Badge variant="outline">v{module.version}</Badge>
-                    {module.waitingCertifications > 0 && (
-                      <Badge variant="secondary" className="flex items-center gap-1">
+                    {isApprovedTab && module.approvedAt && (
+                      <Badge variant="secondary" className="text-green-700 bg-green-100">
+                        Approved {new Date(module.approvedAt).toLocaleDateString()}
+                      </Badge>
+                    )}
+                    {module.waitingCertifications && module.waitingCertifications > 0 && (
+                                              <Badge variant="secondary" className="flex items-center gap-1">
+                          <Users className="w-3 h-3" />
+                          {module.waitingCertifications} waiting
+                        </Badge>
+                      )}
+                    {isApprovedTab && module.activeCertifications && module.activeCertifications > 0 && (
+                      <Badge variant="secondary" className="flex items-center gap-1 bg-blue-100 text-blue-700">
                         <Users className="w-3 h-3" />
-                        {module.waitingCertifications} waiting
+                        {module.activeCertifications} certified
                       </Badge>
                     )}
                     <div className="flex gap-1">
@@ -420,52 +498,114 @@ export function ContentReviewPanel({ smeId }: ContentReviewPanelProps) {
           </CardContent>
         </Card>
 
-        {/* Approval Actions */}
+        {/* Review Actions */}
         <Card>
           <CardHeader>
-            <CardTitle>Review Actions</CardTitle>
+            <CardTitle>
+              {selectedModule.isApproved ? 'Content Management' : 'Review Actions'}
+            </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div>
-              <label className="text-sm font-medium text-gray-600 mb-2 block">
-                Feedback (Optional)
-              </label>
-              <Textarea
-                value={feedback}
-                onChange={(e) => setFeedback(e.target.value)}
-                placeholder="Provide feedback for the content creators..."
-                className="min-h-[100px]"
-              />
-            </div>
-            
-            <div className="flex gap-3">
-              <Button
-                onClick={() => handleApproval(selectedModule.id, 'approve')}
-                disabled={loading}
-                className="bg-green-600 hover:bg-green-700 flex items-center gap-2"
-              >
-                <CheckCircle className="w-4 h-4" />
-                Approve
-              </Button>
-              <Button
-                onClick={() => handleApproval(selectedModule.id, 'request_changes')}
-                disabled={loading}
-                variant="outline"
-                className="flex items-center gap-2"
-              >
-                <Edit className="w-4 h-4" />
-                Request Changes
-              </Button>
-              <Button
-                onClick={() => handleApproval(selectedModule.id, 'reject')}
-                disabled={loading}
-                variant="destructive"
-                className="flex items-center gap-2"
-              >
-                <X className="w-4 h-4" />
-                Reject
-              </Button>
-            </div>
+            {selectedModule.isApproved ? (
+              <>
+                <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
+                  <div className="flex items-center gap-2 text-green-800 mb-2">
+                    <CheckCircle className="w-5 h-5" />
+                    <span className="font-medium">Module Approved</span>
+                  </div>
+                  <p className="text-sm text-green-700">
+                    This module has been approved and is live for training. You can still fix content issues or make improvements.
+                  </p>
+                  {selectedModule.approver && (
+                    <p className="text-sm text-green-600 mt-2">
+                      Approved by: {selectedModule.approver.name}
+                    </p>
+                  )}
+                </div>
+                
+                <div className="flex gap-3 flex-wrap">
+                  <Button
+                    onClick={() => handleFixContent(selectedModule.id)}
+                    disabled={isFixingContent}
+                    variant="outline"
+                    className="flex items-center gap-2 border-orange-300 text-orange-700 hover:bg-orange-50"
+                  >
+                    {isFixingContent ? (
+                      <div className="w-4 h-4 animate-spin border-2 border-orange-600 border-t-transparent rounded-full" />
+                    ) : (
+                      <AlertTriangle className="w-4 h-4" />
+                    )}
+                    Fix Content Issues
+                  </Button>
+                  <Button
+                    asChild
+                    variant="outline"
+                    className="flex items-center gap-2"
+                  >
+                    <Link href={`/sme/training/edit/${selectedModule.id}`}>
+                      <Edit className="w-4 h-4" />
+                      Edit Content
+                    </Link>
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div>
+                  <label className="text-sm font-medium text-gray-600 mb-2 block">
+                    Feedback (Optional)
+                  </label>
+                  <Textarea
+                    value={feedback}
+                    onChange={(e) => setFeedback(e.target.value)}
+                    placeholder="Provide feedback for the content creators..."
+                    className="min-h-[100px]"
+                  />
+                </div>
+                
+                <div className="flex gap-3 flex-wrap">
+                  <Button
+                    onClick={() => handleFixContent(selectedModule.id)}
+                    disabled={isFixingContent}
+                    variant="outline"
+                    className="flex items-center gap-2 border-orange-300 text-orange-700 hover:bg-orange-50"
+                  >
+                    {isFixingContent ? (
+                      <div className="w-4 h-4 animate-spin border-2 border-orange-600 border-t-transparent rounded-full" />
+                    ) : (
+                      <AlertTriangle className="w-4 h-4" />
+                    )}
+                    Fix Content Issues
+                  </Button>
+                  <Button
+                    onClick={() => handleApproval(selectedModule.id, 'approve')}
+                    disabled={loading}
+                    className="bg-green-600 hover:bg-green-700 flex items-center gap-2"
+                  >
+                    <CheckCircle className="w-4 h-4" />
+                    Approve
+                  </Button>
+                  <Button
+                    onClick={() => handleApproval(selectedModule.id, 'request_changes')}
+                    disabled={loading}
+                    variant="outline"
+                    className="flex items-center gap-2"
+                  >
+                    <Edit className="w-4 h-4" />
+                    Request Changes
+                  </Button>
+                  <Button
+                    onClick={() => handleApproval(selectedModule.id, 'reject')}
+                    disabled={loading}
+                    variant="destructive"
+                    className="flex items-center gap-2"
+                  >
+                    <X className="w-4 h-4" />
+                    Reject
+                  </Button>
+                </div>
+              </>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -474,21 +614,35 @@ export function ContentReviewPanel({ smeId }: ContentReviewPanelProps) {
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-screen max-h-screen">
-      {/* Left Panel - Pending Modules */}
+      {/* Left Panel - Module Lists */}
       <div className="lg:col-span-1">
         <Card className="h-full">
-          <CardHeader>
+          <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2">
               <AlertTriangle className="w-5 h-5" />
-              Pending Approval ({pendingModules.length})
+              Training Modules
             </CardTitle>
           </CardHeader>
           <CardContent className="p-0">
-            <ScrollArea className="h-[calc(100vh-200px)]">
-              <div className="p-6">
-                {renderModulesList()}
+            <Tabs value={moduleListTab} onValueChange={setModuleListTab} className="h-full">
+              <div className="px-6 pt-2">
+                <TabsList className="grid w-full grid-cols-2">
+                  <TabsTrigger value="pending">Pending ({pendingModules.length})</TabsTrigger>
+                  <TabsTrigger value="approved">Approved ({approvedModules.length})</TabsTrigger>
+                </TabsList>
               </div>
-            </ScrollArea>
+              
+              <ScrollArea className="h-[calc(100vh-280px)]">
+                <div className="p-6">
+                  <TabsContent value="pending" className="mt-0">
+                    {renderModulesList()}
+                  </TabsContent>
+                  <TabsContent value="approved" className="mt-0">
+                    {renderModulesList()}
+                  </TabsContent>
+                </div>
+              </ScrollArea>
+            </Tabs>
           </CardContent>
         </Card>
       </div>

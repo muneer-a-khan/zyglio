@@ -481,44 +481,50 @@ Generate one specific follow-up question to get more detail. Be concise.`
 
       toast.info('Requesting microphone permission... Please allow access when prompted.');
 
-      // Request microphone access - this MUST be triggered by user interaction
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          sampleRate: 16000,
-          channelCount: 1,
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true
+      // Request microphone access with explicit user interaction
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            sampleRate: 16000,
+            channelCount: 1,
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true
+          }
+        });
+
+        console.log('Microphone permission granted!');
+        
+        // Stop the stream immediately - we just wanted permission
+        stream.getTracks().forEach(track => track.stop());
+        
+        setMicrophonePermission('granted');
+        toast.success('Microphone access granted! You can now record your answers.');
+      } catch (error: any) {
+        console.error('Microphone permission error:', error);
+        
+        // Check for specific error types
+        if (error.name === 'NotAllowedError' || error.message?.includes('Permission denied')) {
+          setMicrophonePermission('denied');
+          toast.error('Microphone permission denied. Please click the camera/microphone icon in your browser address bar and allow access, then refresh this page.');
+        } else if (error.name === 'NotFoundError') {
+          setMicrophonePermission('denied');
+          toast.error('No microphone found. Please connect a microphone and try again.');
+        } else if (error.name === 'NotReadableError') {
+          setMicrophonePermission('denied');
+          toast.error('Microphone is being used by another application. Please close other apps and try again.');
+        } else if (error.name === 'AbortError') {
+          setMicrophonePermission('unknown');
+          toast.error('Microphone access was aborted. Please try again.');
+        } else {
+          setMicrophonePermission('denied');
+          toast.error(`Unable to access microphone: ${error.message || 'Unknown error'}. Please check your browser settings and ensure you're using HTTPS.`);
         }
-      });
-
-      console.log('Microphone permission granted!');
-      
-      // Stop the stream immediately - we just wanted permission
-      stream.getTracks().forEach(track => track.stop());
-      
-      setMicrophonePermission('granted');
-      toast.success('Microphone access granted! You can now record your answers.');
-
+      }
     } catch (error: any) {
       console.error('Microphone permission error:', error);
-      
-      if (error.name === 'NotAllowedError') {
-        setMicrophonePermission('denied');
-        toast.error('Microphone permission denied. Please click the microphone icon in your browser address bar and allow access.');
-      } else if (error.name === 'NotFoundError') {
-        setMicrophonePermission('denied');
-        toast.error('No microphone found. Please connect a microphone and try again.');
-      } else if (error.name === 'NotReadableError') {
-        setMicrophonePermission('denied');
-        toast.error('Microphone is being used by another application. Please close other apps and try again.');
-      } else if (error.name === 'AbortError') {
-        setMicrophonePermission('unknown');
-        toast.error('Microphone access was aborted. Please try again.');
-      } else {
-        setMicrophonePermission('denied');
-        toast.error(`Unable to access microphone: ${error.message || 'Unknown error'}. Please check your browser settings.`);
-      }
+      setMicrophonePermission('denied');
+      toast.error('Failed to request microphone permission. Make sure you\'re using a secure connection (HTTPS).');
     }
   };
 

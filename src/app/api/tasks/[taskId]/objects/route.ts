@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/database";
 import { z } from "zod";
+import { prisma } from '@/lib/prisma';
 
 // Validation schema for creating smart objects
 const createObjectSchema = z.object({
@@ -21,51 +22,62 @@ const createObjectSchema = z.object({
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { taskId: string } }
+  context: { params: { taskId: string } }
 ) {
   try {
     const session = await getServerSession(authOptions);
     
-    if (!session?.user?.email) {
+    // Check authentication
+    if (!session?.user) {
       return NextResponse.json(
-        { error: "Authentication required" }, 
+        { error: 'Unauthorized' },
         { status: 401 }
       );
     }
 
-    const { taskId } = params;
+    const { taskId } = await context.params;
+    
+    if (!taskId) {
+      return NextResponse.json(
+        { error: 'Task ID is required' },
+        { status: 400 }
+      );
+    }
 
-    // Get or create user
-    const user = await db.getOrCreateUser(session.user.email, session.user.name);
-    
-    // Get smart objects for the task
-    const objects = await db.getSmartObjects({
-      taskId,
-      userId: user.id
+    // Check if the user has access to this task
+    const task = await prisma.learningTask.findUnique({
+      where: { id: taskId }
     });
-    
+
+    if (!task) {
+      return NextResponse.json(
+        { error: 'Task not found' },
+        { status: 404 }
+      );
+    }
+
+    // Only allow the task owner or admins to access
+    if (task.userId !== session.user.id && session.user.role !== 'admin') {
+      return NextResponse.json(
+        { error: 'You do not have permission to access this task' },
+        { status: 403 }
+      );
+    }
+
+    // Get all objects for this task
+    const objects = await prisma.simulationObject.findMany({
+      where: { taskId }
+    });
+
     return NextResponse.json({
       success: true,
-      objects: objects.map(obj => ({
-        id: obj.id,
-        name: obj.name,
-        category: obj.category,
-        description: obj.description,
-        states: obj.states,
-        behaviors: obj.behaviors,
-        signals: obj.signals,
-        attributes: obj.attributes,
-        currentState: obj.currentState,
-        tags: obj.tags,
-        isTemplate: obj.isTemplate,
-        createdAt: obj.createdAt,
-        updatedAt: obj.updatedAt
-      }))
+      objects
     });
+
   } catch (error) {
-    console.error("Error fetching smart objects:", error);
+    console.error('Error fetching objects:', error);
     return NextResponse.json(
-      { error: "Failed to fetch smart objects" },
+      { error: 'Failed to fetch objects' },
       { status: 500 }
     );
   }
@@ -76,75 +88,66 @@ export async function GET(
  */
 export async function POST(
   request: NextRequest,
-  { params }: { params: { taskId: string } }
+  context: { params: { taskId: string } }
 ) {
   try {
     const session = await getServerSession(authOptions);
     
-    if (!session?.user?.email) {
+    // Check authentication
+    if (!session?.user) {
       return NextResponse.json(
-        { error: "Authentication required" }, 
+        { error: 'Unauthorized' },
         { status: 401 }
       );
     }
 
-    const { taskId } = params;
-
-    // Parse and validate request body
-    const body = await request.json();
-    const validationResult = createObjectSchema.safeParse(body);
+    const { taskId } = await context.params;
+    const data = await request.json();
     
-    if (!validationResult.success) {
+    if (!taskId) {
       return NextResponse.json(
-        { 
-          error: "Invalid input data",
-          details: validationResult.error.errors
-        },
+        { error: 'Task ID is required' },
         { status: 400 }
       );
     }
 
-    const data = validationResult.data;
+    // Check if the user has access to this task
+    const task = await prisma.learningTask.findUnique({
+      where: { id: taskId }
+    });
 
-    // Get or create user
-    const user = await db.getOrCreateUser(session.user.email, session.user.name);
-    
-    // Create smart object
-    const object = await db.createSmartObject({
-      name: data.name,
-      category: data.category,
-      description: data.description,
-      states: data.states,
-      behaviors: data.behaviors,
-      signals: data.signals,
-      attributes: data.attributes,
-      currentState: data.currentState || data.states[0], // Default to first state
-      taskId,
-      userId: user.id
+    if (!task) {
+      return NextResponse.json(
+        { error: 'Task not found' },
+        { status: 404 }
+      );
+    }
+
+    // Only allow the task owner or admins to modify
+    if (task.userId !== session.user.id && session.user.role !== 'admin') {
+      return NextResponse.json(
+        { error: 'You do not have permission to modify this task' },
+        { status: 403 }
+      );
+    }
+
+    // Create the new object
+    const newObject = await prisma.simulationObject.create({
+      data: {
+        ...data,
+        taskId
+      }
     });
 
     return NextResponse.json({
       success: true,
-      object: {
-        id: object.id,
-        name: object.name,
-        category: object.category,
-        description: object.description,
-        states: object.states,
-        behaviors: object.behaviors,
-        signals: object.signals,
-        attributes: object.attributes,
-        currentState: object.currentState,
-        tags: object.tags,
-        isTemplate: object.isTemplate,
-        createdAt: object.createdAt,
-        updatedAt: object.updatedAt
-      }
-    }, { status: 201 });
+      object: newObject
+    });
+
   } catch (error) {
-    console.error("Error creating smart object:", error);
+    console.error('Error creating object:', error);
     return NextResponse.json(
-      { error: "Failed to create smart object" },
+      { error: 'Failed to create object' },
       { status: 500 }
     );
   }

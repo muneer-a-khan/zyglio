@@ -1,12 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { moduleId: string } }
+  context: { params: { moduleId: string } }
 ) {
   try {
-    const { moduleId } = params;
+    const session = await getServerSession(authOptions);
+    const { moduleId } = await context.params;
 
     if (!moduleId) {
       return NextResponse.json(
@@ -20,9 +23,12 @@ export async function GET(
       where: { id: moduleId },
       include: {
         procedure: {
-          select: {
-            title: true,
-            id: true
+          include: {
+            LearningTask: {
+              select: {
+                userId: true
+              }
+            }
           }
         },
         content: {
@@ -47,11 +53,24 @@ export async function GET(
       );
     }
 
+    // Check authorization for unapproved modules
     if (!module.isApproved) {
-      return NextResponse.json(
-        { error: 'Training module is not approved yet' },
-        { status: 403 }
+      // Only allow access to unapproved modules for:
+      // 1. SMEs (who can review/approve)
+      // 2. Admins
+      // 3. The original creator of the procedure
+      const isAuthorized = session?.user && (
+        session.user.role === 'sme' ||
+        session.user.role === 'admin' ||
+        session.user.id === module.procedure.LearningTask?.userId
       );
+
+      if (!isAuthorized) {
+        return NextResponse.json(
+          { error: 'Training module is not approved yet' },
+          { status: 403 }
+        );
+      }
     }
 
     // Format the response

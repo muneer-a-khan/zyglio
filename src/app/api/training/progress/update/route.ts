@@ -3,17 +3,30 @@ import { prisma } from '@/lib/prisma';
 
 export async function POST(request: NextRequest) {
   try {
+    const body = await request.json();
     const {
       userId,
       moduleId,
       currentSubtopic,
       completedSubtopics,
       timeSpent,
-    } = await request.json();
+    } = body;
 
+    // Validate required fields
     if (!userId || !moduleId) {
+      console.error('Missing required fields:', { userId: !!userId, moduleId: !!moduleId });
       return NextResponse.json(
         { error: 'User ID and Module ID are required' },
+        { status: 400 }
+      );
+    }
+
+    // Validate userId and moduleId are proper UUIDs
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(userId) || !uuidRegex.test(moduleId)) {
+      console.error('Invalid UUID format:', { userId, moduleId });
+      return NextResponse.json(
+        { error: 'Invalid User ID or Module ID format' },
         { status: 400 }
       );
     }
@@ -37,6 +50,9 @@ export async function POST(request: NextRequest) {
     const completedCount = Array.isArray(completedSubtopics) ? completedSubtopics.length : 0;
     const progressPercentage = totalSubtopics > 0 ? Math.round((completedCount / totalSubtopics) * 100) : 0;
 
+    // Validate timeSpent is a positive number if provided
+    const validTimeSpent = typeof timeSpent === 'number' && timeSpent >= 0 ? timeSpent : 0;
+
     // Upsert the progress record
     const progress = await prisma.trainingProgress.upsert({
       where: {
@@ -46,40 +62,21 @@ export async function POST(request: NextRequest) {
         }
       },
       update: {
-        currentSubtopic,
-        completedSubtopics: completedSubtopics || [],
-        timeSpent: timeSpent ? { increment: timeSpent } : undefined,
+        ...(currentSubtopic && { currentSubtopic }),
+        ...(Array.isArray(completedSubtopics) && { completedSubtopics }),
+        ...(validTimeSpent > 0 && { timeSpent: { increment: validTimeSpent } }),
         progressPercentage,
         lastAccessedAt: new Date()
       },
       create: {
         userId,
         moduleId,
-        currentSubtopic,
-        completedSubtopics: completedSubtopics || [],
-        timeSpent: timeSpent || 0,
+        currentSubtopic: currentSubtopic || null,
+        completedSubtopics: Array.isArray(completedSubtopics) ? completedSubtopics : [],
+        timeSpent: validTimeSpent,
         progressPercentage,
         lastAccessedAt: new Date()
       }
-    });
-
-    // Log analytics event
-    await prisma.certificationAnalytics.create({
-      data: {
-        userId,
-        moduleId,
-        eventType: 'TRAINING_STARTED',
-        eventData: {
-          currentSubtopic,
-          progressPercentage,
-          timeSpent: progress.timeSpent,
-          completedSubtopics: completedCount
-        },
-        certificationId: null // Will be set later when certification is created
-      }
-    }).catch(() => {
-      // Don't fail the request if analytics fails
-      console.warn('Failed to log analytics event');
     });
 
     return NextResponse.json({
@@ -99,7 +96,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('Error updating training progress:', error);
     return NextResponse.json(
-      { error: 'Failed to update training progress' },
+      { error: 'Failed to update training progress', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
     );
   }

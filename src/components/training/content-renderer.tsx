@@ -14,9 +14,11 @@ import {
   Play
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { EmbeddedQuiz } from './interactive/embedded-quiz';
 import { DragDropExercise } from './interactive/drag-drop-exercise';
 import { ScenarioSimulation } from './interactive/scenario-simulation';
+import { ReflectionPrompt } from './interactive/reflection-prompt';
 
 interface ContentRendererProps {
   content: {
@@ -101,37 +103,35 @@ export function ContentRenderer({ content }: ContentRendererProps) {
         <Card>
           <CardContent className="pt-6">
             <div className="prose max-w-none">
-              <ReactMarkdown 
-                className="text-gray-800 leading-relaxed"
-                components={{
-                  h1: ({ children }) => <h1 className="text-2xl font-bold mb-4 text-gray-900">{children}</h1>,
-                  h2: ({ children }) => <h2 className="text-xl font-semibold mb-3 mt-6 text-gray-900">{children}</h2>,
-                  h3: ({ children }) => <h3 className="text-lg font-medium mb-2 mt-4 text-gray-900">{children}</h3>,
-                  p: ({ children }) => <p className="mb-4 text-gray-800 leading-relaxed">{children}</p>,
-                  ul: ({ children }) => <ul className="mb-4 ml-6 space-y-1">{children}</ul>,
-                  ol: ({ children }) => <ol className="mb-4 ml-6 space-y-1 list-decimal">{children}</ol>,
-                  li: ({ children }) => <li className="text-gray-800">{children}</li>,
-                  strong: ({ children }) => <strong className="font-semibold text-gray-900">{children}</strong>,
-                  em: ({ children }) => <em className="italic text-gray-700">{children}</em>,
-                  blockquote: ({ children }) => (
-                    <blockquote className="border-l-4 border-blue-300 pl-4 py-2 my-4 bg-blue-50 italic text-blue-800">
-                      {children}
-                    </blockquote>
-                  ),
-                  code: ({ children }) => (
-                    <code className="bg-gray-100 px-2 py-1 rounded text-sm font-mono text-gray-800">
-                      {children}
-                    </code>
-                  ),
-                  pre: ({ children }) => (
-                    <pre className="bg-gray-100 p-4 rounded-lg overflow-x-auto my-4">
-                      {children}
-                    </pre>
-                  )
-                }}
-              >
-                {articleData.content}
-              </ReactMarkdown>
+              <div className="text-gray-800 leading-relaxed">
+                <div className="markdown-content">
+                  <ReactMarkdown 
+                    remarkPlugins={[remarkGfm]}
+                    components={{
+                      h1: ({ node, ...props }) => <h1 className="text-2xl font-bold mb-4 text-gray-900" {...props} />,
+                      h2: ({ node, ...props }) => <h2 className="text-xl font-semibold mb-3 mt-6 text-gray-900" {...props} />,
+                      h3: ({ node, ...props }) => <h3 className="text-lg font-medium mb-2 mt-4 text-gray-900" {...props} />,
+                      p: ({ node, ...props }) => <p className="mb-4 text-gray-800 leading-relaxed" {...props} />,
+                      ul: ({ node, ...props }) => <ul className="mb-4 ml-6 space-y-1" {...props} />,
+                      ol: ({ node, ...props }) => <ol className="mb-4 ml-6 space-y-1 list-decimal" {...props} />,
+                      li: ({ node, ...props }) => <li className="text-gray-800" {...props} />,
+                      strong: ({ node, ...props }) => <strong className="font-semibold text-gray-900" {...props} />,
+                      em: ({ node, ...props }) => <em className="italic text-gray-700" {...props} />,
+                      blockquote: ({ node, ...props }) => (
+                        <blockquote className="border-l-4 border-blue-300 pl-4 py-2 my-4 bg-blue-50 italic text-blue-800" {...props} />
+                      ),
+                      code: ({ node, inline, ...props }) => (
+                        <code className="bg-gray-100 px-2 py-1 rounded text-sm font-mono text-gray-800" {...props} />
+                      ),
+                      pre: ({ node, ...props }) => (
+                        <pre className="bg-gray-100 p-4 rounded-lg overflow-x-auto my-4" {...props} />
+                      )
+                    }}
+                  >
+                    {articleData.content}
+                  </ReactMarkdown>
+                </div>
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -153,6 +153,18 @@ export function ContentRenderer({ content }: ContentRendererProps) {
             </CardContent>
           </Card>
         )}
+
+        {/* Interactive Elements */}
+        {articleData.interactiveElements && articleData.interactiveElements.map((element: any, index: number) => (
+          <ReflectionPrompt
+            key={index}
+            title={element.title}
+            prompt={element.content}
+            type={element.type}
+            hints={element.hints || []}
+            onComplete={(reflection) => console.log('Reflection completed:', reflection)}
+          />
+        ))}
       </div>
     );
   };

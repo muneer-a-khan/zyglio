@@ -82,10 +82,21 @@ export interface TopicItem {
 
 // In-memory session store
 // This should be replaced with a database in production
+declare global {
+  var sessionStore: Map<string, SessionData> | undefined;
+  var initializationCache: Map<string, Promise<SessionData>> | undefined;
+}
+
 if (!global.sessionStore) {
   global.sessionStore = new Map<string, SessionData>();
 }
 const sessionStore = global.sessionStore;
+
+// Add a simple cache to prevent duplicate initialization
+if (!global.initializationCache) {
+  global.initializationCache = new Map<string, Promise<SessionData>>();
+}
+const initializationCache = global.initializationCache;
 
 /**
  * Retrieve a session by ID
@@ -267,10 +278,25 @@ export async function incrementQuestionsAsked(sessionId: string): Promise<number
 
 // Session management functions
 export async function initializeSession(procedureId: string, initialContext: string, procedureTitle: string): Promise<SessionData> {
-  try {
-    // Get auth headers for API requests
-    const headers = await getApiHeaders();
-    console.log('Initializing session with generate-initial-topics API call');
+  // Check if we're already initializing this session to prevent duplicates
+  if (initializationCache.has(procedureId)) {
+    console.log('Session initialization already in progress for procedure:', procedureId);
+    return initializationCache.get(procedureId)!;
+  }
+
+  // Check if session already exists
+  const existingSession = await getSessionData(procedureId);
+  if (existingSession) {
+    console.log('Session already exists for procedure:', procedureId);
+    return existingSession;
+  }
+
+  // Create a promise and cache it to prevent duplicate initialization
+  const initPromise = (async (): Promise<SessionData> => {
+    try {
+      // Get auth headers for API requests
+      const headers = await getApiHeaders();
+      console.log('Initializing session with generate-initial-topics API call');
     
     // Generate initial topics
     const topicsResponse = await fetch(getApiUrl('/api/deepseek/generate-initial-topics'), {
@@ -306,23 +332,38 @@ export async function initializeSession(procedureId: string, initialContext: str
       firstOverviewGiven: false,
     };
 
-    await setSessionData(procedureId, sessionData);
-    return sessionData;
+      await setSessionData(procedureId, sessionData);
+      return sessionData;
+    } catch (error) {
+      console.error("Error initializing session:", error);
+      // Create a session with default topics even if there's an error
+      const sessionData: SessionData = {
+        procedureId,
+        initialContext,
+        conversationHistory: [],
+        batchedQuestions: [],
+        questionsAsked: 0,
+        interviewCompleted: false,
+        topics: generateDefaultTopics(procedureTitle),
+        firstOverviewGiven: false,
+      };
+      await setSessionData(procedureId, sessionData);
+      return sessionData;
+    }
+  })();
+
+  // Cache the promise to prevent duplicate initialization
+  initializationCache.set(procedureId, initPromise);
+
+  try {
+    const result = await initPromise;
+    // Clean up the cache after successful initialization
+    initializationCache.delete(procedureId);
+    return result;
   } catch (error) {
-    console.error("Error initializing session:", error);
-    // Create a session with default topics even if there's an error
-    const sessionData: SessionData = {
-      procedureId,
-      initialContext,
-      conversationHistory: [],
-      batchedQuestions: [],
-      questionsAsked: 0,
-      interviewCompleted: false,
-      topics: generateDefaultTopics(procedureTitle),
-      firstOverviewGiven: false,
-    };
-    await setSessionData(procedureId, sessionData);
-    return sessionData;
+    // Clean up the cache on error too
+    initializationCache.delete(procedureId);
+    throw error;
   }
 }
 

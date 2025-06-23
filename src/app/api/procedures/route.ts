@@ -130,97 +130,78 @@ export async function PUT(req: NextRequest) {
   }
 }
 
-export async function GET(req: NextRequest) {
+export async function GET(request: NextRequest) {
   try {
+    const { searchParams } = new URL(request.url);
+    const owned = searchParams.get('owned') === 'true';
+    
+    console.log(`Fetching ${owned ? 'owned' : 'all'} procedures`);
+    
+    // Get the current user session
     const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json(
-        { success: false, message: "Not authenticated" },
-        { status: 401 }
-      );
+    const userId = session?.user?.id;
+    
+    // If owned=true is specified but user is not logged in, return empty
+    if (owned && !userId) {
+      return NextResponse.json({ procedures: [] });
     }
-
-    console.log("Fetching all procedures (from any user)");
-
-    // First, fetch ALL procedures
+    
+    // Build the query
+    const whereClause = owned && userId ? {
+      LearningTask: {
+        userId: userId
+      }
+    } : {};
+    
+    // Get procedures with filter
     const procedures = await prisma.procedure.findMany({
-      orderBy: { 
-        id: 'desc' 
+      where: whereClause,
+      orderBy: {
+        id: 'desc'
       }
     });
     
     console.log(`Found ${procedures.length} total procedures`);
-
-    // Filter out procedures without simulationSettings separately for debugging
+    
+    // Filter out procedures without simulation settings
     const proceduresWithSettings = procedures.filter(p => p.simulationSettings !== null);
     console.log(`Found ${proceduresWithSettings.length} procedures with non-null settings`);
     
-    // Get the associated learning tasks for all procedures, regardless of user
-    const taskIds = procedures.map(p => p.taskId).filter(Boolean);
-    
-    if (taskIds.length === 0) {
-      console.log("No task IDs found, returning empty list");
-      return NextResponse.json({
-        success: true,
-        procedures: []
-      });
-    }
-    
+    // Get the learning tasks for these procedures
+    const taskIds = proceduresWithSettings.map(p => p.taskId);
     const learningTasks = await prisma.learningTask.findMany({
       where: {
-        id: { in: taskIds }
-        // Removed userId filter to get tasks from all users
+        id: {
+          in: taskIds
+        }
       }
     });
     
     console.log(`Found ${learningTasks.length} learning tasks`);
     
-    // Create a map for quick lookups
-    const taskMap = new Map();
-    learningTasks.forEach(task => {
-      taskMap.set(task.id, task);
+    // Map learning task data to procedures
+    const formattedProcedures = proceduresWithSettings.map(procedure => {
+      const task = learningTasks.find(t => t.id === procedure.taskId);
+      return {
+        id: procedure.id,
+        title: procedure.title,
+        taskId: procedure.taskId,
+        settings: procedure.simulationSettings,
+        presenter: task?.presenter || 'Unknown',
+        date: task?.date || new Date(),
+        isOwned: task?.userId === userId
+      };
     });
-
-    // Format all procedures with their associated tasks
-    const formattedProcedures = procedures
-      .filter(procedure => taskMap.has(procedure.taskId)) // Only include procedures with matching tasks
-      .map(procedure => {
-        const task = taskMap.get(procedure.taskId);
-        
-        // Split kpiTech and kpiConcept strings into arrays if they exist
-        const kpiTech = task?.kpiTech ? 
-          task.kpiTech.split(',').map((tag: string) => tag.trim()).filter(Boolean) : 
-          [];
-          
-        const kpiConcept = task?.kpiConcept ? 
-          task.kpiConcept.split(',').map((tag: string) => tag.trim()).filter(Boolean) : 
-          [];
-          
-        return {
-          id: procedure.id,
-          title: procedure.title || task?.title || 'Untitled Procedure',
-          description: procedure.title || task?.title || 'No description available', 
-          presenter: task?.presenter || '',
-          affiliation: task?.affiliation || '',
-          kpiTech: kpiTech,
-          kpiConcept: kpiConcept,
-          date: task?.date?.toISOString() || new Date().toISOString(),
-          steps: [],
-          mediaItems: [],
-          simulationSettings: procedure.simulationSettings || {}
-        };
-      });
-
+    
     console.log(`Returning ${formattedProcedures.length} formatted procedures`);
-
+    
     return NextResponse.json({
-      success: true,
       procedures: formattedProcedures
     });
   } catch (error) {
-    console.error("Error fetching procedures:", error);
+    console.error('Error fetching procedures:', error);
     return NextResponse.json(
-      { success: false, message: "Failed to fetch procedures" },
+      { error: 'Failed to fetch procedures' },
       { status: 500 }
     );
   }

@@ -9,7 +9,7 @@ import { useEffect, useState } from "react";
 export default function GlobalNavigation() {
   const { data: session, status, update } = useSession();
   const pathname = usePathname();
-  const [isClient, setIsClient] = useState(false);
+  const [mounted, setMounted] = useState(false);
 
   // Force session update when status changes
   useEffect(() => {
@@ -20,13 +20,26 @@ export default function GlobalNavigation() {
 
   // Ensure we're on the client side to prevent hydration mismatches
   useEffect(() => {
-    setIsClient(true);
+    setMounted(true);
   }, []);
 
   const isActive = (path: string) => {
-    if (!isClient) return false; // Prevent hydration mismatch
-    return pathname === path;
+    if (!mounted) return false; // Default state during SSR
+    return pathname === path || pathname?.startsWith(path + '/');
   };
+
+  // Use these links in both server and client rendering
+  const navLinks = [
+    { href: '/create', label: 'New Procedure' },
+    { href: '/procedures', label: 'Procedures' },
+    { href: '/training', label: 'Training' },
+    { href: '/media', label: 'Media Library' },
+  ];
+
+  // Add SME link conditionally after mounting
+  const displayLinks = mounted && session?.user?.role === 'sme' 
+    ? [...navLinks.slice(0, 3), { href: '/sme/training', label: 'Review Training' }, navLinks[3]]
+    : navLinks;
 
   return (
     <header className="border-b sticky top-0 z-50 w-full bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -56,69 +69,49 @@ export default function GlobalNavigation() {
         </div>
         <nav className="flex items-center justify-between flex-1">
           <div className="flex space-x-1">
-            <Button 
-              variant={isActive('/create') ? "default" : "ghost"} 
-              asChild 
-              className="text-sm font-medium"
-            >
-              <Link href="/create">New Procedure</Link>
-            </Button>
-            <Button 
-              variant={isActive('/procedures') ? "default" : "ghost"} 
-              asChild 
-              className="text-sm font-medium"
-            >
-              <Link href="/procedures">Procedures</Link>
-            </Button>
-            <Button 
-              variant={isActive('/training') ? "default" : "ghost"} 
-              asChild 
-              className="text-sm font-medium"
-            >
-              <Link href="/training">Training</Link>
-            </Button>
-            {isClient && session?.user?.role === 'sme' && (
+            {displayLinks.map((link) => (
               <Button 
-                variant={isActive('/sme/training') ? "default" : "ghost"} 
+                key={link.href}
+                variant={isActive(link.href) ? "default" : "ghost"} 
                 asChild 
                 className="text-sm font-medium"
               >
-                <Link href="/sme/training">Review Training</Link>
+                <Link href={link.href}>{link.label}</Link>
               </Button>
-            )}
-            <Button 
-              variant={isActive('/media') ? "default" : "ghost"} 
-              asChild 
-              className="text-sm font-medium"
-            >
-              <Link href="/media">Media Library</Link>
-            </Button>
+            ))}
           </div>
           <div className="flex items-center space-x-2">
-            {isClient && session?.user ? (
-              <div className="flex items-center space-x-2">
-                <span className="text-sm text-gray-600 hidden sm:inline">
-                  Hi, {session.user.name || session.user.email}
-                </span>
+            {mounted ? (
+              session?.user ? (
+                <div className="flex items-center space-x-2">
+                  <span className="text-sm text-gray-600 hidden sm:inline">
+                    Hi, {session.user.name || session.user.email}
+                  </span>
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => signOut({ callbackUrl: '/' })}
+                  >
+                    Sign Out
+                  </Button>
+                </div>
+              ) : (
                 <Button 
-                  variant="outline" 
-                  size="sm"
-                  onClick={() => signOut({ callbackUrl: '/' })}
+                  size="sm" 
+                  className="bg-blue-600 hover:bg-blue-700"
+                  asChild
                 >
-                  Sign Out
+                  <Link href="/auth/signin">Sign In</Link>
                 </Button>
-              </div>
-            ) : isClient ? (
+              )
+            ) : (
               <Button 
                 size="sm" 
-                className="bg-blue-600 hover:bg-blue-700"
-                asChild
+                variant="outline"
+                className="opacity-0"
               >
-                <Link href="/auth/signin">Sign In</Link>
+                Loading
               </Button>
-            ) : (
-              // Placeholder for SSR to prevent hydration mismatch
-              <div className="w-20 h-8" />
             )}
           </div>
         </nav>

@@ -1,29 +1,79 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Mic, MicOff, CheckCircle, AlertCircle, Volume2 } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
+import { Mic, MicOff, CheckCircle, AlertCircle, Volume2, Settings } from 'lucide-react';
 import { toast } from 'sonner';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 export function MicrophoneTest() {
   const [isTestingMic, setIsTestingMic] = useState(false);
-  const [micPermission, setMicPermission] = useState<'unknown' | 'granted' | 'denied'>('unknown');
+  const [micPermission, setMicPermission] = useState<'unknown' | 'granted' | 'denied' | 'prompt'>('unknown');
   const [audioLevel, setAudioLevel] = useState(0);
+  const [permissionError, setPermissionError] = useState<string | null>(null);
+  const [browserSupport, setBrowserSupport] = useState<boolean>(true);
+  
   const streamRef = useRef<MediaStream | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const animationRef = useRef<number | null>(null);
 
+  // Check browser compatibility and permission on mount
+  useEffect(() => {
+    // Check for MediaDevices API and getUserMedia support
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      setBrowserSupport(false);
+      setPermissionError('Your browser does not support microphone access. Please use a modern browser like Chrome, Firefox or Edge.');
+      return;
+    }
+
+    // Try to check permission status
+    if (navigator.permissions && navigator.permissions.query) {
+      navigator.permissions.query({ name: 'microphone' as PermissionName })
+        .then(status => {
+          setMicPermission(status.state as 'granted' | 'denied' | 'prompt');
+          
+          // Listen for changes to permission state
+          status.onchange = () => {
+            setMicPermission(status.state as 'granted' | 'denied' | 'prompt');
+            
+            if (status.state === 'granted') {
+              setPermissionError(null);
+            } else if (status.state === 'denied') {
+              setPermissionError('Microphone access is blocked. Please update your browser settings to allow microphone access for this site.');
+            }
+          };
+        })
+        .catch(() => {
+          console.log("Can't check microphone permission - will request when testing");
+        });
+    }
+
+    // Cleanup on unmount
+    return () => {
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
+      }
+      if (analyserRef.current) {
+        analyserRef.current = null;
+      }
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current);
+      }
+    };
+  }, []);
+
   const testMicrophone = async () => {
     try {
       setIsTestingMic(true);
+      setPermissionError(null);
 
       // Check if microphone is available
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         throw new Error('Microphone access not supported in this browser');
       }
 
-      // Request microphone access
+      // Request microphone access with optimized settings for voice
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: true,
@@ -61,17 +111,20 @@ export function MicrophoneTest() {
 
     } catch (error: any) {
       console.error('Microphone test error:', error);
-      setMicPermission('denied');
       
       if (error.name === 'NotAllowedError') {
-        toast.error('Microphone permission denied. Please allow microphone access in your browser settings.');
+        setMicPermission('denied');
+        setPermissionError('Microphone permission denied. You need to allow microphone access in your browser settings.');
       } else if (error.name === 'NotFoundError') {
-        toast.error('No microphone found. Please connect a microphone and try again.');
+        setPermissionError('No microphone found. Please connect a microphone and try again.');
       } else if (error.name === 'NotReadableError') {
-        toast.error('Microphone is being used by another application. Please close other apps and try again.');
+        setPermissionError('Microphone is being used by another application. Please close other apps and try again.');
+      } else if (error.name === 'AbortError') {
+        setPermissionError('Microphone access request was aborted. Please try again.');
       } else {
-        toast.error('Unable to access microphone. Please check your browser settings.');
+        setPermissionError(`Unable to access microphone: ${error.message || 'Unknown error'}`);
       }
+      
     } finally {
       setIsTestingMic(false);
     }
@@ -93,6 +146,26 @@ export function MicrophoneTest() {
     analyserRef.current = null;
   };
 
+  // Open browser settings for permission
+  const openPermissionSettings = () => {
+    toast.info("Opening browser settings...", {
+      description: "Look for microphone permissions in your browser settings and ensure this site is allowed."
+    });
+    
+    // For Chrome/Edge, try to open settings directly
+    if (navigator.userAgent.includes("Chrome") || navigator.userAgent.includes("Edg")) {
+      window.open('chrome://settings/content/microphone', '_blank');
+    } 
+    // For Firefox
+    else if (navigator.userAgent.includes("Firefox")) {
+      window.open('about:preferences#privacy', '_blank');
+    } 
+    // General fallback
+    else {
+      window.open(window.location.href, '_blank');
+    }
+  };
+
   const getMicIcon = () => {
     if (micPermission === 'granted') return <CheckCircle className="w-5 h-5 text-green-600" />;
     if (micPermission === 'denied') return <AlertCircle className="w-5 h-5 text-red-600" />;
@@ -102,12 +175,14 @@ export function MicrophoneTest() {
   const getMicStatusText = () => {
     if (micPermission === 'granted') return 'Microphone access granted';
     if (micPermission === 'denied') return 'Microphone access denied';
+    if (micPermission === 'prompt') return 'Microphone access: Will ask when needed';
     return 'Click to test microphone';
   };
 
   const getMicStatusColor = () => {
     if (micPermission === 'granted') return 'text-green-600';
     if (micPermission === 'denied') return 'text-red-600';
+    if (micPermission === 'prompt') return 'text-amber-600';
     return 'text-gray-600';
   };
 
@@ -120,6 +195,14 @@ export function MicrophoneTest() {
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
+        {permissionError && (
+          <Alert variant="destructive" className="mb-4">
+            <AlertCircle className="h-4 w-4" />
+            <AlertTitle>Microphone Error</AlertTitle>
+            <AlertDescription>{permissionError}</AlertDescription>
+          </Alert>
+        )}
+      
         <div className="text-center">
           <div className={`flex items-center justify-center gap-2 mb-2 ${getMicStatusColor()}`}>
             {getMicIcon()}
@@ -146,7 +229,7 @@ export function MicrophoneTest() {
           {micPermission !== 'granted' ? (
             <Button 
               onClick={testMicrophone}
-              disabled={isTestingMic}
+              disabled={isTestingMic || !browserSupport}
               className="flex-1"
             >
               {isTestingMic ? (
@@ -172,16 +255,30 @@ export function MicrophoneTest() {
             </Button>
           )}
         </div>
-
-        {micPermission === 'denied' && (
-          <div className="text-xs text-gray-500 space-y-1">
-            <p><strong>To enable microphone:</strong></p>
-            <p>• Click the microphone icon in your browser's address bar</p>
-            <p>• Allow microphone access for this site</p>
-            <p>• Refresh the page and try again</p>
-          </div>
-        )}
       </CardContent>
+      
+      {micPermission === 'denied' && (
+        <CardFooter className="flex-col items-start">
+          <div className="text-xs text-gray-700 space-y-2">
+            <p className="font-semibold">To enable microphone:</p>
+            <ol className="list-decimal pl-5 space-y-1">
+              <li>Click the microphone icon in your browser's address bar</li>
+              <li>Select "Allow" for microphone access</li>
+              <li>Refresh this page and try again</li>
+            </ol>
+            
+            <Button 
+              variant="secondary" 
+              size="sm"
+              className="mt-2 w-full"
+              onClick={openPermissionSettings}
+            >
+              <Settings className="w-4 h-4 mr-2" />
+              Open Browser Settings
+            </Button>
+          </div>
+        </CardFooter>
+      )}
     </Card>
   );
 } 

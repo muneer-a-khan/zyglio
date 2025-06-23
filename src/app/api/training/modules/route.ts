@@ -3,17 +3,7 @@ import { prisma } from '@/lib/prisma';
 
 export async function GET(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url);
-    const userId = searchParams.get('userId');
-
-    if (!userId) {
-      return NextResponse.json(
-        { error: 'User ID is required' },
-        { status: 400 }
-      );
-    }
-
-    // Get all approved training modules with user progress and certification status
+    // Get the training modules with all related data
     const modules = await prisma.trainingModule.findMany({
       where: {
         isApproved: true
@@ -25,19 +15,10 @@ export async function GET(request: NextRequest) {
             id: true
           }
         },
-        content: {
+        approver: {
           select: {
-            estimatedTime: true
-          }
-        },
-        progress: {
-          where: {
-            userId: userId
-          }
-        },
-        certifications: {
-          where: {
-            userId: userId
+            name: true,
+            email: true
           }
         }
       },
@@ -46,46 +27,22 @@ export async function GET(request: NextRequest) {
       }
     });
 
-    // Transform data to include calculated fields
-    const formattedModules = modules.map(module => {
-      const userProgress = module.progress[0];
-      const userCertification = module.certifications[0];
-      const totalEstimatedTime = module.content.reduce((sum, content) => sum + content.estimatedTime, 0);
-
-      return {
-        id: module.id,
-        title: module.title,
-        procedureTitle: module.procedure.title,
-        procedureId: module.procedure.id,
-        subtopics: Array.isArray(module.subtopics) ? module.subtopics : [],
-        isApproved: module.isApproved,
-        createdAt: module.createdAt.toISOString(),
-        estimatedTime: totalEstimatedTime,
-        progress: userProgress ? {
-          progressPercentage: userProgress.progressPercentage,
-          completedSubtopics: Array.isArray(userProgress.completedSubtopics) 
-            ? userProgress.completedSubtopics 
-            : [],
-          timeSpent: userProgress.timeSpent,
-          currentSubtopic: userProgress.currentSubtopic,
-          lastAccessedAt: userProgress.lastAccessedAt.toISOString()
-        } : {
-          progressPercentage: 0,
-          completedSubtopics: [],
-          timeSpent: 0,
-          currentSubtopic: null,
-          lastAccessedAt: null
-        },
-        certification: userCertification ? {
-          status: userCertification.status,
-          passed: userCertification.passed,
-          certifiedAt: userCertification.certifiedAt?.toISOString(),
-          overallScore: userCertification.overallScore,
-          quizScore: userCertification.quizScore,
-          adaptiveDifficulty: userCertification.adaptiveDifficulty
-        } : null
-      };
-    });
+    // Format the response
+    const formattedModules = modules.map(module => ({
+      id: module.id,
+      title: module.title,
+      procedureId: module.procedureId,
+      procedureTitle: module.procedure.title,
+      subtopics: Array.isArray(module.subtopics) ? module.subtopics : [],
+      isApproved: module.isApproved,
+      approvedAt: module.approvedAt?.toISOString() || null,
+      approvedBy: module.approver ? {
+        name: module.approver.name,
+        email: module.approver.email
+      } : null,
+      createdAt: module.createdAt.toISOString(),
+      version: module.version
+    }));
 
     return NextResponse.json({
       success: true,

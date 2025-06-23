@@ -86,15 +86,28 @@ Format your response as JSON with this structure:
 Make sure subtopics are logical learning chunks, not just individual steps.
 `;
 
-    const subtopicsResponse = await deepseekApi.chat({
-      messages: [{ role: 'user', content: subtopicsPrompt }],
-      model: 'deepseek-chat',
-      response_format: { type: 'json_object' }
-    });
+    let subtopicsResponse;
+    try {
+      subtopicsResponse = await deepseekApi.chat.completions.create({
+        messages: [{ role: 'user', content: subtopicsPrompt }],
+        model: 'deepseek-chat',
+        response_format: { type: 'json_object' }
+      });
+    } catch (error) {
+      console.error('Error calling DeepSeek API:', error);
+      return NextResponse.json(
+        { error: 'Failed to connect to DeepSeek API. Please check your API key and try again.' },
+        { status: 500 }
+      );
+    }
 
     let subtopics;
     try {
-      subtopics = JSON.parse(subtopicsResponse.choices[0].message.content).subtopics;
+      const responseContent = subtopicsResponse.choices[0].message.content;
+      if (!responseContent) {
+        throw new Error('Empty response from AI');
+      }
+      subtopics = JSON.parse(responseContent).subtopics;
     } catch (error) {
       console.error('Error parsing subtopics response:', error);
       return NextResponse.json(
@@ -115,8 +128,9 @@ Make sure subtopics are logical learning chunks, not just individual steps.
 
     // Generate content for each subtopic
     const contentGenerationPromises = subtopics.map(async (subtopic: any, index: number) => {
-      // Generate article content
-      const articlePrompt = `
+      try {
+        // Generate article content
+        const articlePrompt = `
 Create comprehensive educational content for this training subtopic:
 
 Subtopic: ${subtopic.title}
@@ -135,89 +149,177 @@ Create a detailed, educational article (1000-1500 words) that includes:
 4. Safety considerations (if applicable)
 5. Common mistakes to avoid
 6. Key takeaways
+7. Embedded interactive elements for better engagement
 
 Format as JSON:
 {
   "title": "Article title",
   "content": "Full article content in markdown format",
-  "keyPoints": ["key point 1", "key point 2"],
-  "safetyNotes": ["safety note 1", "safety note 2"]
+  "keyPoints": ["key point 1", "key point 2", "key point 3"],
+  "safetyNotes": ["safety note 1", "safety note 2"],
+  "embeddedQuiz": [
+    {
+      "question": "Quick check question about a concept just explained",
+      "options": ["Option A", "Option B", "Option C", "Option D"],
+      "correctAnswer": 0,
+      "explanation": "Why this is correct"
+    }
+  ],
+  "interactiveElements": [
+    {
+      "type": "knowledge_check",
+      "position": "after_section_2",
+      "title": "Check Your Understanding",
+      "content": "Quick self-assessment question or reflection prompt"
+    },
+    {
+      "type": "practical_tip",
+      "position": "after_section_3",
+      "title": "Pro Tip",
+      "content": "Practical advice or best practice related to this section"
+    }
+  ]
 }
+
+REQUIREMENTS:
+- Include 1-2 embedded quiz questions that test key concepts
+- Add 2-3 interactive elements positioned throughout the article
+- Make content engaging and practical
+- Use clear, professional language
+- Include specific examples where applicable
 `;
 
-      const articleResponse = await deepseekApi.chat({
-        messages: [{ role: 'user', content: articlePrompt }],
-        model: 'deepseek-chat',
-        response_format: { type: 'json_object' }
-      });
+        let articleResponse;
+        try {
+          articleResponse = await deepseekApi.chat.completions.create({
+            messages: [{ role: 'user', content: articlePrompt }],
+            model: 'deepseek-chat',
+            response_format: { type: 'json_object' }
+          });
+        } catch (apiError) {
+          console.error(`Error generating article for subtopic ${subtopic.title}:`, apiError);
+          throw new Error(`Failed to generate article content for ${subtopic.title}`);
+        }
 
-      const articleData = JSON.parse(articleResponse.choices[0].message.content);
+        const articleResponseContent = articleResponse.choices[0].message.content;
+        if (!articleResponseContent) {
+          throw new Error('Empty article response from AI');
+        }
+        const articleData = JSON.parse(articleResponseContent);
 
-      // Generate quiz questions for this subtopic
-      const quizPrompt = `
-Create 8-12 quiz questions for this training subtopic:
+        // Generate quiz questions for this subtopic
+        const quizPrompt = `
+Create 8-12 multiple choice quiz questions for this training subtopic:
 
 Subtopic: ${subtopic.title}
 Article Content: ${articleData.content.substring(0, 1000)}...
 
-Generate a mix of question types:
-- Multiple choice (4 options each)
-- True/False
-- Fill in the blank
-- Short answer
+Create high-quality multiple choice questions that test understanding of key concepts. Each question MUST have exactly 4 answer options.
 
-Format as JSON:
+For true/false concepts, create multiple choice questions like "Which of the following statements is TRUE about X?" with 4 options.
+
+Format as JSON with this exact structure:
 {
   "questions": [
     {
-      "type": "multiple_choice",
-      "question": "Question text",
-      "options": ["A", "B", "C", "D"],
-      "correct": 0,
-      "explanation": "Why this is correct"
-    },
-    {
-      "type": "true_false",
-      "question": "Statement",
-      "correct": true,
-      "explanation": "Explanation"
+      "question": "Question text here",
+      "options": ["Option A", "Option B", "Option C", "Option D"],
+      "correctAnswer": 0,
+      "explanation": "Detailed explanation of why this answer is correct"
     }
   ]
 }
+
+IMPORTANT REQUIREMENTS:
+- Each question MUST have exactly 4 options in the "options" array
+- Use "correctAnswer" (not "correct") as the index of the correct option (0-3)
+- Make options realistic and plausible distractors
+- Include detailed explanations for each correct answer
+- Focus on practical understanding and application
+- Ensure each question tests important learning objectives
 `;
 
-      const quizResponse = await deepseekApi.chat({
-        messages: [{ role: 'user', content: quizPrompt }],
-        model: 'deepseek-chat',
-        response_format: { type: 'json_object' }
-      });
-
-      const quizData = JSON.parse(quizResponse.choices[0].message.content);
-
-      // Create training content
-      await prisma.trainingContent.create({
-        data: {
-          moduleId: trainingModule.id,
-          subtopic: subtopic.title,
-          contentType: 'ARTICLE',
-          title: articleData.title,
-          content: articleData,
-          orderIndex: index,
-          estimatedTime: subtopic.estimatedTime || 15
+        let quizResponse;
+        try {
+          quizResponse = await deepseekApi.chat.completions.create({
+            messages: [{ role: 'user', content: quizPrompt }],
+            model: 'deepseek-chat',
+            response_format: { type: 'json_object' }
+          });
+        } catch (apiError) {
+          console.error(`Error generating quiz for subtopic ${subtopic.title}:`, apiError);
+          throw new Error(`Failed to generate quiz content for ${subtopic.title}`);
         }
-      });
 
-      // Create quiz bank
-      await prisma.quizBank.create({
-        data: {
-          moduleId: trainingModule.id,
-          subtopic: subtopic.title,
-          questions: quizData.questions,
-          passingScore: 80
+        const quizResponseContent = quizResponse.choices[0].message.content;
+        if (!quizResponseContent) {
+          throw new Error('Empty quiz response from AI');
         }
-      });
+        const quizData = JSON.parse(quizResponseContent);
 
-      return { subtopic: subtopic.title, completed: true };
+        // Validate and fix quiz questions
+        const validatedQuestions = quizData.questions.map((question: any, qIndex: number) => {
+          const validated = {
+            question: question.question || `Question ${qIndex + 1}`,
+            options: Array.isArray(question.options) ? question.options : [],
+            correctAnswer: typeof question.correctAnswer === 'number' ? question.correctAnswer : 0,
+            explanation: question.explanation || 'No explanation provided'
+          };
+
+          // Ensure we have exactly 4 options
+          while (validated.options.length < 4) {
+            validated.options.push(`Option ${validated.options.length + 1}`);
+          }
+          if (validated.options.length > 4) {
+            validated.options = validated.options.slice(0, 4);
+          }
+
+          // Ensure correctAnswer is within bounds
+          if (validated.correctAnswer < 0 || validated.correctAnswer >= validated.options.length) {
+            validated.correctAnswer = 0;
+          }
+
+          return validated;
+        }).filter((q: any) => q.question && q.question.trim() !== '');
+
+        // Ensure we have at least 5 questions
+        while (validatedQuestions.length < 5) {
+          validatedQuestions.push({
+            question: `Additional question ${validatedQuestions.length + 1} about ${subtopic.title}`,
+            options: ['Option A', 'Option B', 'Option C', 'Option D'],
+            correctAnswer: 0,
+            explanation: 'Please review the content for the correct answer.'
+          });
+        }
+
+        // Create training content
+        await prisma.trainingContent.create({
+          data: {
+            moduleId: trainingModule.id,
+            subtopic: subtopic.title,
+            contentType: 'ARTICLE',
+            title: articleData.title,
+            content: articleData,
+            orderIndex: index,
+            estimatedTime: subtopic.estimatedTime || 15
+          }
+        });
+
+        // Create quiz bank with validated questions
+        await prisma.quizBank.create({
+          data: {
+            moduleId: trainingModule.id,
+            subtopic: subtopic.title,
+            questions: validatedQuestions,
+            passingScore: 80
+          }
+        });
+
+        return { subtopic: subtopic.title, completed: true };
+      } catch (error) {
+        console.error(`Error processing subtopic ${subtopic.title}:`, error);
+        return { subtopic: subtopic.title, completed: false, error: error instanceof Error ? error.message : 'Unknown error' };
+      }
     });
 
     // Wait for all content generation to complete

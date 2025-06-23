@@ -1,6 +1,16 @@
 // Assuming a DeepSeek SDK similar to OpenAI's, e.g., 'deepseek-sdk'
 // You might need to install it: npm install deepseek-sdk
 // And adjust the import and client instantiation below.
+import OpenAI from 'openai';
+
+// Initialize the DeepSeek client (using OpenAI's SDK which works with DeepSeek's API)
+const apiKey = process.env.DEEPSEEK_API_KEY;
+
+// Export the DeepSeek API client for use in other files
+export const deepseekApi = new OpenAI({
+  baseURL: 'https://api.deepseek.com/v1',
+  apiKey: apiKey,
+});
 
 // Define Step interface for clarity, matching what components use
 interface Step {

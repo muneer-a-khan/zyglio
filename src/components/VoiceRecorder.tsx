@@ -1,8 +1,11 @@
+"use client";
+
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
-import { Mic, Pause, Play, Square, AlertCircle } from "lucide-react";
+import { Mic, Pause, Play, Square, AlertCircle, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { toast } from "sonner";
 
 // Define the SpeechRecognition type since TypeScript doesn't recognize it natively
 interface SpeechRecognition extends EventTarget {
@@ -57,399 +60,428 @@ const VoiceRecorder = ({
   onTranscriptUpdate,
   className,
 }: VoiceRecorderProps) => {
+  // Core recording states
   const [isRecording, setIsRecording] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [transcript, setTranscript] = useState("");
-  const [isSupported, setIsSupported] = useState(true);
   const [recordingDuration, setRecordingDuration] = useState(0);
-  const [error, setError] = useState<string | null>(null);
+  
+  // Permission and setup states
+  const [permissionStatus, setPermissionStatus] = useState<'unknown' | 'granted' | 'denied' | 'prompt'>('unknown');
+  const [permissionError, setPermissionError] = useState<string | null>(null);
+  const [showPermissionSettings, setShowPermissionSettings] = useState(false);
+  const [browserSupport, setBrowserSupport] = useState<{
+    mediaDevices: boolean;
+    speechRecognition: boolean; 
+  }>({ mediaDevices: false, speechRecognition: false });
 
+  // Refs for managing recording state
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
-  // Add a flag to track recognition state to avoid race conditions
-  const isRecognitionActiveRef = useRef<boolean>(false);
-  // Add a ref to track persistent transcript between recognition sessions
   const persistentTranscriptRef = useRef<string>("");
+  const streamRef = useRef<MediaStream | null>(null);
 
-  // Define a function to restart speech recognition
-  const startSpeechRecognition = useCallback(() => {
-    // Only restart if we're recording and not paused
-    if (!isRecording || isPaused) {
-      return;
-    }
-    
-    // Check if already active
-    if (isRecognitionActiveRef.current) {
-      try {
-        if (recognitionRef.current) {
-          recognitionRef.current.stop();
-        }
-      } catch (e) {
-        // Error handling if needed
-      }
-      // Wait a moment before starting a new instance
-      setTimeout(() => {
-        if (isRecording && !isPaused) {
-          initiateNewRecognitionInstance();
-        }
-      }, 100);
-      return;
-    }
-    
-    initiateNewRecognitionInstance();
-  }, [isRecording, isPaused]);
-
-  // Extract the recognition instance creation logic into a separate function
-  const initiateNewRecognitionInstance = useCallback(() => {
-    // Don't start if we're not in recording state
-    if (!isRecording || isPaused) {
-      return;
-    }
-    
-    isRecognitionActiveRef.current = false;
-    
-    // Set up a new recognition instance
-    try {
-      const SpeechRecognitionAPI =
-        window.SpeechRecognition || window.webkitSpeechRecognition;
-        
-      if (!SpeechRecognitionAPI) {
-        setIsSupported(false);
-        return;
-      }
-      
-      const recognition = new SpeechRecognitionAPI();
-      recognition.continuous = true; // Switch back to continuous for smoother recognition
-      recognition.interimResults = true;
-      recognition.lang = "en-US";
-      
-      // Get current transcript from persistent ref
-      const startingTranscript = persistentTranscriptRef.current;
-      
-      // Track if we got a final result
-      let finalResultReceived = false;
-      
-      recognition.onresult = (event: SpeechRecognitionEvent) => {
-        // Process all the results
-        let fullSessionTranscript = "";
-        
-        for (let i = 0; i < event.results.length; i++) {
-          const result = event.results[i];
-          // Only add final results to avoid duplication
-          if (result.isFinal) {
-            finalResultReceived = true;
-            fullSessionTranscript += result[0].transcript;
-          }
-        }
-        
-        if (finalResultReceived && fullSessionTranscript) {
-          // Build the new transcript
-          let newFullTranscript = startingTranscript;
-          
-          // Add a space if needed
-          if (startingTranscript && !startingTranscript.endsWith(" ") && 
-              fullSessionTranscript && !fullSessionTranscript.startsWith(" ")) {
-            newFullTranscript += " ";
-          }
-          
-          // Add the new content
-          newFullTranscript += fullSessionTranscript;
-          
-          // Update both the state and ref
-          setTranscript(newFullTranscript);
-          persistentTranscriptRef.current = newFullTranscript;
-          onTranscriptUpdate(newFullTranscript);
-        } else {
-          // Show the latest interim result
-          const latestResult = event.results[event.results.length - 1];
-          if (!latestResult.isFinal) {
-            const interimText = latestResult[0].transcript;
-            
-            // Create a temp transcript with the interim result
-            let tempTranscript = startingTranscript;
-            
-            // Add a space if needed
-            if (startingTranscript && !startingTranscript.endsWith(" ") && 
-                interimText && !interimText.startsWith(" ")) {
-              tempTranscript += " ";
-            }
-            
-            tempTranscript += interimText;
-            
-            // Just update the UI state, not the persistent ref
-            setTranscript(tempTranscript);
-            onTranscriptUpdate(tempTranscript);
-          }
-        }
-        
-        // If we got a result, clear any network errors
-        if (error && error.includes("network")) {
-          setError(null);
-        }
-      };
-      
-      recognition.onerror = (event: any) => {
-        // Only show errors that aren't related to abort operations
-        if (event.error !== 'aborted' && event.error !== 'no-speech') {
-          // Special handling for network errors - we can continue recording
-          // but let the user know transcription might be affected
-          if (event.error === 'network') {
-            setError("Network issue with speech recognition. Your recording will continue, but transcription may be affected.");
-          } else {
-            setError(`Speech recognition error: ${event.error}`);
-          }
-        }
-        
-        // Mark as inactive on error
-        isRecognitionActiveRef.current = false;
-      };
-      
-      recognition.onend = () => {
-        isRecognitionActiveRef.current = false;
-        
-        // If no final result was received, reset to the persistent transcript
-        if (!finalResultReceived) {
-          setTranscript(persistentTranscriptRef.current);
-          onTranscriptUpdate(persistentTranscriptRef.current);
-        }
-      };
-      
-      // Store the reference
-      recognitionRef.current = recognition;
-      
-      // Start it
-      recognition.start();
-      isRecognitionActiveRef.current = true;
-    } catch (e) {
-      isRecognitionActiveRef.current = false;
-      // Show more helpful error message to the user
-      setError("Failed to start speech recognition. Please try again or check your browser permissions.");
-    }
-  }, [isRecording, isPaused, onTranscriptUpdate, error]);
-  
-  // Set up speech recognition when recording state changes
+  // Check browser compatibility on component mount
   useEffect(() => {
-    // If not recording, clean up
-    if (!isRecording) {
-      if (recognitionRef.current) {
-        try {
-          recognitionRef.current.stop();
-        } catch (e) {
-          // Handle errors silently
-        }
-        isRecognitionActiveRef.current = false;
-      }
-      return;
+    // Check for required browser features
+    const hasMediaDevices = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+    const hasSpeechRecognition = !!(window.SpeechRecognition || window.webkitSpeechRecognition);
+    
+    setBrowserSupport({
+      mediaDevices: hasMediaDevices,
+      speechRecognition: hasSpeechRecognition
+    });
+    
+    // If we don't have the needed APIs, show appropriate errors
+    if (!hasMediaDevices) {
+      setPermissionError("Your browser doesn't support microphone access. Please use a modern browser like Chrome, Edge, or Firefox.");
+    } else if (!hasSpeechRecognition) {
+      setPermissionError("Your browser doesn't support speech recognition. Please use Chrome or Edge for the best experience.");
     }
     
-    // If paused, also clean up
-    if (isPaused) {
-      if (recognitionRef.current) {
-        try {
-          recognitionRef.current.stop();
-        } catch (e) {
-          // Handle errors silently
-        }
-        isRecognitionActiveRef.current = false;
-      }
-      return;
+    // Try to check permission status on mount
+    if (navigator.permissions && navigator.permissions.query) {
+      navigator.permissions.query({ name: 'microphone' as PermissionName })
+        .then(status => {
+          setPermissionStatus(status.state as 'granted' | 'denied' | 'prompt');
+        })
+        .catch(() => {
+          // If we can't check permission, we'll ask when the user tries to record
+          console.log("Can't check microphone permission - will request when needed");
+        });
     }
     
-    // Otherwise, start recognition (only if not already active)
-    if (!isRecognitionActiveRef.current) {
-      startSpeechRecognition();
-    }
-    
-    // Clean up when unmounting or when state changes
+    // Clean up on unmount
     return () => {
-      if (recognitionRef.current) {
-        try {
-          recognitionRef.current.stop();
-        } catch (e) {
-          // Handle errors silently
+      stopAllMediaTracks();
+      clearTimers();
+    };
+  }, []);
+
+  // Initialize speech recognition engine
+  useEffect(() => {
+    if (browserSupport.speechRecognition && !recognitionRef.current) {
+      initializeSpeechRecognition();
+    }
+  }, [browserSupport.speechRecognition]);
+
+  // Initialize speech recognition
+  const initializeSpeechRecognition = () => {
+    const SpeechRecognitionAPI =
+      window.SpeechRecognition || window.webkitSpeechRecognition;
+      
+    if (!SpeechRecognitionAPI) {
+      setBrowserSupport({
+        mediaDevices: false,
+        speechRecognition: false
+      });
+      return;
+    }
+    
+    const recognition = new SpeechRecognitionAPI();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = "en-US";
+    
+    recognition.onresult = (event: SpeechRecognitionEvent) => {
+      // Previous transcript content
+      let startingTranscript = persistentTranscriptRef.current;
+      let interimTranscript = '';
+      let finalTranscript = '';
+      
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const result = event.results[i];
+        const transcriptText = result[0].transcript;
+        
+        if (result.isFinal) {
+          finalTranscript += transcriptText;
+        } else {
+          interimTranscript += transcriptText;
         }
-        isRecognitionActiveRef.current = false;
+      }
+      
+      // Only update if we have final or interim content
+      if (finalTranscript || interimTranscript) {
+        // Update persistent ref if we have final transcript
+        if (finalTranscript) {
+          persistentTranscriptRef.current = (startingTranscript + ' ' + finalTranscript).trim();
+        }
+        
+        // Display current state (persistent + interim)
+        const displayText = ((persistentTranscriptRef.current + ' ' + interimTranscript).trim());
+        setTranscript(displayText);
+        onTranscriptUpdate(displayText);
+        
+        // Clear any permission errors if we're successfully getting results
+        if (permissionError) {
+          setPermissionError(null);
+        }
       }
     };
-  }, [isRecording, isPaused, startSpeechRecognition]);
-
-  const startRecording = async () => {
-    setError(null);
     
-    // Clear transcript and reset persistent ref when starting a new recording
+    recognition.onerror = (event: any) => {
+      // Only handle errors that aren't related to abort or no-speech
+      if (event.error !== 'aborted' && event.error !== 'no-speech') {
+        console.error('Speech recognition error:', event.error);
+        
+        if (event.error === 'not-allowed') {
+          setPermissionStatus('denied');
+          setPermissionError(
+            "Microphone access denied. Please enable your microphone permissions and refresh the page."
+          );
+          setIsRecording(false);
+        } else if (event.error === 'network') {
+          // Don't change permission status for network issues
+          setPermissionError(
+            "Network issue with speech recognition. Your recording will continue, but transcription may be affected."
+          );
+        } else {
+          setPermissionError(`Speech recognition error: ${event.error}. Please try again.`);
+        }
+      }
+    };
+    
+    recognition.onend = () => {
+      // Restart if recording but not paused
+      if (isRecording && !isPaused) {
+        try {
+          recognition.start();
+        } catch (e) {
+          console.error('Failed to restart recognition', e);
+        }
+      }
+    };
+    
+    recognitionRef.current = recognition;
+  };
+
+  // Request microphone permission explicitly
+  const requestMicrophonePermission = async (): Promise<boolean> => {
+    if (!browserSupport.mediaDevices) {
+      setPermissionError("Your browser doesn't support microphone access");
+      return false;
+    }
+
+    try {
+      setPermissionError(null);
+      
+      // Request stream with quality settings for speech
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true
+        }
+      });
+      
+      // Keep reference to the stream
+      streamRef.current = stream;
+      setPermissionStatus('granted');
+      return true;
+    } catch (error: any) {
+      console.error('Microphone permission error:', error);
+      
+      // Handle different permission error types
+      if (error.name === 'NotAllowedError') {
+        setPermissionStatus('denied');
+        setPermissionError(
+          "Microphone access denied. To fix this: Click the camera/microphone icon in your browser's address bar and select 'Allow' for microphone access, then refresh the page."
+        );
+      } else if (error.name === 'NotFoundError') {
+        setPermissionStatus('denied');
+        setPermissionError("No microphone found. Please connect a microphone and try again.");
+      } else if (error.name === 'NotReadableError') {
+        setPermissionStatus('denied');
+        setPermissionError("Your microphone is already being used by another application. Please close other apps and try again.");
+      } else {
+        setPermissionStatus('denied');
+        setPermissionError(`Unable to access microphone: ${error.message || 'Unknown error'}`);
+      }
+      
+      setShowPermissionSettings(true);
+      return false;
+    }
+  };
+
+  // Start recording flow
+  const startRecording = async () => {
+    // If already recording, do nothing
+    if (isRecording) return;
+    
+    // Reset transcript
     setTranscript("");
     persistentTranscriptRef.current = "";
     
+    // First, ensure we have microphone permission
+    const hasPermission = await requestMicrophonePermission();
+    if (!hasPermission) return;
+    
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      mediaRecorderRef.current = new MediaRecorder(stream);
-
-      // Start timer immediately - do this first to ensure timer is running
-      setRecordingDuration(0);
-      
-      // Clear any existing interval first
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-        timerRef.current = null;
+      // Get stream if we don't already have it
+      if (!streamRef.current) {
+        streamRef.current = await navigator.mediaDevices.getUserMedia({ 
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true
+          }
+        });
       }
       
-      // Use a more reliable timer approach
-      const startTime = Date.now();
-      timerRef.current = setInterval(() => {
-        const elapsedSeconds = Math.floor((Date.now() - startTime) / 1000);
-        setRecordingDuration(elapsedSeconds);
-      }, 1000);
+      // Create media recorder
+      let mimeType = 'audio/webm; codecs=opus';
+      if (!MediaRecorder.isTypeSupported(mimeType)) {
+        if (MediaRecorder.isTypeSupported('audio/webm')) {
+          mimeType = 'audio/webm';
+        } else if (MediaRecorder.isTypeSupported('audio/mp4')) {
+          mimeType = 'audio/mp4';
+        } else {
+          mimeType = ''; // Default
+        }
+      }
       
-      // Recognition will be started by the useEffect watching isRecording
-    } catch (err) {
-      setError(
-        "Error accessing microphone. Please ensure your microphone is connected and you have granted permission to use it."
+      mediaRecorderRef.current = new MediaRecorder(
+        streamRef.current,
+        mimeType ? { mimeType } : undefined
       );
-      // Reset recording state since we failed
-      setIsRecording(false);
+      mediaRecorderRef.current.start();
+      
+      // Start speech recognition
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.start();
+        } catch (e) {
+          console.error('Failed to start speech recognition', e);
+        }
+      } else if (browserSupport.speechRecognition) {
+        // Try to initialize and start if not done earlier
+        initializeSpeechRecognition();
+        if (recognitionRef.current) {
+          recognitionRef.current.start();
+        }
+      }
+      
+      // Start timer
+      startTimer();
+      
+      // Update state
+      setIsRecording(true);
       setIsPaused(false);
+      
+    } catch (error) {
+      console.error('Error starting recording:', error);
+      setPermissionError("Failed to start recording. Please try again.");
+      stopAllMediaTracks();
+      clearTimers();
     }
   };
 
-  const pauseRecording = (pausing: boolean) => {
-    if (!pausing) {
-      // RESUMING
-      // Resume timer
-      // Clear any existing interval first
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-        timerRef.current = null;
-      }
-      
-      // Store current duration
-      const currentDuration = recordingDuration;
-      const resumeTime = Date.now() - (currentDuration * 1000);
-      
-      timerRef.current = setInterval(() => {
-        const elapsedSeconds = Math.floor((Date.now() - resumeTime) / 1000);
-        setRecordingDuration(elapsedSeconds);
-      }, 1000);
-      
-      // Start speech recognition by changing the state - the useEffect will handle it
-    } else {
-      // PAUSING
-      // Stop speech recognition completely when pausing
+  // Pause/resume recording
+  const togglePause = () => {
+    if (!isRecording) return;
+    
+    const newPausedState = !isPaused;
+    setIsPaused(newPausedState);
+    
+    // Handle pause/resume actions
+    if (newPausedState) {
+      // Pause recording
       if (recognitionRef.current) {
         try {
           recognitionRef.current.stop();
-          recognitionRef.current = null; // Clear the reference to prevent automatic restarts
-        } catch (e) {
-          // Handle errors silently
-        }
-        isRecognitionActiveRef.current = false;
+        } catch (e) {} // Handle silently
       }
-
+      
       // Pause timer
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-        timerRef.current = null;
+      clearTimers();
+    } else {
+      // Resume recording
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.start();
+        } catch (e) {
+          console.error('Failed to resume recognition', e);
+        }
       }
+      
+      // Resume timer
+      startTimer();
     }
   };
 
+  // Stop recording
   const stopRecording = () => {
-    // Stop recognition first and clear the reference
+    // Stop speech recognition
     if (recognitionRef.current) {
       try {
         recognitionRef.current.stop();
-      } catch (e) {
-        // Handle errors silently
-      }
-      // Immediately mark as inactive and clear reference
-      isRecognitionActiveRef.current = false;
-      recognitionRef.current = null;
+      } catch (e) {} // Handle silently
     }
     
-    // Stop media tracks
-    if (mediaRecorderRef.current) {
+    // Stop media recorder
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       try {
-        // Make sure to stop all tracks from the stream
-        const tracks = mediaRecorderRef.current.stream.getTracks();
-        tracks.forEach((track) => {
-          track.stop();
-          mediaRecorderRef.current?.stream.removeTrack(track);
-        });
-        
-        // Explicitly set to null to help garbage collection
+        mediaRecorderRef.current.stop();
         mediaRecorderRef.current = null;
-      } catch (e) {
-        console.error("Error stopping media tracks:", e);
-      }
+      } catch (e) {} // Handle silently
     }
-
-    // Reset recording state
+    
+    // Stop all media tracks
+    stopAllMediaTracks();
+    
+    // Stop timer
+    clearTimers();
+    
+    // Update state
     setIsRecording(false);
     setIsPaused(false);
+  };
 
-    // Stop timer
+  // Helper to stop all media tracks
+  const stopAllMediaTracks = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
+    }
+  };
+
+  // Start/resume the timer
+  const startTimer = () => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+    }
+    
+    const startTime = Date.now() - (recordingDuration * 1000);
+    timerRef.current = setInterval(() => {
+      const elapsedSeconds = Math.floor((Date.now() - startTime) / 1000);
+      setRecordingDuration(elapsedSeconds);
+    }, 1000);
+  };
+
+  // Clear all timers
+  const clearTimers = () => {
     if (timerRef.current) {
       clearInterval(timerRef.current);
       timerRef.current = null;
     }
   };
 
+  // Format time display
   const formatTime = (seconds: number): string => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
-    return `${mins.toString().padStart(2, "0")}:${secs
-      .toString()
-      .padStart(2, "0")}`;
+    return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
   };
 
-  // Handle start button click
-  const handleStartClick = () => {
-    // Set state immediately before calling async function
-    setIsRecording(true);
-    setIsPaused(false);
-    
-    // Start recording and request microphone permission
-    startRecording();
-    
-    // The useEffect watching isRecording will start speech recognition once state is updated
+  // Handle record button click
+  const handleRecordClick = () => {
+    if (!isRecording) {
+      startRecording();
+    } else {
+      stopRecording();
+    }
   };
 
-  // Add cleanup on component unmount
-  useEffect(() => {
-    return () => {
-      // Ensure all resources are released when component unmounts
-      if (recognitionRef.current) {
-        try {
-          recognitionRef.current.stop();
-        } catch (e) {
-          // Handle errors silently
-        }
-      }
-      
-      if (mediaRecorderRef.current) {
-        try {
-          const tracks = mediaRecorderRef.current.stream.getTracks();
-          tracks.forEach(track => track.stop());
-        } catch (e) {
-          // Handle errors silently
-        }
-      }
-      
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-      }
-    };
-  }, []);
+  // Open browser settings for permission
+  const openPermissionSettings = () => {
+    toast.info("Redirecting you to browser settings...", {
+      description: "Look for microphone permissions in your browser settings and ensure this site is allowed."
+    });
+    
+    // For Chrome/Edge, try to open settings directly
+    if (navigator.userAgent.includes("Chrome") || navigator.userAgent.includes("Edg")) {
+      window.open('chrome://settings/content/microphone', '_blank');
+    }
+    // For Firefox
+    else if (navigator.userAgent.includes("Firefox")) {
+      window.open('about:preferences#privacy', '_blank');
+    }
+    // General fallback - opens site settings in most browsers
+    else {
+      window.open(window.location.href, '_blank');
+    }
+  };
 
   return (
     <div className={cn("flex flex-col items-center", className)}>
-      {error && (
-        <Alert variant={error.includes("network") ? "default" : "destructive"} className="mb-4 w-full">
+      {permissionError && (
+        <Alert variant="destructive" className="mb-4 w-full">
           <AlertCircle className="h-4 w-4" />
+          <AlertTitle>Microphone Error</AlertTitle>
           <AlertDescription>
-            {error.includes("network") 
-              ? "Network issue with speech recognition. Your recording will continue, but transcription may be affected."
-              : error}
+            {permissionError}
+            {showPermissionSettings && (
+              <Button 
+                variant="outline"
+                size="sm"
+                className="mt-2"
+                onClick={openPermissionSettings}
+              >
+                <Settings className="w-4 h-4 mr-2" />
+                Open Browser Settings
+              </Button>
+            )}
           </AlertDescription>
         </Alert>
       )}
@@ -467,98 +499,73 @@ const VoiceRecorder = ({
             />
           )}
 
-          {/* Main mic button - only visible when not recording */}
-          {!isRecording && (
-            <div 
-              className="bg-blue-600 hover:bg-blue-700 text-white h-20 w-20 rounded-full cursor-pointer flex items-center justify-center"
-              onClick={handleStartClick}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault();
-                  handleStartClick();
-                }
-              }}
-              role="button"
-              tabIndex={0}
-              aria-label="Start recording"
-            >
+          {/* Main mic button */}
+          <div 
+            className={cn(
+              "h-20 w-20 rounded-full cursor-pointer flex items-center justify-center",
+              isRecording 
+                ? "bg-red-600 hover:bg-red-700"
+                : "bg-blue-600 hover:bg-blue-700",
+              "text-white"
+            )}
+            onClick={handleRecordClick}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                handleRecordClick();
+              }
+            }}
+            role="button"
+            tabIndex={0}
+            aria-label={isRecording ? "Stop recording" : "Start recording"}
+          >
+            {isRecording ? (
+              <Square className="h-8 w-8" />
+            ) : (
               <Mic className="h-8 w-8" />
-            </div>
-          )}
-          
+            )}
+          </div>
+
           {/* Status text in circle when recording */}
           {isRecording && (
-            <div className="text-center">
-              <div className="text-2xl font-bold text-blue-600">
+            <div className="absolute bottom-5 text-center">
+              <div className="text-lg font-bold text-blue-600">
                 {formatTime(recordingDuration)}
               </div>
-              <div className="text-sm text-gray-500 mt-1 font-medium">
+              <div className="text-xs text-gray-500 mt-1 font-medium">
                 {isPaused ? "Paused" : "Recording..."}
               </div>
             </div>
           )}
         </div>
 
-        {/* Control buttons - only visible when recording */}
+        {/* Pause button - only visible when recording */}
         {isRecording && (
-          <div className="flex items-center justify-center gap-6 mt-4">
-            {/* Pause/Resume button */}
-            <button
-              id="voice-pause-button"
-              type="button"
-              onClick={() => {
-                const newPauseState = !isPaused;
-                
-                // Change state first
-                setIsPaused(newPauseState);
-                
-                // Then perform the pause/resume action
-                pauseRecording(newPauseState);
-                
-                // If resuming, ensure speech recognition starts again
-                if (!newPauseState && isRecording && !isRecognitionActiveRef.current) {
-                  setTimeout(() => {
-                    startSpeechRecognition();
-                  }, 100);
-                }
-              }}
-              className={cn(
-                "flex items-center justify-center h-16 w-16 rounded-full shadow-md transition-all outline-none focus:outline-none focus:ring-2 focus:ring-blue-500",
-                isPaused 
-                  ? "bg-green-500 hover:bg-green-600 text-white" 
-                  : "bg-yellow-500 hover:bg-yellow-600 text-white"
-              )}
-            >
-              {isPaused ? (
-                <Play className="h-6 w-6" />
-              ) : (
-                <Pause className="h-6 w-6" />
-              )}
-            </button>
-            
-            {/* Stop button */}
-            <button
-              id="voice-stop-button"
-              type="button"
-              onClick={() => {
-                // First change states
-                setIsRecording(false);
-                setIsPaused(false);
-                
-                // Then perform the stop action
-                stopRecording();
-              }}
-              className="flex items-center justify-center h-16 w-16 rounded-full bg-red-500 hover:bg-red-600 text-white shadow-md transition-all outline-none focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <Square className="h-6 w-6" />
-            </button>
-          </div>
+          <Button
+            id="voice-pause-button"
+            type="button"
+            variant={isPaused ? "default" : "outline"}
+            onClick={togglePause}
+            className="flex items-center gap-2 mb-4"
+          >
+            {isPaused ? (
+              <>
+                <Play className="h-4 w-4" />
+                Resume Recording
+              </>
+            ) : (
+              <>
+                <Pause className="h-4 w-4" />
+                Pause Recording
+              </>
+            )}
+          </Button>
         )}
 
-        {!isRecording && (
+        {!isRecording && permissionStatus !== "granted" && (
           <div className="text-center mt-2">
             <p className="text-sm text-gray-500">
-              Tap the microphone to start recording
+              Tap the microphone to start recording (will request permission)
             </p>
           </div>
         )}
@@ -573,5 +580,13 @@ const VoiceRecorder = ({
     </div>
   );
 };
+
+// Type declarations for SpeechRecognition since TypeScript doesn't have these built-in
+declare global {
+  interface Window {
+    SpeechRecognition?: any;
+    webkitSpeechRecognition?: any;
+  }
+}
 
 export default VoiceRecorder;

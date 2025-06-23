@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -11,17 +11,16 @@ import {
   CheckCircle, 
   Clock, 
   Award,
-  Play,
-  Pause,
-  ArrowRight,
-  ArrowLeft
+  ArrowRight
 } from 'lucide-react';
-import { ContentRenderer } from './content-renderer';
-import { QuizInterface } from './quiz/quiz-interface';
+import { ContentRenderer } from '@/components/training/content-renderer';
+import { QuizInterface } from '@/components/training/quiz/quiz-interface';
 
-interface TrainingModuleViewerProps {
+interface ModuleViewerProps {
   moduleId: string;
   userId: string;
+  initialUserEmail?: string;
+  initialUserName?: string;
 }
 
 interface TrainingModule {
@@ -56,35 +55,52 @@ interface TrainingProgress {
   progressPercentage: number;
 }
 
-export function TrainingModuleViewer({ moduleId, userId }: TrainingModuleViewerProps) {
+export default function ModuleViewer({ 
+  moduleId, 
+  userId,
+  initialUserEmail,
+  initialUserName
+}: ModuleViewerProps) {
   const [module, setModule] = useState<TrainingModule | null>(null);
   const [progress, setProgress] = useState<TrainingProgress | null>(null);
   const [currentSubtopic, setCurrentSubtopic] = useState<string>('');
   const [currentView, setCurrentView] = useState<'content' | 'quiz'>('content');
   const [isLoading, setIsLoading] = useState(true);
-  const [startTime, setStartTime] = useState<Date | null>(null);
+  
+  // Use refs for time tracking to avoid re-renders
+  const startTimeRef = useRef<Date>(new Date());
+  const lastUpdateRef = useRef<Date>(new Date());
+  const updateIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const isUpdatingRef = useRef<boolean>(false);
+
+  // Validate we have required data
+  const hasRequiredData = !!moduleId && !!userId;
 
   useEffect(() => {
+    if (!hasRequiredData) return;
+    
     loadTrainingModule();
     loadProgress();
-  }, [moduleId, userId]);
-
-  useEffect(() => {
-    // Start time tracking when component mounts
-    setStartTime(new Date());
     
-    // Update time spent every minute
-    const interval = setInterval(() => {
-      updateTimeSpent();
-    }, 60000);
+    // Set up interval for time tracking - only update every 2 minutes
+    updateIntervalRef.current = setInterval(() => {
+      if (!isUpdatingRef.current) {
+        updateTimeSpent();
+      }
+    }, 120000); // 2 minutes
     
     return () => {
-      clearInterval(interval);
-      // Don't call updateTimeSpent in cleanup as it can cause issues
+      if (updateIntervalRef.current) {
+        clearInterval(updateIntervalRef.current);
+      }
+      // Final update when component unmounts
+      updateTimeSpent();
     };
-  }, []); // Remove startTime dependency to prevent infinite loop
+  }, [moduleId, userId]);
 
   const loadTrainingModule = async () => {
+    if (!hasRequiredData) return;
+    
     try {
       const response = await fetch(`/api/training/modules/${moduleId}`);
       if (response.ok) {
@@ -95,6 +111,8 @@ export function TrainingModuleViewer({ moduleId, userId }: TrainingModuleViewerP
         if (!currentSubtopic && data.module.subtopics.length > 0) {
           setCurrentSubtopic(data.module.subtopics[0].title);
         }
+      } else {
+        console.error('Failed to load training module:', response.status);
       }
     } catch (error) {
       console.error('Error loading training module:', error);
@@ -102,6 +120,8 @@ export function TrainingModuleViewer({ moduleId, userId }: TrainingModuleViewerP
   };
 
   const loadProgress = async () => {
+    if (!hasRequiredData) return;
+    
     try {
       const response = await fetch(`/api/training/progress/${userId}?moduleId=${moduleId}`);
       if (response.ok) {
@@ -112,6 +132,8 @@ export function TrainingModuleViewer({ moduleId, userId }: TrainingModuleViewerP
         if (data.progress?.currentSubtopic) {
           setCurrentSubtopic(data.progress.currentSubtopic);
         }
+      } else {
+        console.error('Failed to load progress:', response.status);
       }
     } catch (error) {
       console.error('Error loading progress:', error);
@@ -121,13 +143,15 @@ export function TrainingModuleViewer({ moduleId, userId }: TrainingModuleViewerP
   };
 
   const updateTimeSpent = async () => {
-    if (!startTime || !userId || !moduleId || !currentSubtopic) return;
+    if (!hasRequiredData || !currentSubtopic || isUpdatingRef.current) return;
     
-    const currentTime = new Date();
-    const additionalTime = Math.floor((currentTime.getTime() - startTime.getTime()) / 1000);
+    const now = new Date();
+    const timeSinceLastUpdate = Math.floor((now.getTime() - lastUpdateRef.current.getTime()) / 1000);
     
-    // Only update if there's meaningful time to track (at least 10 seconds)
-    if (additionalTime < 10) return;
+    // Only update if at least 30 seconds have passed
+    if (timeSinceLastUpdate < 30) return;
+    
+    isUpdatingRef.current = true;
     
     try {
       const response = await fetch('/api/training/progress/update', {
@@ -136,23 +160,28 @@ export function TrainingModuleViewer({ moduleId, userId }: TrainingModuleViewerP
         body: JSON.stringify({
           userId,
           moduleId,
-          timeSpent: additionalTime,
+          timeSpent: timeSinceLastUpdate,
           currentSubtopic
         })
       });
       
       if (response.ok) {
-        // Reset start time after successful update
-        setStartTime(new Date());
+        lastUpdateRef.current = now;
       } else {
         console.error('Failed to update time spent:', response.status);
       }
     } catch (error) {
       console.error('Error updating time spent:', error);
+    } finally {
+      isUpdatingRef.current = false;
     }
   };
 
   const markSubtopicComplete = async (subtopic: string) => {
+    if (!hasRequiredData || isUpdatingRef.current) return;
+    
+    isUpdatingRef.current = true;
+    
     try {
       const updatedCompleted = [...(progress?.completedSubtopics || [])];
       if (!updatedCompleted.includes(subtopic)) {
@@ -172,21 +201,26 @@ export function TrainingModuleViewer({ moduleId, userId }: TrainingModuleViewerP
 
       if (response.ok) {
         loadProgress(); // Reload progress
+      } else {
+        console.error('Failed to mark subtopic complete:', response.status);
       }
     } catch (error) {
       console.error('Error marking subtopic complete:', error);
+    } finally {
+      isUpdatingRef.current = false;
     }
   };
 
   const navigateToSubtopic = (subtopic: string) => {
-    // Only update time if we're changing subtopics and have been on the current one for a while
-    if (currentSubtopic !== subtopic && startTime) {
-      updateTimeSpent();
-    }
+    // Don't do anything if already on this subtopic
+    if (currentSubtopic === subtopic) return;
+    
+    // Update time spent on current subtopic before changing
+    updateTimeSpent();
     
     setCurrentSubtopic(subtopic);
     setCurrentView('content');
-    setStartTime(new Date()); // Reset timer for new subtopic
+    lastUpdateRef.current = new Date();
   };
 
   const startQuiz = () => {
@@ -199,6 +233,16 @@ export function TrainingModuleViewer({ moduleId, userId }: TrainingModuleViewerP
     }
     setCurrentView('content');
   };
+
+  if (!hasRequiredData) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="text-center">
+          <p>Missing required data to load training module.</p>
+        </div>
+      </div>
+    );
+  }
 
   if (isLoading) {
     return (
@@ -225,7 +269,7 @@ export function TrainingModuleViewer({ moduleId, userId }: TrainingModuleViewerP
   const isSubtopicCompleted = progress?.completedSubtopics.includes(currentSubtopic) || false;
 
   return (
-    <div className="max-w-7xl mx-auto p-6 space-y-6">
+    <div className="max-w-7xl mx-auto space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -317,78 +361,49 @@ export function TrainingModuleViewer({ moduleId, userId }: TrainingModuleViewerP
                 <BookOpen className="w-4 h-4" />
                 Learn
               </TabsTrigger>
-              <TabsTrigger value="quiz" className="flex items-center gap-2">
+              <TabsTrigger 
+                value="quiz" 
+                className="flex items-center gap-2"
+                disabled={!currentQuizBank}
+              >
                 <CheckCircle className="w-4 h-4" />
                 Quiz
               </TabsTrigger>
             </TabsList>
 
             <TabsContent value="content" className="mt-6">
-              <Card>
-                <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <CardTitle>{currentContent?.title || currentSubtopic}</CardTitle>
-                    {isSubtopicCompleted && (
-                      <Badge variant="default" className="bg-green-600">
-                        <CheckCircle className="w-3 h-3 mr-1" />
-                        Completed
-                      </Badge>
-                    )}
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  {currentContent ? (
-                    <ContentRenderer content={currentContent} />
-                  ) : (
-                    <p>No content available for this subtopic.</p>
-                  )}
-                  
-                  <div className="flex items-center justify-between mt-8 pt-6 border-t">
-                    <Button
-                      variant="outline"
-                      onClick={() => {
-                        const prevIndex = Math.max(0, currentSubtopicIndex - 1);
-                        navigateToSubtopic(module.subtopics[prevIndex].title);
-                      }}
-                      disabled={currentSubtopicIndex === 0}
-                    >
-                      <ArrowLeft className="w-4 h-4 mr-2" />
-                      Previous
-                    </Button>
-                    
-                    <Button onClick={startQuiz} className="bg-blue-600 hover:bg-blue-700">
-                      Take Quiz
-                      <ArrowRight className="w-4 h-4 ml-2" />
-                    </Button>
-                    
-                    <Button
-                      variant="outline"
-                      onClick={() => {
-                        const nextIndex = Math.min(module.subtopics.length - 1, currentSubtopicIndex + 1);
-                        navigateToSubtopic(module.subtopics[nextIndex].title);
-                      }}
-                      disabled={currentSubtopicIndex === module.subtopics.length - 1}
-                    >
-                      Next
-                      <ArrowRight className="w-4 h-4 ml-2" />
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
+              {currentContent ? (
+                <ContentRenderer content={currentContent} />
+              ) : (
+                <Card>
+                  <CardContent className="py-8 text-center">
+                    <p>No content available for this topic.</p>
+                  </CardContent>
+                </Card>
+              )}
+              
+              {currentQuizBank && (
+                <div className="mt-6 flex justify-end">
+                  <Button 
+                    onClick={startQuiz}
+                    className="flex items-center gap-2"
+                  >
+                    Take Quiz <ArrowRight className="w-4 h-4" />
+                  </Button>
+                </div>
+              )}
             </TabsContent>
 
             <TabsContent value="quiz" className="mt-6">
               {currentQuizBank ? (
-                <QuizInterface
+                <QuizInterface 
                   quizBank={currentQuizBank}
-                  userId={userId}
-                  subtopic={currentSubtopic}
                   onComplete={onQuizComplete}
                 />
               ) : (
                 <Card>
-                  <CardContent className="pt-6 text-center">
-                    <p>No quiz available for this subtopic.</p>
+                  <CardContent className="py-8 text-center">
+                    <p>No quiz available for this topic.</p>
                   </CardContent>
                 </Card>
               )}
