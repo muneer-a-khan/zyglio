@@ -14,17 +14,27 @@ export default function ProceduresPage() {
   const [procedures, setProcedures] = useState<Procedure[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const loadProcedures = async () => {
       try {
         setLoading(true);
+        setError(null);
         console.log("Fetching procedures from API...");
+        
+        // Make direct API call for debugging
+        const apiResponse = await fetch('/api/procedures');
+        const apiData = await apiResponse.json();
+        console.log("Direct API response:", apiData);
+        
+        // Use the service to get procedures
         const data = await procedureService.getAllProcedures();
         console.log(`Received ${data.length} procedures from API`, data);
         setProcedures(data);
       } catch (error) {
         console.error("Error loading procedures:", error);
+        setError(error instanceof Error ? error.message : "Unknown error occurred");
       } finally {
         setLoading(false);
       }
@@ -69,6 +79,22 @@ export default function ProceduresPage() {
     );
   }
 
+  if (error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-lg text-red-500">Error: {error}</p>
+          <Button 
+            onClick={() => window.location.reload()} 
+            className="mt-4"
+          >
+            Try Again
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen">
       <main className="container py-8">
@@ -79,7 +105,7 @@ export default function ProceduresPage() {
               Browse our complete collection of voice-based procedural learning resources
             </p>
             <p className="text-sm text-gray-400 mt-1">
-              Showing {procedures.length} procedures from all users
+              Showing {filteredProcedures.length} of {procedures.length} procedures
             </p>
           </div>
           

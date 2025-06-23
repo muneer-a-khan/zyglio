@@ -151,12 +151,8 @@ export async function GET(request: NextRequest) {
     
     console.log(`Found ${procedures.length} total procedures`);
     
-    // Filter out procedures without simulation settings
-    const proceduresWithSettings = procedures.filter(p => p.simulationSettings !== null);
-    console.log(`Found ${proceduresWithSettings.length} procedures with non-null settings`);
-    
-    // Get the learning tasks for these procedures
-    const taskIds = proceduresWithSettings.map(p => p.taskId);
+    // Get the learning tasks for all procedures
+    const taskIds = procedures.map(p => p.taskId).filter(Boolean);
     const learningTasks = await prisma.learningTask.findMany({
       where: {
         id: {
@@ -168,15 +164,29 @@ export async function GET(request: NextRequest) {
     console.log(`Found ${learningTasks.length} learning tasks`);
     
     // Map learning task data to procedures
-    const formattedProcedures = proceduresWithSettings.map(procedure => {
+    const formattedProcedures = procedures.map(procedure => {
       const task = learningTasks.find(t => t.id === procedure.taskId);
+      
+      // Parse kpiTech and kpiConcept if they exist
+      const kpiTech = task?.kpiTech ? 
+        task.kpiTech.split(',').map(tag => tag.trim()).filter(Boolean) : 
+        [];
+        
+      const kpiConcept = task?.kpiConcept ? 
+        task.kpiConcept.split(',').map(tag => tag.trim()).filter(Boolean) : 
+        [];
+      
       return {
         id: procedure.id,
-        title: procedure.title,
+        title: procedure.title || task?.title || 'Untitled Procedure',
+        description: task?.title || 'No description available',
         taskId: procedure.taskId,
-        settings: procedure.simulationSettings,
+        simulationSettings: procedure.simulationSettings,
         presenter: task?.presenter || 'Unknown',
+        affiliation: task?.affiliation || '',
         date: task?.date || new Date(),
+        kpiTech: kpiTech,
+        kpiConcept: kpiConcept,
         isOwned: task?.userId === userId
       };
     });

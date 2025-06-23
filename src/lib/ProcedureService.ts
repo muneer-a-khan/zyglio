@@ -724,8 +724,12 @@ class ProcedureService {
       }
       
       const data = await response.json();
+      console.log('API response data:', data);
       
-      if (data.success && Array.isArray(data.procedures)) {
+      // Check if data.procedures exists and is an array
+      if (data && data.procedures && Array.isArray(data.procedures)) {
+        console.log(`Found ${data.procedures.length} procedures in API response`);
+        
         // Ensure all fields are properly formatted
         return data.procedures.map((proc: any) => ({
           id: proc.id,
