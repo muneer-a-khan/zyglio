@@ -28,18 +28,19 @@ export default function GlobalNavigation() {
     return pathname === path || pathname?.startsWith(path + '/');
   };
 
-  // Use these links in both server and client rendering
-  const navLinks = [
+  // Base links for all users
+  const baseLinks = [
     { href: '/create', label: 'New Procedure' },
     { href: '/procedures', label: 'Procedures' },
     { href: '/training', label: 'Training' },
     { href: '/media', label: 'Media Library' },
+    { href: '/dashboard', label: 'Dashboard' },
   ];
-
-  // Add SME link conditionally after mounting
+  
+  // Add SME-specific links
   const displayLinks = mounted && session?.user?.role === 'sme' 
-    ? [...navLinks.slice(0, 3), { href: '/sme/training', label: 'Review Training' }, navLinks[3]]
-    : navLinks;
+    ? [...baseLinks, { href: '/sme/training', label: 'Review Training' }, { href: '/sme/dashboard', label: 'SME Dashboard' }]
+    : baseLinks;
 
   return (
     <header className="border-b sticky top-0 z-50 w-full bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -68,19 +69,19 @@ export default function GlobalNavigation() {
           </Link>
         </div>
         <nav className="flex items-center justify-between flex-1">
-          <div className="flex space-x-1">
+          <div className="flex space-x-1 overflow-x-auto">
             {displayLinks.map((link) => (
               <Button 
                 key={link.href}
                 variant={isActive(link.href) ? "default" : "ghost"} 
                 asChild 
-                className="text-sm font-medium"
+                className="text-sm font-medium whitespace-nowrap"
               >
                 <Link href={link.href}>{link.label}</Link>
               </Button>
             ))}
           </div>
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center space-x-2 ml-2">
             {mounted ? (
               session?.user ? (
                 <div className="flex items-center space-x-2">
