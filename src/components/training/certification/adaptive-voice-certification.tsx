@@ -88,8 +88,19 @@ export function AdaptiveVoiceCertification({ moduleId, userId, onComplete }: Ada
       }
     };
   }, []);
-  
-  // Add a fallback mechanism to access voiceInterviewData questions
+
+  // Add effect to check if we need to complete certification
+  useEffect(() => {
+    // Check if we have a certification and have processed all questions
+    if (certification && 
+        responses.length > 0 && 
+        currentQuestionIndex >= certification.totalQuestions && 
+        !showResults) {
+      console.log("All questions completed, finishing certification");
+      finishCertification(responses);
+    }
+  }, [currentQuestionIndex, certification, responses.length, showResults]);
+
   const getCurrentQuestion = () => {
     if (!certification) return null;
     
@@ -448,7 +459,6 @@ export function AdaptiveVoiceCertification({ moduleId, userId, onComplete }: Ada
             }
           }
           
-          const currentQuestion = getCurrentQuestion();
           const newResponse = {
             questionId: currentQuestion?.id || `question-${currentQuestionIndex}`,
             transcript,
@@ -460,6 +470,9 @@ export function AdaptiveVoiceCertification({ moduleId, userId, onComplete }: Ada
           setResponses([...responses, newResponse]);
           
           // Move to next question or finish
+          console.log(`Current question index: ${currentQuestionIndex}, Total questions: ${certification.totalQuestions}`);
+          console.log(`Is last question? ${currentQuestionIndex >= certification.totalQuestions - 1}`);
+          
           if (currentQuestionIndex < certification.totalQuestions - 1) {
             setCurrentQuestionIndex(currentQuestionIndex + 1);
             setAudioBlob(null);
@@ -491,7 +504,10 @@ export function AdaptiveVoiceCertification({ moduleId, userId, onComplete }: Ada
             }
           } else {
             // Finish certification
-            finishCertification([...responses, newResponse]);
+            console.log("On last question, finishing certification");
+            const updatedResponses = [...responses, newResponse];
+            console.log(`Total responses: ${updatedResponses.length}`);
+            finishCertification(updatedResponses);
           }
         } catch (scoreError) {
           console.error("Error in scoring process:", scoreError);
@@ -533,6 +549,9 @@ export function AdaptiveVoiceCertification({ moduleId, userId, onComplete }: Ada
     if (!certification) return;
 
     try {
+      console.log("Finishing certification with responses:", allResponses.length);
+      console.log("Last question index:", currentQuestionIndex, "Total questions:", certification.totalQuestions);
+      
       const response = await fetch('/api/certification/voice-interview/complete', {
         method: 'POST',
         headers: {
@@ -547,6 +566,7 @@ export function AdaptiveVoiceCertification({ moduleId, userId, onComplete }: Ada
 
       if (response.ok) {
         const data = await response.json();
+        console.log("Certification complete response:", data);
         setFinalScore(data.overallScore);
         setShowResults(true);
         
@@ -556,19 +576,13 @@ export function AdaptiveVoiceCertification({ moduleId, userId, onComplete }: Ada
           certificationId: certification.id
         });
       } else {
-        throw new Error('Failed to complete certification');
+        const errorText = await response.text();
+        console.error("Error completing certification:", errorText);
+        throw new Error('Failed to complete certification: ' + errorText);
       }
     } catch (error) {
       console.error('Error completing certification:', error);
       toast.error('Failed to complete certification');
-    }
-  };
-
-  const skipQuestion = () => {
-    if (currentQuestionIndex < (certification?.totalQuestions || 0) - 1) {
-      setCurrentQuestionIndex(currentQuestionIndex + 1);
-      setAudioBlob(null);
-      toast.info('Question skipped');
     }
   };
 
@@ -839,11 +853,7 @@ export function AdaptiveVoiceCertification({ moduleId, userId, onComplete }: Ada
           </div>
 
           {/* Question Actions */}
-          <div className="flex justify-between items-center pt-4 border-t">
-            <Button variant="outline" onClick={skipQuestion} size="sm">
-              <SkipForward className="w-4 h-4 mr-2" />
-              Skip Question
-            </Button>
+          <div className="flex justify-center items-center pt-4 border-t">
             <p className="text-xs text-gray-500">
               Tip: Speak clearly and provide detailed answers
             </p>

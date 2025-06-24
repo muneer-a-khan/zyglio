@@ -4,12 +4,14 @@ import { getAuthSession } from '@/lib/auth';
 
 export async function POST(request: NextRequest) {
   try {
+    console.log("Voice interview complete API called");
     const session = await getAuthSession();
     if (!session?.user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     const { certificationId, responses, timeElapsed } = await request.json();
+    console.log(`Processing completion for certification ${certificationId} with ${responses.length} responses`);
 
     if (!certificationId || !responses) {
       return NextResponse.json(
@@ -27,12 +29,14 @@ export async function POST(request: NextRequest) {
     });
 
     if (!certification) {
+      console.log(`Certification not found: ${certificationId}`);
       return NextResponse.json(
         { error: 'Certification not found' },
         { status: 404 }
       );
     }
 
+    console.log(`Certification status: ${certification.status}`);
     if (certification.status !== 'VOICE_INTERVIEW_IN_PROGRESS') {
       return NextResponse.json(
         { error: 'Certification is not in progress' },
@@ -56,14 +60,16 @@ export async function POST(request: NextRequest) {
     // Determine if passed
     const passingThreshold = voiceInterviewData.passingThreshold || 70;
     const passed = overallScore >= passingThreshold;
+    console.log(`Score: ${overallScore}/${passingThreshold}, Passed: ${passed}`);
 
     // Update certification status
+    console.log("Updating certification status...");
     const updatedCertification = await prisma.certification.update({
       where: { id: certificationId },
       data: {
         status: passed ? 'COMPLETED' : 'FAILED',
-        score: overallScore,
-        completedAt: new Date(),
+        overallScore: overallScore,
+        certifiedAt: passed ? new Date() : null,
         voiceInterviewData: {
           ...voiceInterviewData,
           responses: responses,
@@ -74,8 +80,10 @@ export async function POST(request: NextRequest) {
         }
       }
     });
+    console.log("Certification updated successfully");
 
     // Log analytics
+    console.log("Logging analytics...");
     await prisma.certificationAnalytics.create({
       data: {
         certificationId,
@@ -90,34 +98,17 @@ export async function POST(request: NextRequest) {
           totalQuestions: voiceInterviewData.questions.length
         }
       }
-    }).catch(() => {
-      console.warn('Failed to log analytics');
+    }).catch((error) => {
+      console.warn('Failed to log analytics', error);
     });
 
-    // If passed, update user's training progress
-    if (passed) {
-      await prisma.trainingProgress.update({
-        where: {
-          userId_moduleId: {
-            userId: session.user.id,
-            moduleId: certification.moduleId
-          }
-        },
-        data: {
-          certified: true,
-          certificationDate: new Date()
-        }
-      }).catch(() => {
-        console.warn('Failed to update training progress');
-      });
-    }
-
+    console.log("Returning success response");
     return NextResponse.json({
       success: true,
       passed,
       overallScore,
       certificationId,
-      completedAt: updatedCertification.completedAt,
+      completedAt: updatedCertification.certifiedAt,
       timeElapsed
     });
 
