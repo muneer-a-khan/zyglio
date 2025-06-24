@@ -7,7 +7,7 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/componen
 import { Input } from "@/components/ui/input";
 import { Search, FileText, Plus, Calendar, Tag } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { procedureService, Procedure } from "@/lib/ProcedureService";
+import { procedureService, Procedure } from "@/lib/services";
 import { format } from "date-fns";
 
 export default function ProceduresPage() {

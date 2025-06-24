@@ -18,7 +18,7 @@ import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { Step } from "@/lib/ProcedureService";
+import { Step } from "@/lib/services";
 import { v4 as uuidv4 } from 'uuid';
 import { generateStepsFromTranscript, generateYamlFromSteps } from "@/lib/deepseek";
 import * as yaml from 'js-yaml';

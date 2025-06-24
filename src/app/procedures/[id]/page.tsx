@@ -10,7 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { ArrowLeft, Calendar, Clock, PlayCircle, Tag, User, Building, FileText, Code } from "lucide-react";
-import { procedureService, Procedure } from "@/lib/ProcedureService";
+import { procedureService, Procedure } from "@/lib/services";
 import { toast } from "sonner";
 import FlowchartViewer from "@/components/FlowchartViewer";
 import YamlGenerator from "@/components/YamlGenerator";
