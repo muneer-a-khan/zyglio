@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
+import { VoiceQuestionsService } from '@/lib/services/voice-questions.service';
 
 export async function GET(
   request: NextRequest,
@@ -113,6 +114,46 @@ export async function GET(
     console.error('Error loading training module:', error);
     return NextResponse.json(
       { error: 'Failed to load training module' },
+      { status: 500 }
+    );
+  }
+}
+
+export async function PUT(
+  request: NextRequest,
+  { params }: { params: { moduleId: string } }
+) {
+  try {
+    const session = await getServerSession(authOptions);
+    if (!session?.user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const { moduleId } = params;
+    const data = await request.json();
+
+    // Update the training module
+    const updatedModule = await prisma.trainingModule.update({
+      where: { id: moduleId },
+      data
+    });
+
+    // Trigger background generation of voice certification questions
+    setTimeout(() => {
+      VoiceQuestionsService.generateQuestionsForModule(moduleId)
+        .then(success => {
+          console.log(`Background question generation ${success ? 'completed' : 'failed'} for module ${moduleId}`);
+        })
+        .catch(err => {
+          console.error(`Error in background question generation for module ${moduleId}:`, err);
+        });
+    }, 100);
+
+    return NextResponse.json(updatedModule);
+  } catch (error) {
+    console.error('Error updating training module:', error);
+    return NextResponse.json(
+      { error: 'Failed to update training module' },
       { status: 500 }
     );
   }

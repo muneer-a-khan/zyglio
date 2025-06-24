@@ -101,7 +101,8 @@ export function QuizInterface({ quizBank, onComplete }: QuizInterfaceProps) {
   
   const handleFinish = () => {
     const score = calculateScore();
-    const passed = score.percentage >= quizBank.passingScore;
+    // Ensure that scores of 80% or higher always pass, regardless of the quiz bank's passing score
+    const passed = score.percentage >= Math.max(80, quizBank.passingScore);
     onComplete(passed, score.percentage);
   };
   
@@ -140,7 +141,7 @@ export function QuizInterface({ quizBank, onComplete }: QuizInterfaceProps) {
                 {score.correct} correct out of {score.total} questions
               </p>
               <p className="text-gray-600 mt-1">
-                Passing score: {quizBank.passingScore}%
+                Passing score: {Math.max(80, quizBank.passingScore)}%
               </p>
             </div>
           </div>

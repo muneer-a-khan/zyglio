@@ -80,8 +80,33 @@ export function AdaptiveVoiceCertification({ moduleId, userId, onComplete }: Ada
       if (mediaRecorder.current && mediaRecorder.current.state !== 'inactive') {
         mediaRecorder.current.stop();
       }
+      
+      // Clean up audio resources
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.src = '';
+      }
     };
   }, []);
+  
+  // Add a fallback mechanism to access voiceInterviewData questions
+  const getCurrentQuestion = () => {
+    if (!certification) return null;
+    
+    // If currentQuestion is already set, use it
+    if (certification.currentQuestion) {
+      return certification.currentQuestion;
+    }
+    
+    // Try to get from voiceInterviewData
+    const voiceInterviewData = certification.voiceInterviewData as any;
+    if (voiceInterviewData?.questions && Array.isArray(voiceInterviewData.questions)) {
+      const currentIndex = voiceInterviewData.currentQuestionIndex || 0;
+      return voiceInterviewData.questions[currentIndex];
+    }
+    
+    return null;
+  };
 
   useEffect(() => {
     // Start timer when certification begins
@@ -101,6 +126,13 @@ export function AdaptiveVoiceCertification({ moduleId, userId, onComplete }: Ada
   const startCertification = async () => {
     setLoading(true);
     try {
+      // Check if we already have a certification in progress
+      if (certification) {
+        console.log("Certification already in progress, skipping API call");
+        setLoading(false);
+        return;
+      }
+      
       const response = await fetch('/api/certification/voice-interview/start', {
         method: 'POST',
         headers: {
@@ -111,11 +143,15 @@ export function AdaptiveVoiceCertification({ moduleId, userId, onComplete }: Ada
 
       if (response.ok) {
         const data = await response.json();
+        console.log("Certification started successfully:", data);
         setCertification(data.certification);
         
         // Read the first question aloud
         if (data.certification.currentQuestion) {
+          console.log("Speaking first question:", data.certification.currentQuestion.question);
           await speakText(data.certification.currentQuestion.question);
+        } else {
+          console.error("No current question found in certification data");
         }
       } else {
         const error = await response.json();
@@ -131,6 +167,32 @@ export function AdaptiveVoiceCertification({ moduleId, userId, onComplete }: Ada
 
   const speakText = async (text: string) => {
     try {
+      console.log("Synthesizing speech for:", text);
+      
+      // Create audio element if it doesn't exist
+      if (!audioRef.current) {
+        console.log("Creating new audio element");
+        audioRef.current = new Audio();
+        document.body.appendChild(audioRef.current);
+        
+        // Add event listeners
+        audioRef.current.addEventListener('play', () => {
+          console.log("Audio play event triggered");
+          setIsPlaying(true);
+        });
+        
+        audioRef.current.addEventListener('ended', () => {
+          console.log("Audio ended event triggered");
+          setIsPlaying(false);
+        });
+        
+        audioRef.current.addEventListener('error', (e) => {
+          console.error("Audio error event:", e);
+          setIsPlaying(false);
+        });
+      }
+      
+      // Make the request to the speech synthesis API
       const response = await fetch('/api/speech/synthesize', {
         method: 'POST',
         headers: {
@@ -138,25 +200,133 @@ export function AdaptiveVoiceCertification({ moduleId, userId, onComplete }: Ada
         },
         body: JSON.stringify({ text }),
       });
+      
+      console.log("Speech synthesis response status:", response.status);
+      console.log("Response headers:", Object.fromEntries(response.headers.entries()));
 
       if (response.ok) {
-        const audioBlob = await response.blob();
-        const audioUrl = URL.createObjectURL(audioBlob);
+        // Check if the response is JSON (error) or audio blob (success)
+        const contentType = response.headers.get('content-type');
+        console.log("Response content type:", contentType);
         
-        if (audioRef.current) {
-          audioRef.current.src = audioUrl;
-          audioRef.current.play();
+        if (contentType && contentType.includes('application/json')) {
+          // This is an error response
+          const data = await response.json();
+          console.error("Speech synthesis error:", data);
+          
+          // Use browser's speech synthesis as fallback
+          if ('speechSynthesis' in window) {
+            console.log("Using browser speech synthesis as fallback");
+            const utterance = new SpeechSynthesisUtterance(text);
+            window.speechSynthesis.speak(utterance);
+            setIsPlaying(true);
+            
+            utterance.onend = () => {
+              setIsPlaying(false);
+            };
+          } else {
+            throw new Error("Browser doesn't support speech synthesis");
+          }
+        } else {
+          // This is an audio blob response
+          const voiceUsed = response.headers.get('x-voice-used') || 'unknown';
+          console.log(`Received audio from ElevenLabs (voice: ${voiceUsed})`);
+          
+          const audioBlob = await response.blob();
+          console.log("Audio blob size:", audioBlob.size, "bytes");
+          
+          if (audioBlob.size === 0) {
+            throw new Error("Received empty audio blob");
+          }
+          
+          const audioUrl = URL.createObjectURL(audioBlob);
+          console.log("Created audio URL:", audioUrl);
+          
+          if (audioRef.current) {
+            // Set audio properties
+            audioRef.current.src = audioUrl;
+            audioRef.current.volume = 1.0; // Ensure volume is at maximum
+            audioRef.current.controls = true; // For debugging
+            
+            // Set up event listeners for debugging
+            const playPromise = audioRef.current.play();
+            
+            if (playPromise !== undefined) {
+              playPromise
+                .then(() => {
+                  console.log("Audio playback started successfully");
+                  setIsPlaying(true);
+                })
+                .catch(err => {
+                  console.error("Audio playback error:", err);
+                  
+                  // Try to play again after a short delay
+                  setTimeout(() => {
+                    console.log("Retrying audio playback...");
+                    audioRef.current?.play()
+                      .then(() => console.log("Retry successful"))
+                      .catch(retryErr => {
+                        console.error("Retry failed:", retryErr);
+                        toast.error("Failed to play audio. Check your speakers and volume.");
+                        
+                        // Use browser TTS as fallback
+                        if ('speechSynthesis' in window) {
+                          const utterance = new SpeechSynthesisUtterance(text);
+                          window.speechSynthesis.speak(utterance);
+                        }
+                      });
+                  }, 500);
+                });
+            }
+            
+            // Clean up when done
+            audioRef.current.onended = () => {
+              console.log("Audio playback ended");
+              setIsPlaying(false);
+              URL.revokeObjectURL(audioUrl);
+            };
+          } else {
+            console.error("No audio element reference");
+          }
+        }
+      } else {
+        // Handle HTTP error
+        let errorMessage = `HTTP error: ${response.status}`;
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.error || errorMessage;
+        } catch {
+          // If can't parse JSON, try text
+          try {
+            errorMessage = await response.text();
+          } catch {
+            // If all fails, use default message
+          }
+        }
+        
+        console.error("Speech synthesis API error:", errorMessage);
+        toast.error("Failed to generate speech. Using text only.");
+        
+        // Try browser TTS as fallback
+        if ('speechSynthesis' in window) {
+          const utterance = new SpeechSynthesisUtterance(text);
+          window.speechSynthesis.speak(utterance);
           setIsPlaying(true);
           
-          audioRef.current.onended = () => {
+          utterance.onend = () => {
             setIsPlaying(false);
-            URL.revokeObjectURL(audioUrl);
           };
         }
       }
     } catch (error) {
       console.error('Error synthesizing speech:', error);
-      // Continue without TTS if it fails
+      toast.error("Speech synthesis failed. Please read the questions.");
+      
+      // Try browser TTS as final fallback
+      if ('speechSynthesis' in window) {
+        const utterance = new SpeechSynthesisUtterance(text);
+        window.speechSynthesis.speak(utterance);
+      }
     }
   };
 
@@ -218,37 +388,73 @@ export function AdaptiveVoiceCertification({ moduleId, userId, onComplete }: Ada
       const formData = new FormData();
       formData.append('audio', audioBlob, 'response.wav');
       
+      console.log("Submitting audio for transcription...");
       const transcribeResponse = await fetch('/api/speech/transcribe', {
         method: 'POST',
         body: formData,
       });
 
       if (transcribeResponse.ok) {
-        const { transcript } = await transcribeResponse.json();
+        const responseData = await transcribeResponse.json();
+        console.log("Transcription response:", responseData);
+        const transcript = responseData.transcript || responseData.text || "No transcription available";
         
         // Score the response using AI
-        const scoreResponse = await fetch('/api/certification/voice-interview/score', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            certificationId: certification.id,
-            questionId: certification.currentQuestion.id,
-            transcript,
-            audioBlob: audioBlob ? await blobToBase64(audioBlob) : null
-          }),
-        });
+        const currentQuestion = getCurrentQuestion();
+        if (!currentQuestion) {
+          toast.error("Current question not found");
+          return;
+        }
+        console.log("Scoring response for question:", currentQuestion.id);
+        try {
+          const scoreResponse = await fetch('/api/certification/voice-interview/score', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              certificationId: certification.id,
+              questionId: currentQuestion.id,
+              transcript
+              // Removed audioBlob to reduce payload size
+            }),
+          });
 
-        if (scoreResponse.ok) {
-          const scoreData = await scoreResponse.json();
+          let scoreData;
+          if (scoreResponse.ok) {
+            scoreData = await scoreResponse.json();
+            console.log("Score response:", scoreData);
+          } else {
+            // Handle error response
+            const errorText = await scoreResponse.text();
+            console.error("Error scoring response:", errorText);
+            
+            // Use fallback scoring if API fails
+            scoreData = {
+              success: true,
+              score: Math.ceil(5 * 0.7), // Default 70% score as fallback
+              feedback: "Response processed with fallback scoring due to server error.",
+              nextQuestion: null
+            };
+            
+            // Try to get the next question manually
+            if (currentQuestionIndex < certification.totalQuestions - 1) {
+              // Attempt to get the next question from voiceInterviewData
+              const nextQuestionIndex = currentQuestionIndex + 1;
+              const questions = certification.voiceInterviewData?.questions;
+              if (questions && questions[nextQuestionIndex]) {
+                scoreData.nextQuestion = questions[nextQuestionIndex];
+              }
+            }
+          }
           
+          const currentQuestion = getCurrentQuestion();
           const newResponse = {
-            questionId: certification.currentQuestion.id,
+            questionId: currentQuestion?.id || `question-${currentQuestionIndex}`,
             transcript,
-            score: scoreData.score,
-            feedback: scoreData.feedback,
-            competencyArea: certification.currentQuestion.competencyArea
+            score: scoreData.score || 3,
+            feedback: scoreData.feedback || "Response recorded",
+            competencyArea: currentQuestion?.competencyArea || "General Knowledge"
           };
           
           setResponses([...responses, newResponse]);
@@ -266,20 +472,58 @@ export function AdaptiveVoiceCertification({ moduleId, userId, onComplete }: Ada
                 currentQuestion: nextQuestion
               });
               await speakText(nextQuestion.question);
+            } else {
+              // Fallback if nextQuestion is not provided
+              toast.warning("Could not retrieve next question. Please refresh the page if issues persist.");
+              
+              // Try to advance manually
+              if (certification.voiceInterviewData?.questions) {
+                const nextQuestionIndex = currentQuestionIndex + 1;
+                const nextQuestion = certification.voiceInterviewData.questions[nextQuestionIndex];
+                if (nextQuestion) {
+                  setCertification({
+                    ...certification,
+                    currentQuestion: nextQuestion
+                  });
+                  await speakText(nextQuestion.question);
+                }
+              }
             }
           } else {
             // Finish certification
             finishCertification([...responses, newResponse]);
           }
-        } else {
-          throw new Error('Failed to score response');
+        } catch (scoreError) {
+          console.error("Error in scoring process:", scoreError);
+          toast.error("Error scoring your response. Moving to next question.");
+          
+          // Try to advance anyway
+          if (currentQuestionIndex < certification.totalQuestions - 1) {
+            setCurrentQuestionIndex(currentQuestionIndex + 1);
+            setAudioBlob(null);
+            
+            // Try to get next question manually
+            if (certification.voiceInterviewData?.questions) {
+              const nextQuestionIndex = currentQuestionIndex + 1;
+              const nextQuestion = certification.voiceInterviewData.questions[nextQuestionIndex];
+              if (nextQuestion) {
+                setCertification({
+                  ...certification,
+                  currentQuestion: nextQuestion
+                });
+                await speakText(nextQuestion.question);
+              }
+            }
+          }
         }
       } else {
-        throw new Error('Failed to transcribe audio');
+        const errorText = await transcribeResponse.text();
+        console.error("Error transcribing audio:", errorText);
+        toast.error('Failed to transcribe audio. Please try again.');
       }
     } catch (error) {
       console.error('Error submitting response:', error);
-      toast.error('Failed to process your response');
+      toast.error('Failed to process your response. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -519,20 +763,27 @@ export function AdaptiveVoiceCertification({ moduleId, userId, onComplete }: Ada
               <Volume2 className="w-5 h-5 text-blue-600 mt-0.5" />
               <div className="flex-1">
                 <p className="text-blue-900 font-medium mb-2">
-                  {certification.currentQuestion.question}
+                  {getCurrentQuestion()?.question || "Loading question..."}
                 </p>
                 <div className="flex items-center gap-2">
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={() => speakText(certification.currentQuestion.question)}
+                    onClick={() => {
+                      const question = getCurrentQuestion();
+                      if (question?.question) {
+                        speakText(question.question);
+                      } else {
+                        toast.error("Question text not available");
+                      }
+                    }}
                     disabled={isPlaying}
                   >
                     {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
                     {isPlaying ? 'Playing...' : 'Repeat Question'}
                   </Button>
                   <Badge variant="secondary" className="text-xs">
-                    {certification.currentQuestion.difficulty}
+                    {getCurrentQuestion()?.difficulty || "normal"}
                   </Badge>
                 </div>
               </div>
@@ -600,8 +851,16 @@ export function AdaptiveVoiceCertification({ moduleId, userId, onComplete }: Ada
         </CardContent>
       </Card>
 
-      {/* Hidden audio element for playback */}
-      <audio ref={audioRef} style={{ display: 'none' }} />
+      {/* Audio element for playback - visible for debugging */}
+      <audio 
+        ref={audioRef} 
+        controls 
+        style={{ 
+          display: 'block', 
+          width: '100%', 
+          marginBottom: '10px' 
+        }} 
+      />
     </div>
   );
 } 

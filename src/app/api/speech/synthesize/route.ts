@@ -101,15 +101,14 @@ export async function POST(request: NextRequest) {
           throw new Error(`ElevenLabs API error with backup voice: ${backupResponse.status}`);
         }
         
-        // Get the audio data as an ArrayBuffer from backup voice
+        // Return the audio data directly as a blob
         const audioArrayBuffer = await backupResponse.arrayBuffer();
-        const audioBase64 = Buffer.from(audioArrayBuffer).toString('base64');
-        
-        return NextResponse.json({
-          success: true,
-          audioBase64,
-          voice: 'backup',
-          model
+        return new NextResponse(audioArrayBuffer, {
+          status: 200,
+          headers: {
+            'Content-Type': 'audio/mpeg',
+            'x-voice-used': 'backup'
+          }
         });
       }
       
@@ -120,22 +119,21 @@ export async function POST(request: NextRequest) {
     // Get the audio data as an ArrayBuffer
     const audioArrayBuffer = await response.arrayBuffer();
     
-    // Convert to base64 for transmission over JSON
-    const audioBase64 = Buffer.from(audioArrayBuffer).toString('base64');
-    
-    return NextResponse.json({
-      success: true,
-      audioBase64,
-      voice: 'primary',
-      model
+    // Return the audio data directly as a blob
+    return new NextResponse(audioArrayBuffer, {
+      status: 200,
+      headers: {
+        'Content-Type': 'audio/mpeg',
+        'x-voice-used': 'primary'
+      }
     });
     
   } catch (error) {
     console.error('Error synthesizing speech:', error);
     
-    // Try browser TTS as final fallback
+    // Return an error response
     return NextResponse.json({
-      error: 'Failed to synthesize speech with ElevenLabs, falling back to browser TTS',
+      error: 'Failed to synthesize speech with ElevenLabs',
       fallback: true,
       details: error instanceof Error ? error.message : 'Unknown error'
     }, { status: 500 });

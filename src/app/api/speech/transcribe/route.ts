@@ -45,7 +45,8 @@ export async function POST(request: NextRequest) {
     // Return the transcribed text
     return NextResponse.json({
       success: true,
-      text: transcription.text,
+      transcript: transcription.text, // Use 'transcript' for consistency
+      text: transcription.text,       // Keep 'text' for backward compatibility
       procedureId
     });
     

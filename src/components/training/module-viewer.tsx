@@ -13,6 +13,7 @@ import {
   Award,
   ArrowRight
 } from 'lucide-react';
+import Link from 'next/link';
 import { ContentRenderer } from '@/components/training/content-renderer';
 import { QuizInterface } from '@/components/training/quiz/quiz-interface';
 
@@ -222,14 +223,41 @@ export default function ModuleViewer({
     setCurrentView('content');
     lastUpdateRef.current = new Date();
   };
+  
+  const moveToNextSubtopic = () => {
+    if (!module) return;
+    
+    const currentIndex = module.subtopics.findIndex(s => s.title === currentSubtopic);
+    if (currentIndex < module.subtopics.length - 1) {
+      // Move to the next subtopic
+      const nextSubtopic = module.subtopics[currentIndex + 1].title;
+      navigateToSubtopic(nextSubtopic);
+    }
+  };
 
   const startQuiz = () => {
     setCurrentView('quiz');
   };
 
-  const onQuizComplete = (passed: boolean, score: number) => {
+  const onQuizComplete = async (passed: boolean, score: number) => {
     if (passed) {
-      markSubtopicComplete(currentSubtopic);
+      await markSubtopicComplete(currentSubtopic);
+      
+      // If this was the last subtopic, show completion message and certification button
+      const updatedProgress = [...(progress?.completedSubtopics || [])];
+      if (!updatedProgress.includes(currentSubtopic)) {
+        updatedProgress.push(currentSubtopic);
+      }
+      
+      // Check if all subtopics are completed
+      const allCompleted = module?.subtopics.every(subtopic => 
+        updatedProgress.includes(subtopic.title)
+      );
+      
+      if (allCompleted) {
+        // Move to the next subtopic if available
+        moveToNextSubtopic();
+      }
     }
     setCurrentView('content');
   };
@@ -297,15 +325,27 @@ export default function ModuleViewer({
             value={progress?.progressPercentage || 0} 
             className="h-2 mb-4" 
           />
-          <div className="flex items-center gap-4 text-sm text-gray-600">
-            <div className="flex items-center gap-1">
-              <Clock className="w-4 h-4" />
-              Time spent: {Math.floor((progress?.timeSpent || 0) / 60)} minutes
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4 text-sm text-gray-600">
+              <div className="flex items-center gap-1">
+                <Clock className="w-4 h-4" />
+                Time spent: {Math.floor((progress?.timeSpent || 0) / 60)} minutes
+              </div>
+              <div className="flex items-center gap-1">
+                <BookOpen className="w-4 h-4" />
+                Current: {currentSubtopic}
+              </div>
             </div>
-            <div className="flex items-center gap-1">
-              <BookOpen className="w-4 h-4" />
-              Current: {currentSubtopic}
-            </div>
+            
+            {/* Certification Button - Show when all topics are completed */}
+            {progress && module && progress.completedSubtopics.length === module.subtopics.length && (
+              <Button asChild className="bg-green-600 hover:bg-green-700 flex items-center gap-2">
+                <Link href={`/certification/${moduleId}`}>
+                  <Award className="w-4 h-4" />
+                  Start Voice Certification
+                </Link>
+              </Button>
+            )}
           </div>
         </CardContent>
       </Card>

@@ -33,6 +33,7 @@ export default function GlobalNavigation() {
     { href: '/create', label: 'New Procedure' },
     { href: '/procedures', label: 'Procedures' },
     { href: '/training', label: 'Training' },
+    { href: '/certification', label: 'Certification' },
     { href: '/media', label: 'Media Library' },
     { href: '/dashboard', label: 'Dashboard' },
   ];
@@ -44,15 +45,13 @@ export default function GlobalNavigation() {
 
   return (
     <header className="border-b sticky top-0 z-50 w-full bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="container flex h-16 items-center max-w-7xl mx-auto px-4">
-        <div className="mr-4 flex">
-          <Link href="/" className="flex items-center space-x-2">
-            <div className="flex items-center justify-center rounded-md bg-blue-600 h-8 w-8">
+      <div className="container flex h-16 items-center max-w-7xl mx-auto px-2">
+        <div className="mr-1 flex">
+          <Link href="/" className="flex items-center space-x-1">
+            <div className="flex items-center justify-center rounded-md bg-blue-600 h-7 w-7">
               <svg
                 xmlns="http://www.w3.org/2000/svg"
-                className="h-4 w-4 text-white"
-                width="24"
-                height="24"
+                className="h-3.5 w-3.5 text-white"
                 viewBox="0 0 24 24"
                 fill="none"
                 stroke="currentColor"
@@ -65,32 +64,34 @@ export default function GlobalNavigation() {
                 <path d="M18 6v6" />
               </svg>
             </div>
-            <span className="font-semibold text-xl hidden sm:inline-block">Zyglio</span>
+            <span className="font-semibold text-lg hidden sm:inline-block">Zyglio</span>
           </Link>
         </div>
         <nav className="flex items-center justify-between flex-1">
-          <div className="flex space-x-1 overflow-x-auto">
+          <div className="flex space-x-0.5 md:space-x-1">
             {displayLinks.map((link) => (
               <Button 
                 key={link.href}
                 variant={isActive(link.href) ? "default" : "ghost"} 
                 asChild 
-                className="text-sm font-medium whitespace-nowrap"
+                size="sm"
+                className="text-xs md:text-sm font-medium whitespace-nowrap px-2 md:px-3"
               >
                 <Link href={link.href}>{link.label}</Link>
               </Button>
             ))}
           </div>
-          <div className="flex items-center space-x-2 ml-2">
+          <div className="flex items-center space-x-2 ml-auto pl-1">
             {mounted ? (
               session?.user ? (
-                <div className="flex items-center space-x-2">
-                  <span className="text-sm text-gray-600 hidden sm:inline">
+                <div className="flex items-center space-x-1 md:space-x-2">
+                  <span className="text-xs md:text-sm text-gray-600 hidden sm:inline truncate max-w-[120px] md:max-w-[150px]">
                     Hi, {session.user.name || session.user.email}
                   </span>
                   <Button 
                     variant="outline" 
                     size="sm"
+                    className="text-xs px-2 py-1 h-7"
                     onClick={() => signOut({ callbackUrl: '/' })}
                   >
                     Sign Out
@@ -99,7 +100,7 @@ export default function GlobalNavigation() {
               ) : (
                 <Button 
                   size="sm" 
-                  className="bg-blue-600 hover:bg-blue-700"
+                  className="bg-blue-600 hover:bg-blue-700 text-xs px-2 py-1 h-7"
                   asChild
                 >
                   <Link href="/auth/signin">Sign In</Link>
@@ -109,7 +110,7 @@ export default function GlobalNavigation() {
               <Button 
                 size="sm" 
                 variant="outline"
-                className="opacity-0"
+                className="opacity-0 text-xs px-2 py-1 h-7"
               >
                 Loading
               </Button>

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getDeepSeekApi } from '@/lib/deepseek';
+import { VoiceQuestionsService } from '@/lib/services/voice-questions.service';
 
 export async function POST(request: NextRequest) {
   try {
@@ -36,27 +37,65 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check if user has completed all quizzes
+    // Get the user's progress for this module to check completed topics
+    const progress = await prisma.trainingProgress.findUnique({
+      where: {
+        userId_moduleId: {
+          userId,
+          moduleId
+        }
+      }
+    });
+
+    // Check if all subtopics are completed based on progress
+    const subtopics = Array.isArray(module.subtopics) ? module.subtopics.map(s => s.title || s) : [];
+    const completedSubtopics = Array.isArray(progress?.completedSubtopics) ? progress.completedSubtopics : [];
+    
+    // Check if all subtopics are completed
+    const allSubtopicsCompleted = subtopics.length > 0 && 
+      subtopics.every(subtopic => completedSubtopics.includes(subtopic));
+
+    // Also check quiz attempts as a backup
     const requiredQuizzes = module.quizBanks.length;
     const passedQuizzes = module.quizBanks.filter(quiz => 
       quiz.attempts.some(attempt => attempt.passed)
     ).length;
+    const allQuizzesPassed = passedQuizzes === requiredQuizzes && requiredQuizzes > 0;
+    
+    // User is eligible if either all subtopics are completed OR all quizzes are passed
+    const isEligible = allSubtopicsCompleted || allQuizzesPassed;
 
-    if (passedQuizzes < requiredQuizzes) {
+    if (!isEligible) {
       return NextResponse.json(
-        { error: 'Must complete all quizzes before voice certification' },
+        { 
+          error: 'Must complete all topics before voice certification',
+          details: {
+            completedTopics: completedSubtopics.length,
+            totalTopics: subtopics.length,
+            passedQuizzes,
+            totalQuizzes: requiredQuizzes
+          }
+        },
         { status: 400 }
       );
     }
 
     // Calculate average quiz score to determine interview difficulty
-    const allPassed = module.quizBanks.map(quiz => 
-      quiz.attempts.find(attempt => attempt.passed)
-    ).filter(Boolean);
+    // If no quiz attempts, use a default score based on progress
+    let averageScore = 0;
     
-    const averageScore = allPassed.length > 0 
-      ? Math.round(allPassed.reduce((sum, attempt) => sum + (attempt?.score || 0), 0) / allPassed.length)
-      : 0;
+    if (passedQuizzes > 0) {
+      const allPassed = module.quizBanks.map(quiz => 
+        quiz.attempts.find(attempt => attempt.passed)
+      ).filter(Boolean);
+      
+      averageScore = allPassed.length > 0 
+        ? Math.round(allPassed.reduce((sum, attempt) => sum + (attempt?.score || 0), 0) / allPassed.length)
+        : 0;
+    } else {
+      // If no quiz data, estimate score based on progress percentage
+      averageScore = progress?.progressPercentage || 80; // Default to 80% if no progress data
+    }
 
     // Determine adaptive difficulty and passing threshold
     let adaptiveDifficulty = 'NORMAL';
@@ -106,151 +145,83 @@ export async function POST(request: NextRequest) {
       }
     });
 
-    // Generate interview questions using DeepSeek
-    const subtopics = Array.isArray(module.subtopics) ? module.subtopics : [];
-    const questionPrompt = `
-Generate voice interview questions for certification in: ${module.title}
-
-Procedure: ${module.procedure.title}
-Subtopics: ${subtopics.map((t: any) => t.title || t).join(', ')}
-User's Quiz Performance: ${averageScore}% average
-Interview Difficulty: ${adaptiveDifficulty}
-Interview Duration: ~15 minutes
-
-Generate 15-20 questions of varying difficulty that cover all key competency areas:
-1. Factual knowledge questions
-2. Scenario-based questions  
-3. Safety and compliance questions
-4. Problem-solving questions
-5. Best practices questions
-
-Format as JSON array with this structure:
-{
-  "questions": [
-    {
-      "id": "q1",
-      "type": "factual|scenario|safety|problem_solving|best_practice",
-      "difficulty": "easy|medium|hard",
-      "question": "Question text here?",
-      "expectedKeywords": ["keyword1", "keyword2"],
-      "competencyArea": "specific area",
-      "points": 5,
-      "followUpQuestions": ["Optional follow-up question"],
-      "scoringCriteria": {
-        "excellent": "Criteria for 5 points",
-        "good": "Criteria for 3-4 points", 
-        "adequate": "Criteria for 2 points",
-        "poor": "Criteria for 1 point"
-      }
-    }
-  ]
-}
-
-Adjust question difficulty based on ${adaptiveDifficulty} level.
-`;
-
-    try {
-      const deepseekApi = getDeepSeekApi();
-      
-      const questionsResponse = await deepseekApi.chat.completions.create({
-        messages: [{ role: 'user', content: questionPrompt }],
-        model: 'deepseek-chat',
-        response_format: { type: 'json_object' }
-      });
-      
-      let interviewQuestions;
-      
-      try {
-        const responseContent = questionsResponse.choices[0]?.message?.content;
-        if (!responseContent) {
-          throw new Error('Empty response from DeepSeek API');
-        }
-        interviewQuestions = JSON.parse(responseContent);
-      } catch {
-        // Fallback questions if parsing fails
-        interviewQuestions = generateFallbackQuestions(module, adaptiveDifficulty);
-      }
-
-      // Update certification with generated questions
-      await prisma.certification.update({
-        where: { id: certification.id },
-        data: {
-          voiceInterviewData: {
-            ...certification.voiceInterviewData,
-            questions: interviewQuestions.questions,
-            currentQuestionIndex: 0,
-            responses: []
-          }
-        }
-      });
-
-      // Log analytics
-      await prisma.certificationAnalytics.create({
-        data: {
-          certificationId: certification.id,
-          userId,
-          moduleId,
-          eventType: 'VOICE_INTERVIEW_STARTED',
-          eventData: {
-            adaptiveDifficulty,
-            passingThreshold,
-            averageQuizScore: averageScore,
-            questionsGenerated: interviewQuestions.questions.length
-          }
-        }
-      }).catch(() => {
-        console.warn('Failed to log analytics');
-      });
-
-      return NextResponse.json({
-        success: true,
-        certification: {
-          id: certification.id,
-          status: certification.status,
-          adaptiveDifficulty,
-          passingThreshold,
-          estimatedDuration: 15,
-          totalQuestions: interviewQuestions.questions.length,
-          currentQuestion: interviewQuestions.questions[0]
-        }
-      });
-
-    } catch (error) {
-      console.error('Error generating interview questions:', error);
-      
-      // Create certification with fallback questions
+    // Get questions from the question bank or generate them if needed
+    console.log(`Getting questions for module ${moduleId} with difficulty ${adaptiveDifficulty}`);
+    
+    // Try to get questions from the bank first
+    let questions = await VoiceQuestionsService.getQuestionsForCertification(moduleId, adaptiveDifficulty);
+    
+    // If no questions in bank, trigger background generation for future use
+    if (questions.length === 0) {
+      console.log(`No questions found in bank, using fallback questions`);
       const fallbackQuestions = generateFallbackQuestions(module, adaptiveDifficulty);
+      questions = fallbackQuestions.questions;
       
-      await prisma.certification.update({
-        where: { id: certification.id },
-        data: {
-          voiceInterviewData: {
-            ...certification.voiceInterviewData,
-            questions: fallbackQuestions.questions,
-            currentQuestionIndex: 0,
-            responses: []
-          }
+      // Trigger background generation for future use
+      setTimeout(() => {
+        VoiceQuestionsService.generateQuestionsForModule(moduleId, true)
+          .then(success => {
+            console.log(`Background question generation ${success ? 'completed' : 'failed'} for module ${moduleId}`);
+          })
+          .catch(err => {
+            console.error(`Error in background question generation for module ${moduleId}:`, err);
+          });
+      }, 100);
+    }
+    
+    // Update certification with questions
+    await prisma.certification.update({
+      where: { id: certification.id },
+      data: {
+        voiceInterviewData: {
+          ...certification.voiceInterviewData,
+          questions: questions,
+          currentQuestionIndex: 0,
+          responses: []
         }
-      });
+      }
+    });
 
-      return NextResponse.json({
-        success: true,
-        certification: {
-          id: certification.id,
-          status: certification.status,
+    // Log analytics
+    await prisma.certificationAnalytics.create({
+      data: {
+        certificationId: certification.id,
+        userId,
+        moduleId,
+        eventType: 'VOICE_INTERVIEW_STARTED',
+        eventData: {
           adaptiveDifficulty,
           passingThreshold,
-          estimatedDuration: 15,
-          totalQuestions: fallbackQuestions.questions.length,
-          currentQuestion: fallbackQuestions.questions[0]
+          averageQuizScore: averageScore,
+          questionsGenerated: questions.length,
+          source: questions.length > 3 ? 'question_bank' : 'fallback'
         }
-      });
-    }
+      }
+    }).catch(() => {
+      console.warn('Failed to log analytics');
+    });
+
+    return NextResponse.json({
+      success: true,
+      certification: {
+        id: certification.id,
+        status: certification.status,
+        adaptiveDifficulty,
+        passingThreshold,
+        estimatedDuration: 15,
+        totalQuestions: questions.length,
+        currentQuestion: questions[0],
+        voiceInterviewData: {
+          questions,
+          currentQuestionIndex: 0
+        }
+      }
+    });
 
   } catch (error) {
     console.error('Error starting voice interview:', error);
     return NextResponse.json(
-      { error: 'Failed to start voice interview' },
+      { error: 'Failed to start voice interview', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
     );
   }
