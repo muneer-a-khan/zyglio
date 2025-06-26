@@ -42,6 +42,7 @@ import {
 import { MediaFile } from '@/lib/storage-service';
 import { Badge } from "@/components/ui/badge";
 import { CardHeader, CardTitle } from "@/components/ui/card";
+import { UserSyncButton } from "@/components/user-sync-button";
 
 export default function CreateProcedure() {
   const { data: session, status } = useSession();
