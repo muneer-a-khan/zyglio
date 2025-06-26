@@ -6,7 +6,8 @@ import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, AlertTriangle } from "lucide-react";
-import { AdaptiveVoiceCertification } from "@/components/training/certification/adaptive-voice-certification";
+import { VoiceCertNew } from "@/components/training/certification/voice-cert-new";
+console.log("🔍 ModuleCertificationPage: VoiceCertNew imported:", VoiceCertNew);
 import Link from "next/link";
 import { toast } from "sonner";
 
@@ -22,7 +23,7 @@ interface ModuleData {
   procedureTitle: string;
 }
 
-export default function ModuleCertificationPage({ params }: { params: { moduleId: string } }) {
+export default function ModuleCertificationPage({ params }: { params: Promise<{ moduleId: string }> }) {
   const { data: session, status } = useSession();
   const router = useRouter();
   const [module, setModule] = useState<ModuleData | null>(null);
@@ -31,8 +32,8 @@ export default function ModuleCertificationPage({ params }: { params: { moduleId
   const [certificateCompleted, setCertificateCompleted] = useState(false);
   const [result, setResult] = useState<CertificationResult | null>(null);
   
-  // Safely unwrap params
-  const moduleId = React.useMemo(() => params.moduleId, [params]);
+  // Safely unwrap params using React.use()
+  const { moduleId } = React.use(params);
 
   useEffect(() => {
     if (status === "unauthenticated") {
@@ -278,11 +279,14 @@ export default function ModuleCertificationPage({ params }: { params: { moduleId
         <Card>
           <CardContent className="p-6">
             {session?.user?.id && (
-              <AdaptiveVoiceCertification
-                moduleId={moduleId}
-                userId={session.user.id}
-                onComplete={handleCertificationComplete}
-              />
+              <>
+                {console.log("📋 ModuleCertificationPage: About to render VoiceCertNew with:", { moduleId, userId: session.user.id })}
+                <VoiceCertNew
+                  moduleId={moduleId}
+                  userId={session.user.id}
+                  onComplete={handleCertificationComplete}
+                />
+              </>
             )}
           </CardContent>
         </Card>

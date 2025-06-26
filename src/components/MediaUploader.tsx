@@ -9,7 +9,7 @@ import {
   Wifi, WifiOff 
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { MediaItem } from "@/lib/ProcedureService";
+import { MediaItem } from "@/lib/services";
 import { v4 as uuidv4 } from 'uuid';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
@@ -37,8 +37,9 @@ const MediaUploader = ({ mediaItems = [], onChange }: MediaUploaderProps) => {
   useEffect(() => {
     const getTaskId = async () => {
       try {
-        const { procedureService } = await import('@/lib/ProcedureService');
-        const taskId = procedureService.currentTaskId;
+        const { ProcedureService } = await import('@/lib/services');
+        const procedureService = new ProcedureService();
+        const taskId = procedureService.getCurrentTaskId();
         setCurrentTaskId(taskId);
       } catch (error) {
         console.error('Error getting task ID:', error);

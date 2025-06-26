@@ -270,7 +270,7 @@ src/components/training/
 ```typescript
 // Certification Components
 src/components/certification/
-├── adaptive-voice-certification.tsx   # Adaptive voice interview
+├── voice-certification-session.tsx    # Voice certification session wrapper
 ├── certification-dashboard.tsx        # User certification overview
 ├── certification-card.tsx            # Individual certification display
 ├── competency-scores.tsx             # Detailed competency breakdown

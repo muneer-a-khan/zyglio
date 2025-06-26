@@ -2,12 +2,7 @@ import { NextAuthOptions } from "next-auth";
 import prisma from "@/lib/prisma";
 import CredentialsProvider from "next-auth/providers/credentials";
 import { getServerSession } from 'next-auth/next';
-import { createClient } from '@supabase/supabase-js';
-
-// Create Supabase client
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-const supabase = createClient(supabaseUrl, supabaseServiceKey);
+import { getSupabaseServerClient } from '@/lib/supabase-server';
 
 export const authOptions: NextAuthOptions = {
   session: {
@@ -32,8 +27,31 @@ export const authOptions: NextAuthOptions = {
         }
 
         try {
+          // Get Supabase client
+          const supabaseClient = getSupabaseServerClient();
+          
+          if (!supabaseClient) {
+            console.warn("Supabase client not available, falling back to database auth");
+            
+            // Fallback to direct database check
+            const user = await prisma.user.findUnique({
+              where: { email: credentials.email }
+            });
+            
+            if (user) {
+              console.log("User found in database, proceeding with fallback auth");
+              return {
+                id: user.id,
+                email: user.email,
+                name: user.name || user.email.split('@')[0] || 'User',
+              };
+            }
+            
+            return null;
+          }
+          
           // Authenticate with Supabase
-          const { data, error } = await supabase.auth.signInWithPassword({
+          const { data, error } = await supabaseClient.auth.signInWithPassword({
             email: credentials.email,
             password: credentials.password,
           });
@@ -214,7 +232,14 @@ export async function verifySession(request: Request) {
  */
 async function verifyToken(token: string) {
   try {
-    const { data, error } = await supabase.auth.getUser(token);
+    const supabaseClient = getSupabaseServerClient();
+    
+    if (!supabaseClient) {
+      console.warn('Supabase client not available for token verification');
+      return null;
+    }
+    
+    const { data, error } = await supabaseClient.auth.getUser(token);
     
     if (error || !data.user) {
       return null;

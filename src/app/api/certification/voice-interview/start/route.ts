@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { getDeepSeekApi } from '@/lib/deepseek';
-import { VoiceQuestionsService } from '@/lib/services/voice-questions.service';
+import { initializeSession } from '@/lib/session-service';
 
 export async function POST(request: NextRequest) {
   try {
@@ -81,7 +80,6 @@ export async function POST(request: NextRequest) {
     }
 
     // Calculate average quiz score to determine interview difficulty
-    // If no quiz attempts, use a default score based on progress
     let averageScore = 0;
     
     if (passedQuizzes > 0) {
@@ -145,39 +143,31 @@ export async function POST(request: NextRequest) {
       }
     });
 
-    // Get questions from the question bank or generate them if needed
-    console.log(`Getting questions for module ${moduleId} with difficulty ${adaptiveDifficulty}`);
+    // Initialize an interview session using the session service
+    // Use certification scenario text if available, otherwise use module title and procedure description
+    const scenarioText = module.certificationScenarioText || 
+      `You are being certified on ${module.title}. This certification will evaluate your practical knowledge and ability to apply the concepts you've learned.`;
     
-    // Try to get questions from the bank first
-    let questions = await VoiceQuestionsService.getQuestionsForCertification(moduleId, adaptiveDifficulty);
+    const sessionId = `cert-${certification.id}`;
     
-    // If no questions in bank, trigger background generation for future use
-    if (questions.length === 0) {
-      console.log(`No questions found in bank, using fallback questions`);
-      const fallbackQuestions = generateFallbackQuestions(module, adaptiveDifficulty);
-      questions = fallbackQuestions.questions;
-      
-      // Trigger background generation for future use
-      setTimeout(() => {
-        VoiceQuestionsService.generateQuestionsForModule(moduleId, true)
-          .then(success => {
-            console.log(`Background question generation ${success ? 'completed' : 'failed'} for module ${moduleId}`);
-          })
-          .catch(err => {
-            console.error(`Error in background question generation for module ${moduleId}:`, err);
-          });
-      }, 100);
-    }
+    console.log(`Initializing certification interview session for ${module.title}`);
     
-    // Update certification with questions
+    // Initialize session with scenario context
+    const sessionData = await initializeSession(
+      sessionId,
+      scenarioText,
+      module.title
+    );
+
+    // Update certification with session info
     await prisma.certification.update({
       where: { id: certification.id },
       data: {
         voiceInterviewData: {
           ...certification.voiceInterviewData,
-          questions: questions,
-          currentQuestionIndex: 0,
-          responses: []
+          sessionId,
+          scenarioText,
+          startedAt: new Date().toISOString()
         }
       }
     });
@@ -193,8 +183,8 @@ export async function POST(request: NextRequest) {
           adaptiveDifficulty,
           passingThreshold,
           averageQuizScore: averageScore,
-          questionsGenerated: questions.length,
-          source: questions.length > 3 ? 'question_bank' : 'fallback'
+          sessionId,
+          scenarioText: scenarioText.substring(0, 100) + "..."
         }
       }
     }).catch(() => {
@@ -208,12 +198,11 @@ export async function POST(request: NextRequest) {
         status: certification.status,
         adaptiveDifficulty,
         passingThreshold,
-        estimatedDuration: 15,
-        totalQuestions: questions.length,
-        currentQuestion: questions[0],
-        voiceInterviewData: {
-          questions,
-          currentQuestionIndex: 0
+        sessionId,
+        scenarioText,
+        module: {
+          title: module.title,
+          procedureId: module.procedureId
         }
       }
     });
@@ -225,79 +214,4 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
-}
-
-function generateFallbackQuestions(module: any, difficulty: string) {
-  const subtopics = Array.isArray(module.subtopics) ? module.subtopics : [];
-  
-  const questions = [
-    {
-      id: 'q1',
-      type: 'factual',
-      difficulty: difficulty.toLowerCase(),
-      question: `Can you explain the main purpose of the ${module.title} procedure?`,
-      expectedKeywords: ['procedure', 'purpose', 'objective'],
-      competencyArea: 'Basic Understanding',
-      points: 5,
-      scoringCriteria: {
-        excellent: 'Clear explanation with all key points',
-        good: 'Good explanation with most key points',
-        adequate: 'Basic explanation with some key points',
-        poor: 'Incomplete or unclear explanation'
-      }
-    },
-    {
-      id: 'q2', 
-      type: 'scenario',
-      difficulty: difficulty.toLowerCase(),
-      question: `Describe a situation where you would need to follow this procedure and walk me through the key steps.`,
-      expectedKeywords: ['steps', 'process', 'sequence'],
-      competencyArea: 'Practical Application',
-      points: 8,
-      scoringCriteria: {
-        excellent: 'Comprehensive scenario with correct steps',
-        good: 'Good scenario with mostly correct steps',
-        adequate: 'Basic scenario with some correct steps',
-        poor: 'Unclear scenario or incorrect steps'
-      }
-    },
-    {
-      id: 'q3',
-      type: 'safety',
-      difficulty: difficulty.toLowerCase(),
-      question: 'What safety considerations should be kept in mind when following this procedure?',
-      expectedKeywords: ['safety', 'precautions', 'risks'],
-      competencyArea: 'Safety Awareness',
-      points: 7,
-      scoringCriteria: {
-        excellent: 'Identifies all major safety considerations',
-        good: 'Identifies most safety considerations',
-        adequate: 'Identifies basic safety considerations',
-        poor: 'Limited or no safety awareness'
-      }
-    }
-  ];
-
-  // Add more questions based on subtopics
-  subtopics.forEach((subtopic: any, index: number) => {
-    if (index < 5) { // Limit to 5 additional questions
-      questions.push({
-        id: `q${questions.length + 1}`,
-        type: 'factual',
-        difficulty: difficulty.toLowerCase(),
-        question: `Tell me about ${subtopic.title || subtopic} and its importance in this procedure.`,
-        expectedKeywords: [subtopic.title || subtopic, 'importance', 'role'],
-        competencyArea: subtopic.title || subtopic,
-        points: 5,
-        scoringCriteria: {
-          excellent: 'Thorough understanding and explanation',
-          good: 'Good understanding with minor gaps',
-          adequate: 'Basic understanding',
-          poor: 'Limited or incorrect understanding'
-        }
-      });
-    }
-  });
-
-  return { questions };
 } 
