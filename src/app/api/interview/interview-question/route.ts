@@ -8,12 +8,22 @@ import {
   getTopicsByCategory,
   getTopicCoverageStats
 } from '@/lib/session-service';
-import OpenAI from 'openai';
 
-const deepseek = new OpenAI({
-  baseURL: 'https://api.deepseek.com/v1',
-  apiKey: process.env.DEEPSEEK_API_KEY,
-});
+// Pre-generated questions for different topics
+const FAST_QUESTIONS = [
+  "What are the key steps involved in this process?",
+  "What safety considerations should someone be aware of?",
+  "What equipment or tools are typically needed?", 
+  "What are common mistakes people make with this procedure?",
+  "How do you know when the procedure has been completed successfully?",
+  "What would you do if something goes wrong during the process?",
+  "What preparation is needed before starting this procedure?",
+  "How long does this procedure typically take?",
+  "What skills or knowledge does someone need to perform this safely?",
+  "Are there any variations or alternatives to this approach?"
+];
+
+// Removed timeout helper since we're making calls faster
 
 export async function POST(request: NextRequest) {
   try {
@@ -22,42 +32,30 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { procedureId, initialContext, procedureTitle } = await request.json();
+    const { procedureId, procedureTitle } = await request.json();
 
     if (!procedureId) {
-      return NextResponse.json({ error: 'Procedure ID is required' }, { status: 400 });
+      return NextResponse.json({ error: 'Missing required parameters' }, { status: 400 });
     }
 
-    // Get enhanced context if available, otherwise use initial context
-    const contextToUse = await getEnhancedContextIfAvailable(procedureId, initialContext);
-
-    // Get or initialize session
     let sessionData = await getSessionData(procedureId);
+
+    // If no session exists, initialize it
     if (!sessionData) {
-      console.log('No existing session found, initializing new session for procedure:', procedureId);
-      sessionData = await initializeSession(procedureId, contextToUse, procedureTitle || 'Unknown Procedure');
-    } else {
-      console.log('Found existing session for procedure:', procedureId, 'with', sessionData.questionsAsked, 'questions asked');
-      
-      // Update session context if enhanced context is now available
-      if (contextToUse !== initialContext && sessionData.initialContext !== contextToUse) {
-        sessionData.initialContext = contextToUse;
-        await setSessionData(procedureId, sessionData);
-        console.log('Updated session context with enhanced media content');
-      }
+      sessionData = await initializeSession(procedureId, procedureTitle || 'Unknown Procedure', procedureTitle || 'Unknown Procedure');
     }
 
     // Generate first question if this is the start
     if (sessionData.questionsAsked === 0) {
       // Create the first question - "Tell me about X" format
-      const customFirstQuestion = generateCustomFirstQuestion(procedureTitle, contextToUse);
+      const customFirstQuestion = generateCustomFirstQuestion(procedureTitle);
       
       console.log('Generated first question:', customFirstQuestion);
 
-      // Generate initial batch of questions using enhanced context
+      // Generate initial batch of questions with fast AI
       const batchedQuestions = await generateBatchedQuestions(
         procedureTitle,
-        contextToUse,
+        sessionData.initialContext,
         [],
         sessionData.topics,
         5
@@ -80,14 +78,14 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // For subsequent questions, select from batched questions
+    // For subsequent questions, select from AI-generated questions
     const availableQuestions = sessionData.batchedQuestions.filter(q => !q.used);
     
-    // Generate more questions if we're running low, using enhanced context
+    // Generate more questions if we're running low
     if (availableQuestions.length <= 2) {
       const newQuestions = await generateBatchedQuestions(
         procedureTitle,
-        contextToUse,
+        sessionData.initialContext,
         sessionData.conversationHistory,
         sessionData.topics,
         5
@@ -101,7 +99,7 @@ export async function POST(request: NextRequest) {
       selectedQuestion.used = true;
       sessionData.questionsAsked += 1;
       await setSessionData(procedureId, sessionData);
-
+      
       return NextResponse.json({
         question: selectedQuestion.question,
         questionNumber: sessionData.questionsAsked,
@@ -129,7 +127,7 @@ export async function POST(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('Error generating interview question:', error);
+    console.error('Error generating question:', error);
     return NextResponse.json({
       error: 'Failed to generate question',
       details: error instanceof Error ? error.message : 'Unknown error'
@@ -137,22 +135,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-/**
- * Get enhanced context if media processing is complete, otherwise return original context
- */
-async function getEnhancedContextIfAvailable(taskId: string, fallbackContext: string): Promise<string> {
-  try {
-    // For now, just return the fallback context since interviewContext table doesn't exist
-    // TODO: Implement enhanced context when media processing is added
-    console.log('Using original context (enhanced context not yet implemented)');
-    return fallbackContext;
-  } catch (error) {
-    console.error('Error getting enhanced context:', error);
-    return fallbackContext;
-  }
-}
-
-function generateCustomFirstQuestion(procedureTitle: string, initialContext: string): string {
+function generateCustomFirstQuestion(procedureTitle: string): string {
   // Always return the simple, open-ended first question about the topic
   return `Tell me about ${procedureTitle}. Please provide an overview of this topic, including any key concepts, processes, or challenges you think are important.`;
 }
@@ -161,23 +144,58 @@ function selectBestQuestion(questions: any[], topics: any[]): any | null {
   const availableQuestions = questions.filter(q => !q.used);
   if (availableQuestions.length === 0) return null;
 
-  // Find topics that need more coverage
+  // Find topics that need more coverage (exclude thoroughly covered topics)
   const topicsNeedingAttention = topics.filter(topic => 
-    topic.isRequired && topic.status !== 'thoroughly-covered'
+    topic.isRequired && topic.status !== 'thoroughly-covered' && topic.coverageScore < 80
   );
+
+  // Get thoroughly covered topics to avoid
+  const thoroughlyCoveredTopics = topics.filter(topic => 
+    topic.status === 'thoroughly-covered' || topic.coverageScore >= 80
+  );
+
+  console.log(`[selectBestQuestion] ${topicsNeedingAttention.length} topics need attention, ${thoroughlyCoveredTopics.length} are thoroughly covered`);
+
+  // Filter out questions that target thoroughly covered topics
+  const questionsNotAboutCoveredTopics = availableQuestions.filter(q => {
+    // Check if this question targets a thoroughly covered topic
+    const targetsCompletedTopic = thoroughlyCoveredTopics.some(topic => {
+      const hasRelatedTopic = q.relatedTopics && q.relatedTopics.includes(topic.id);
+      const hasKeywordMatch = q.keywords && Array.isArray(q.keywords) && topic.keywords && 
+        q.keywords.some((keyword: string) => topic.keywords.includes(keyword));
+      return hasRelatedTopic || hasKeywordMatch;
+    });
+    
+    return !targetsCompletedTopic; // Keep questions that DON'T target completed topics
+  });
+
+  console.log(`[selectBestQuestion] Filtered from ${availableQuestions.length} to ${questionsNotAboutCoveredTopics.length} questions (avoiding covered topics)`);
 
   // Prefer questions that target topics needing attention
   for (const topic of topicsNeedingAttention) {
-    const relevantQuestion = availableQuestions.find(q => 
-      q.relatedTopics.includes(topic.id) || 
-      q.keywords.some((keyword: string) => topic.keywords.includes(keyword))
-    );
+    const relevantQuestion = questionsNotAboutCoveredTopics.find(q => {
+      // Safe check for relatedTopics
+      const hasRelatedTopic = q.relatedTopics && q.relatedTopics.includes(topic.id);
+      
+      // Safe check for keywords
+      const hasKeywordMatch = q.keywords && Array.isArray(q.keywords) && topic.keywords && 
+        q.keywords.some((keyword: string) => topic.keywords.includes(keyword));
+      
+      return hasRelatedTopic || hasKeywordMatch;
+    });
     if (relevantQuestion) {
+      console.log(`[selectBestQuestion] Selected question targeting topic: ${topic.name} (${topic.coverageScore.toFixed(0)}% covered)`);
       return relevantQuestion;
     }
   }
 
-  // Sort by priority and return highest priority available question
-  availableQuestions.sort((a, b) => a.priority - b.priority);
-  return availableQuestions[0];
+  // If no specific topic match, sort by priority and return highest priority available question (from filtered list)
+  const finalQuestions = questionsNotAboutCoveredTopics.length > 0 ? questionsNotAboutCoveredTopics : availableQuestions;
+  finalQuestions.sort((a, b) => a.priority - b.priority);
+  
+  if (finalQuestions[0]) {
+    console.log(`[selectBestQuestion] Selected general question: ${finalQuestions[0].question.substring(0, 50)}...`);
+  }
+  
+  return finalQuestions[0];
 } 

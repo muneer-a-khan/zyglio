@@ -10,6 +10,11 @@ if (!apiKey) {
 const deepseek = new OpenAI({
   baseURL: 'https://api.deepseek.com/v1',
   apiKey: apiKey,
+  timeout: 15000, // 15-second timeout
+  maxRetries: 2,  // Retry failed requests
+  defaultHeaders: {
+    'Connection': 'keep-alive'
+  }
 });
 
 export async function POST(request: NextRequest) {
@@ -32,44 +37,35 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Procedure title is required' }, { status: 400 });
     }
 
-    const systemPrompt = `You are an expert instructional designer specializing in procedural training. Your job is to generate comprehensive topics that would be essential for teaching someone else to perform a given procedure competently and safely.
+    const systemPrompt = `You are an expert at analyzing any topic/procedure and generating the most important subtopics for discussion. Think like a subject matter expert who needs to cover all essential aspects of the topic comprehensively.
 
-Focus on generating topics that would be REQUIRED for effective teaching, covering:
-- Safety considerations and precautions
-- Equipment and tools needed
-- Preparation steps
-- Core techniques and methods
-- Quality control and validation
-- Common issues and troubleshooting
-- Theoretical background (when needed)
+Analyze the given procedure/topic and generate 4-5 essential subtopics that would be most important to understand and discuss. Make them specific to the domain and context.
 
-Organize topics into logical categories and provide detailed descriptions to guide interview questions.`;
+Return response in valid JSON format: {"topics": [{"name": "Topic Name", "category": "Category", "isRequired": true, "keywords": ["keyword1", "keyword2"], "description": "Description"}]}`;
 
-    const userPrompt = `Procedure Title: "${procedureTitle}"
-Initial Context: "${initialContext || 'No additional context provided'}"
+    const userPrompt = `Procedure/Topic: "${procedureTitle}"
+Context: "${initialContext || 'No additional context provided'}"
 
-Generate a comprehensive list of required topics that would be essential for someone to learn in order to teach this procedure to others. Consider what knowledge, skills, and understanding would be necessary for effective instruction.
+Analyze this topic and generate 4-5 essential subtopics that would be most important for someone to understand and discuss about "${procedureTitle}".
 
-IMPORTANT: Return ONLY valid JSON without any markdown formatting, code blocks, or additional text. The response should start with { and end with }.
+Requirements:
+1. Make topics SPECIFIC to this domain (not generic)
+2. Include relevant keywords that people would naturally use when discussing each subtopic
+3. Cover the most important aspects someone would need to know
+4. Make categories appropriate for the domain
+5. Ensure topics flow logically from overview to specific details
 
-Return a JSON object with this exact structure:
-{
-  "topics": [
-    {
-      "name": "Topic Name",
-      "category": "Safety" | "Equipment" | "Technique" | "Preparation" | "Theory" | "Troubleshooting" | "Quality Control" | "Other",
-      "isRequired": true,
-      "keywords": ["keyword1", "keyword2", "keyword3"],
-      "description": "Detailed description of what this topic should cover for teaching purposes"
-    }
-  ]
-}
+Examples of good topic generation:
+- For "Baking Bread": Ingredients & Measurements, Kneading Technique, Fermentation Process, Baking Temperature & Timing
+- For "Dog Training": Basic Commands, Positive Reinforcement, Behavior Correction, Socialization
+- For "Financial Planning": Budget Creation, Investment Strategy, Risk Assessment, Retirement Planning
 
-Aim for 8-15 comprehensive topics that cover all essential aspects of the procedure.`;
+Generate relevant topics for "${procedureTitle}" following this pattern.`;
 
     console.log('Sending request to DeepSeek API...');
     try {
-      const completion = await deepseek.chat.completions.create({
+      // Implement explicit timeout using Promise.race
+      const completionPromise = deepseek.chat.completions.create({
         model: "deepseek-chat",
         messages: [
           { role: "system", content: systemPrompt },
@@ -78,6 +74,12 @@ Aim for 8-15 comprehensive topics that cover all essential aspects of the proced
         temperature: 0.4,
         max_tokens: 3000,
       });
+
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('API request timeout after 15 seconds')), 15000);
+      });
+
+      const completion = await completionPromise;
 
       const responseContent = completion.choices[0]?.message?.content;
       if (!responseContent) {
@@ -120,37 +122,50 @@ Aim for 8-15 comprehensive topics that cover all essential aspects of the proced
       });
     } catch (apiError) {
       console.error('DeepSeek API error:', apiError);
-      // Fall back to default topics
-      console.log('Using default topics due to API error');
+      // Fall back to adaptive default topics based on procedure title
+      console.log('Using adaptive default topics due to API error');
+      
+      const timestamp = Date.now();
+      const title = procedureTitle.toLowerCase();
       
       const defaultTopics = [
         {
-          id: `topic_${Date.now()}_0`,
-          name: "Safety Considerations",
-          category: "Safety",
+          id: `topic_${timestamp}_0`,
+          name: `${procedureTitle} Overview`,
+          category: "Overview",
           isRequired: true,
-          keywords: ["safety", "precautions", "risks"],
-          description: "Essential safety precautions and potential risks associated with this procedure.",
+          keywords: [title, "overview", "basics", "introduction", "fundamentals"],
+          description: `Basic understanding and overview of ${procedureTitle}`,
           status: 'not-discussed' as const,
           coverageScore: 0
         },
         {
-          id: `topic_${Date.now()}_1`,
-          name: "Required Equipment",
-          category: "Equipment",
+          id: `topic_${timestamp}_1`,
+          name: "Key Components",
+          category: "Components",
           isRequired: true,
-          keywords: ["tools", "equipment", "supplies"],
-          description: "All necessary tools, equipment, and supplies needed to perform this procedure correctly.",
+          keywords: ["components", "parts", "elements", "pieces", "aspects"],
+          description: `Important components and elements involved in ${procedureTitle}`,
           status: 'not-discussed' as const,
           coverageScore: 0
         },
         {
-          id: `topic_${Date.now()}_2`,
-          name: "Step-by-Step Technique",
-          category: "Technique",
+          id: `topic_${timestamp}_2`,
+          name: "Implementation Process",
+          category: "Process",
           isRequired: true,
-          keywords: ["technique", "steps", "process", "method"],
-          description: "The detailed step-by-step technique for performing this procedure correctly and efficiently.",
+          keywords: ["process", "steps", "implementation", "approach", "method", "how"],
+          description: `Step-by-step process and approach for ${procedureTitle}`,
+          status: 'not-discussed' as const,
+          coverageScore: 0
+        },
+        {
+          id: `topic_${timestamp}_3`,
+          name: "Challenges and Solutions",
+          category: "Problem Solving",
+          isRequired: true,
+          keywords: ["challenges", "problems", "issues", "solutions", "troubleshooting"],
+          description: `Common challenges and their solutions in ${procedureTitle}`,
           status: 'not-discussed' as const,
           coverageScore: 0
         }

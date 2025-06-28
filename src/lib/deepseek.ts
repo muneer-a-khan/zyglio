@@ -26,10 +26,15 @@ export function getDeepSeekApi() {
   }
   
   try {
-    // Create the client with the DeepSeek API key
+    // Create the client with the DeepSeek API key and performance optimizations
     return new OpenAI({
       baseURL: 'https://api.deepseek.com/v1',
       apiKey: apiKey,
+      timeout: 15000, // 15-second timeout
+      maxRetries: 2,  // Retry failed requests
+      defaultHeaders: {
+        'Connection': 'keep-alive'
+      }
     });
   } finally {
     // Restore the original environment or delete the dummy key

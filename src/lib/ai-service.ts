@@ -84,7 +84,9 @@ class AIService {
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${this.apiKey}`,
+          'Connection': 'keep-alive'
         },
+        signal: AbortSignal.timeout(15000), // 15-second timeout
         body: JSON.stringify({
           model: requestOptions.model,
           messages: [

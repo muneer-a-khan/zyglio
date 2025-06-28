@@ -7,8 +7,13 @@ if (!apiKey) {
 }
 
 const deepseek = new OpenAI({
-  baseURL: 'https://api.deepseek.com/v1', // Make sure this is the correct DeepSeek API base URL
+  baseURL: 'https://api.deepseek.com/v1',
   apiKey: apiKey,
+  timeout: 15000, // 15-second timeout
+  maxRetries: 2,  // Retry failed requests
+  defaultHeaders: {
+    'Connection': 'keep-alive'
+  }
 });
 
 export async function POST(request: Request) {

@@ -44,7 +44,7 @@ export async function POST(request: NextRequest) {
     
     // If not set or invalid format, use a default voice
     if (!voiceId || !voiceId.match(/^[a-zA-Z0-9]{21,24}$/)) {
-      voiceId = VOICE_OPTIONS.rachel; // Default to Rachel for better interview experience
+      voiceId = VOICE_OPTIONS.bella; // Default to Bella - a clear, professional woman's voice
     }
 
     console.log(`Using ElevenLabs voice ID: ${voiceId}, model: ${model}`);
@@ -101,14 +101,15 @@ export async function POST(request: NextRequest) {
           throw new Error(`ElevenLabs API error with backup voice: ${backupResponse.status}`);
         }
         
-        // Return the audio data directly as a blob
+        // Return the audio data as base64 JSON
         const audioArrayBuffer = await backupResponse.arrayBuffer();
-        return new NextResponse(audioArrayBuffer, {
-          status: 200,
-          headers: {
-            'Content-Type': 'audio/mpeg',
-            'x-voice-used': 'backup'
-          }
+        const audioBase64 = Buffer.from(audioArrayBuffer).toString('base64');
+        
+        return NextResponse.json({
+          success: true,
+          audioBase64,
+          contentType: 'audio/mpeg',
+          voiceUsed: 'backup'
         });
       }
       
@@ -119,13 +120,14 @@ export async function POST(request: NextRequest) {
     // Get the audio data as an ArrayBuffer
     const audioArrayBuffer = await response.arrayBuffer();
     
-    // Return the audio data directly as a blob
-    return new NextResponse(audioArrayBuffer, {
-      status: 200,
-      headers: {
-        'Content-Type': 'audio/mpeg',
-        'x-voice-used': 'primary'
-      }
+    // Convert to base64 for JSON response (frontend expects this format)
+    const audioBase64 = Buffer.from(audioArrayBuffer).toString('base64');
+    
+    return NextResponse.json({
+      success: true,
+      audioBase64,
+      contentType: 'audio/mpeg',
+      voiceUsed: 'primary'
     });
     
   } catch (error) {

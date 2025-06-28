@@ -1,0 +1,143 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: pgvector/pgvector:pg15
+    environment:
+      POSTGRES_DB: zyglio
+      POSTGRES_USER: zyglio
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+
+  # Redis for caching and sessions
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+
+  # Local LLM Service (vLLM)
+  vllm:
+    image: vllm/vllm-openai:latest
+    environment:
+      - CUDA_VISIBLE_DEVICES=0
+    volumes:
+      - ./models:/models
+      - vllm_cache:/root/.cache
+    ports:
+      - "8000:8000"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    command: >
+      --model /models/mistral-7b-instruct
+      --host 0.0.0.0
+      --port 8000
+      --gpu-memory-utilization 0.8
+      --max-num-batched-tokens 8192
+      --served-model-name mistral-7b-instruct
+    restart: unless-stopped
+    depends_on:
+      - postgres
+
+  # Whisper ASR Service
+  whisper:
+    image: onerahmet/openai-whisper-asr-webservice:latest
+    environment:
+      - ASR_MODEL=base
+      - ASR_ENGINE=openai_whisper
+    ports:
+      - "9000:9000"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+
+  # XTTS Voice Synthesis
+  xtts:
+    build:
+      context: ./docker/xtts
+      dockerfile: Dockerfile
+    ports:
+      - "8020:8020"
+    volumes:
+      - ./voice_models:/app/models
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+
+  # Zyglio Main Application
+  zyglio:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      # Database - use local or external based on configuration
+      - DATABASE_URL=${DATABASE_URL:-postgresql://zyglio:${POSTGRES_PASSWORD}@postgres:5432/zyglio}
+      - DIRECT_URL=${DIRECT_URL:-postgresql://zyglio:${POSTGRES_PASSWORD}@postgres:5432/zyglio}
+      
+      # Local AI Services
+      - LOCAL_LLM_URL=http://vllm:8000/v1
+      - LOCAL_WHISPER_URL=http://whisper:9000
+      - LOCAL_TTS_URL=http://xtts:8020
+      
+      # External API Keys (for fallback)
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY}
+      
+      # Supabase (if using for storage/auth)
+      - NEXT_PUBLIC_SUPABASE_URL=${NEXT_PUBLIC_SUPABASE_URL}
+      - NEXT_PUBLIC_SUPABASE_ANON_KEY=${NEXT_PUBLIC_SUPABASE_ANON_KEY}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
+      
+      # Auth
+      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
+      - NEXTAUTH_URL=${NEXTAUTH_URL:-http://localhost:3000}
+      
+      # Self-hosting configuration
+      - SELF_HOSTED=${SELF_HOSTED:-true}
+      - AI_PROVIDER=${AI_PROVIDER:-hybrid}
+      - REDIS_URL=redis://redis:6379
+      - NEXT_PUBLIC_BASE_URL=http://localhost:3000
+      - NODE_ENV=production
+    ports:
+      - "3000:3000"
+    depends_on:
+      - redis
+      # postgres dependency is conditional
+    restart: unless-stopped
+    volumes:
+      - ./uploads:/app/uploads
+      - zyglio_cache:/app/.next/cache
+
+volumes:
+  postgres_data:
+  redis_data:
+  vllm_cache:
+  zyglio_cache:
+
+networks:
+  default:
+    driver: bridge 

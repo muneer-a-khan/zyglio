@@ -15,6 +15,11 @@ const openai = new OpenAI({
 const deepseek = new OpenAI({
   baseURL: 'https://api.deepseek.com/v1',
   apiKey: process.env.DEEPSEEK_API_KEY,
+  timeout: 15000, // 15-second timeout
+  maxRetries: 2,  // Retry failed requests
+  defaultHeaders: {
+    'Connection': 'keep-alive'
+  }
 });
 
 export interface MediaProcessingJob {

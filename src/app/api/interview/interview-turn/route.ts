@@ -9,12 +9,6 @@ import {
   getTopicsByCategory,
   getTopicCoverageStats
 } from '@/lib/session-service';
-import OpenAI from 'openai';
-
-const deepseek = new OpenAI({
-  baseURL: 'https://api.deepseek.com/v1',
-  apiKey: process.env.DEEPSEEK_API_KEY,
-});
 
 export async function POST(request: NextRequest) {
   try {
@@ -45,7 +39,7 @@ export async function POST(request: NextRequest) {
       sessionData.firstOverviewGiven = true;
     }
 
-    // Update topic coverage based on SME response
+    // Fast AI analysis with simplified prompts
     sessionData = await updateTopicCoverage(procedureId, smeResponse);
 
     // Background generation of more questions if running low
@@ -73,12 +67,9 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Process the response and clean it
-    const cleanedResponse = await processAndCleanResponse(smeResponse);
-
     return NextResponse.json({
       success: true,
-      processedResponse: cleanedResponse,
+      processedResponse: smeResponse,
       interviewCompleted: sessionData.interviewCompleted,
       sessionData: {
         topics: sessionData.topics,
@@ -94,44 +85,6 @@ export async function POST(request: NextRequest) {
       error: 'Failed to process interview turn',
       details: error instanceof Error ? error.message : 'Unknown error'
     }, { status: 500 });
-  }
-}
-
-async function processAndCleanResponse(response: string): Promise<string> {
-  try {
-    const systemPrompt = `You are a text processing assistant. Your job is to clean up speech-to-text transcriptions or user responses to make them more readable while preserving all the original meaning and content.
-
-Tasks:
-1. Fix obvious speech-to-text errors and typos
-2. Add proper punctuation and capitalization
-3. Break up run-on sentences where appropriate
-4. Remove filler words (um, uh, like) sparingly - only when they don't affect readability
-5. Preserve the speaker's voice and speaking style
-6. Don't add or remove any substantial content
-7. Don't change technical terms or procedures
-
-Return only the cleaned text, nothing else.`;
-
-    const userPrompt = `Please clean up this response while preserving all the original meaning and content:
-
-"${response}"`;
-
-    const completion = await deepseek.chat.completions.create({
-      model: "deepseek-chat",
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt }
-      ],
-      temperature: 0.2,
-      max_tokens: 1000,
-    });
-
-    const cleanedResponse = completion.choices[0]?.message?.content?.trim();
-    return cleanedResponse || response;
-
-  } catch (error) {
-    console.error('Error cleaning response:', error);
-    return response; // Return original if cleaning fails
   }
 }
 

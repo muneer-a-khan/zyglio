@@ -1,4 +1,5 @@
 import OpenAI from 'openai';
+import { getCachedResponse, cacheResponse, shouldUseFastModel, getOptimizedPrompt } from './ai-cache';
 
 // Initialize DeepSeek client
 const apiKey = process.env.DEEPSEEK_API_KEY;
@@ -6,9 +7,24 @@ if (!apiKey) {
   console.error('DEEPSEEK_API_KEY is not defined in environment variables.');
 }
 
-const deepseek = new OpenAI({
+const fastModel = new OpenAI({
   baseURL: 'https://api.deepseek.com/v1',
   apiKey: apiKey,
+  timeout: 5000,
+  maxRetries: 1,
+  defaultHeaders: {
+    'Connection': 'keep-alive'
+  }
+});
+
+const detailedModel = new OpenAI({
+  baseURL: 'https://api.deepseek.com/v1',
+  apiKey: apiKey,
+  timeout: 10000,
+  maxRetries: 1,
+  defaultHeaders: {
+    'Connection': 'keep-alive'
+  }
 });
 
 // Get the base URL for API calls from environment variables or use a default
@@ -370,38 +386,116 @@ export async function initializeSession(procedureId: string, initialContext: str
 // Function to generate default topics if API fails
 function generateDefaultTopics(procedureTitle: string): TopicItem[] {
   const title = procedureTitle.toLowerCase();
-  return [
+  const timestamp = Date.now();
+  
+  // Create smart default topics based on the procedure title
+  const defaultTopics: TopicItem[] = [
     {
-      id: `default_${Date.now()}_1`,
+      id: `default_${timestamp}_1`,
       name: `${procedureTitle} Overview`,
       category: 'General',
-      status: 'not-discussed',
+      status: 'not-discussed' as const,
       isRequired: true,
-      keywords: [title, 'overview', 'introduction', 'basics'],
-      description: 'General overview of the procedure',
-      coverageScore: 0
-    },
-    {
-      id: `default_${Date.now()}_2`,
-      name: 'Steps and Processes',
-      category: 'Process',
-      status: 'not-discussed',
-      isRequired: true,
-      keywords: ['steps', 'process', 'procedure', 'how to', 'instructions'],
-      description: 'Step-by-step walkthrough of the procedure',
-      coverageScore: 0
-    },
-    {
-      id: `default_${Date.now()}_3`,
-      name: 'Safety Considerations',
-      category: 'Safety',
-      status: 'not-discussed',
-      isRequired: true,
-      keywords: ['safety', 'precautions', 'warnings', 'hazards'],
-      description: 'Safety measures and precautions',
+      keywords: [title, 'overview', 'introduction', 'basics', 'what is'],
+      description: 'General overview and introduction',
       coverageScore: 0
     }
   ];
+
+  // Add context-specific topics based on procedure title keywords
+  if (title.includes('latency') || title.includes('performance') || title.includes('speed')) {
+    defaultTopics.push(
+      {
+        id: `default_${timestamp}_2`,
+        name: 'Performance Optimization',
+        category: 'Technical',
+        status: 'not-discussed' as const,
+        isRequired: true,
+        keywords: ['optimization', 'performance', 'speed', 'efficiency', 'tuning'],
+        description: 'Performance optimization techniques',
+        coverageScore: 0
+      },
+      {
+        id: `default_${timestamp}_3`,
+        name: 'Caching Strategies',
+        category: 'Technical',
+        status: 'not-discussed' as const,
+        isRequired: true,
+        keywords: ['cache', 'caching', 'memory', 'storage', 'redis', 'memcached'],
+        description: 'Caching approaches and strategies',
+        coverageScore: 0
+      },
+      {
+        id: `default_${timestamp}_4`,
+        name: 'Database Optimization',
+        category: 'Technical',
+        status: 'not-discussed' as const,
+        isRequired: true,
+        keywords: ['database', 'query', 'index', 'sql', 'optimization'],
+        description: 'Database and query optimization',
+        coverageScore: 0
+      }
+    );
+  } else if (title.includes('voice') || title.includes('interview') || title.includes('llm') || title.includes('ai')) {
+    defaultTopics.push(
+      {
+        id: `default_${timestamp}_2`,
+        name: 'LLM Pipeline Architecture',
+        category: 'Technical',
+        status: 'not-discussed' as const,
+        isRequired: true,
+        keywords: ['llm', 'pipeline', 'architecture', 'model', 'ai', 'processing'],
+        description: 'LLM pipeline design and architecture',
+        coverageScore: 0
+      },
+      {
+        id: `default_${timestamp}_3`,
+        name: 'Voice Processing',
+        category: 'Technical',
+        status: 'not-discussed' as const,
+        isRequired: true,
+        keywords: ['voice', 'speech', 'audio', 'transcription', 'tts', 'stt'],
+        description: 'Voice and speech processing',
+        coverageScore: 0
+      },
+      {
+        id: `default_${timestamp}_4`,
+        name: 'Interview Logic',
+        category: 'Process',
+        status: 'not-discussed' as const,
+        isRequired: true,
+        keywords: ['interview', 'questions', 'conversation', 'dialogue', 'flow'],
+        description: 'Interview flow and question logic',
+        coverageScore: 0
+      }
+    );
+  } else {
+    // Generic fallback topics for other procedures
+    defaultTopics.push(
+      {
+        id: `default_${timestamp}_2`,
+        name: 'Implementation Steps',
+        category: 'Process',
+        status: 'not-discussed' as const,
+        isRequired: true,
+        keywords: ['steps', 'process', 'implementation', 'how to', 'procedure'],
+        description: 'Step-by-step implementation',
+        coverageScore: 0
+      },
+      {
+        id: `default_${timestamp}_3`,
+        name: 'Best Practices',
+        category: 'Guidelines',
+        status: 'not-discussed' as const,
+        isRequired: true,
+        keywords: ['best practices', 'guidelines', 'recommendations', 'tips'],
+        description: 'Best practices and guidelines',
+        coverageScore: 0
+      }
+    );
+  }
+
+  return defaultTopics;
 }
 
 export async function updateTopicCoverage(
@@ -417,6 +511,13 @@ export async function updateTopicCoverage(
     // Get auth headers for API requests
     const headers = await getApiHeaders();
     console.log('Making analyze-topics API call with auth:', headers['Authorization'] ? 'Bearer token present' : 'No auth token');
+    console.log(`[updateTopicCoverage] Analyzing response: "${smeResponse.substring(0, 100)}..."`);
+    console.log(`[updateTopicCoverage] Current topics:`, sessionData.topics.map(t => ({ 
+      id: t.id, 
+      name: t.name, 
+      keywords: t.keywords,
+      currentScore: t.coverageScore 
+    })));
     
     // Analyze topic coverage
     const analysisResponse = await fetch(getApiUrl('/api/deepseek/analyze-topics'), {
@@ -432,14 +533,19 @@ export async function updateTopicCoverage(
 
     if (analysisResponse.ok) {
       const analysisResult = await analysisResponse.json();
-      const topicUpdates = analysisResult.analysis?.topicUpdates || [];
-      const suggestedNewTopics = analysisResult.analysis?.suggestedNewTopics || [];
+      
+      // Handle both old format (with .analysis) and new format (direct)
+      const topicUpdates = analysisResult.topicUpdates || analysisResult.analysis?.topicUpdates || [];
+      const suggestedNewTopics = analysisResult.suggestedNewTopics || analysisResult.analysis?.suggestedNewTopics || [];
+      const keywordMatches = analysisResult.keywordMatches || analysisResult.analysis?.keywordMatches || [];
       
       // Log for debugging
       console.log(`[updateTopicCoverage] Received ${topicUpdates.length} topic updates and ${suggestedNewTopics.length} suggested new topics`);
-      
-      // For any topics that weren't analyzed, use keyword-based matching from the analysis
-      const keywordMatches = analysisResult.analysis?.keywordMatches || [];
+      console.log('[updateTopicCoverage] Response format:', { 
+        hasDirectFormat: !!analysisResult.topicUpdates,
+        hasAnalysisFormat: !!analysisResult.analysis?.topicUpdates,
+        sampleUpdate: topicUpdates[0] 
+      });
       
       // Track which topics were updated from the API
       const updatedTopicIds: string[] = [];
@@ -454,10 +560,11 @@ export async function updateTopicCoverage(
         
         if (update) {
           // Merge keywords to expand the topic's keyword set
-          const updatedKeywords = [...new Set([
+          const combinedKeywords = [
             ...topic.keywords, 
             ...(update.mentionedKeywords || [])
-          ])].filter(Boolean);
+          ];
+          const updatedKeywords = Array.from(new Set(combinedKeywords)).filter(Boolean);
           
           // Only increase coverage level, never decrease unless explicitly contradicted
           let newStatus = update.status;
@@ -657,19 +764,24 @@ export async function generateBatchedQuestions(
     }
 
     // For subsequent questions, use the full context to generate more specific questions
+    // CRITICAL: Exclude thoroughly-covered topics to avoid repetitive questions
     const topicsToFocus = topics
-      .filter(t => t.status !== 'thoroughly-covered')
+      .filter(t => t.status !== 'thoroughly-covered' && t.coverageScore < 80) // Exclude well-covered topics
       .sort((a, b) => {
         // Prioritize required topics
         if (a.isRequired && !b.isRequired) return -1;
         if (!a.isRequired && b.isRequired) return 1;
         
-        // Then prioritize by coverage
+        // Then prioritize by coverage (least covered first)
         return a.coverageScore - b.coverageScore;
       })
       .slice(0, 5);
     
-    const topicFocusText = topicsToFocus.map(t => `${t.name} (${t.keywords.join(', ')})`).join('\n- ');
+    // If no topics need coverage, focus on advanced aspects of briefly-discussed topics
+    const finalTopicsToFocus = topicsToFocus.length > 0 ? topicsToFocus : 
+      topics.filter(t => t.status === 'briefly-discussed').slice(0, 3);
+    
+    const topicFocusText = finalTopicsToFocus.map(t => `${t.name} (${t.keywords.join(', ')})`).join('\n- ');
     
     // Format conversation history
     const recentConversation = conversationHistory
@@ -685,58 +797,135 @@ export async function generateBatchedQuestions(
       specificityLevel = "moderate";
     }
     
-    const systemPrompt = `You are an expert interviewer gathering detailed information about a procedure or process from a subject matter expert (SME).
+    // Analyze what's been covered and what needs attention
+    const uncoveredTopics = topics.filter(t => t.status === 'not-discussed' && t.isRequired);
+    const briefTopics = topics.filter(t => t.status === 'briefly-discussed');
+    const thoroughlyDiscussed = topics.filter(t => t.status === 'thoroughly-covered');
+    const lastResponse = conversationHistory[conversationHistory.length - 1]?.content || '';
     
-Generate ${count} follow-up questions for the SME based on their previous answers. These questions should help extract deeper information about the procedure.
+    console.log(`[Question Context] ${uncoveredTopics.length} uncovered, ${briefTopics.length} brief, ${thoroughlyDiscussed.length} thoroughly covered topics`);
+    
+    const systemPrompt = `You are an expert interviewer conducting a technical procedure interview. Generate SPECIFIC, contextual follow-up questions.
 
-Current interview phase: ${specificityLevel} (as the interview progresses, questions should become more specific and detailed)
+CRITICAL: Questions must be:
+- Specific to the conversation and what the SME just said
+- Build directly on their last response (not generic)
+- Target gaps in knowledge coverage
+- Ask for concrete examples, step-by-step details, or specific scenarios
+- Feel like a natural conversation continuation
+- AVOID topics that are already thoroughly covered
 
-Focus on uncovering information about these topics that need more coverage:
-- ${topicFocusText}
+Interview phase: ${specificityLevel}
+${specificityLevel === "general" ? "Ask broad questions about core topics" : 
+  specificityLevel === "moderate" ? "Focus on specific aspects they mentioned" : 
+  "Dig deep into details, edge cases, and advanced concepts"}
 
-Question Guidelines:
-- Questions should flow naturally from the conversation
-- ${specificityLevel === "general" ? "Ask broad, open-ended questions about the general topic" : 
-   specificityLevel === "moderate" ? "Focus on moderately specific aspects mentioned in previous answers" : 
-   "Ask for specific details, edge cases, and advanced concepts"}
-- Avoid repeating questions already asked
-- Each question should target a specific aspect of the procedure
-- Ask about challenges, exceptions, and best practices
-- Questions should be clear and conversational
-- Don't ask multiple questions in one prompt
+Priority Topics Needing Coverage (FOCUS ON THESE):
+${topicFocusText}
 
-Return the questions in valid JSON format:
-[
-  {
-    "question": "question text",
-    "category": "general topic area",
-    "keywords": ["keyword1", "keyword2"],
-    "priority": 1-5 (1 being highest priority),
-    "relatedTopics": ["topicId1", "topicId2"]
-  }
-]`;
+Topics Already Thoroughly Covered (AVOID THESE):
+${thoroughlyDiscussed.map(t => `${t.name} (${t.coverageScore.toFixed(0)}% covered)`).join(', ') || 'None yet'}
 
-    const userPrompt = `Procedure Title: ${procedureTitle}
+Return valid JSON: [{"question": "specific question text", "category": "category", "keywords": ["key1"], "priority": 1, "relatedTopics": ["topicId"]}]`;
 
-Initial Context:
-${initialContext}
+    // Extract key concepts from their last response
+    const lastResponseText = lastResponse.substring(0, 200);
+    const mentionedConcepts = topics.flatMap(t => t.keywords)
+      .filter(kw => lastResponse.toLowerCase().includes(kw.toLowerCase()))
+      .slice(0, 4);
+    
+    // Extract important phrases and concepts they mentioned
+    const extractImportantTerms = (text: string): string[] => {
+      const words = text.toLowerCase().split(/\s+/);
+      const phrases: string[] = [];
+      
+      // Find 2-3 word meaningful phrases
+      for (let i = 0; i < words.length - 1; i++) {
+        const twoWord = `${words[i]} ${words[i + 1]}`;
+        const threeWord = i < words.length - 2 ? `${words[i]} ${words[i + 1]} ${words[i + 2]}` : '';
+        
+        // Skip common words and short phrases
+        if (twoWord.length > 6 && !['of the', 'in the', 'to the', 'for the', 'and the'].includes(twoWord)) {
+          phrases.push(twoWord);
+        }
+        if (threeWord && threeWord.length > 10) {
+          phrases.push(threeWord);
+        }
+      }
+      
+      // Also extract single important-sounding words (nouns, adjectives)
+      const importantWords = words.filter(word => 
+        word.length > 4 && 
+        !['that', 'with', 'this', 'they', 'have', 'been', 'will', 'some', 'when', 'then'].includes(word)
+      );
+      
+      return [...phrases.slice(0, 3), ...importantWords.slice(0, 4)];
+    };
+    
+    const mentionedTerms = extractImportantTerms(lastResponse);
+    
+    const specificMentions = lastResponse.split(/[.!?]/)
+      .map(s => s.trim())
+      .filter(s => s.length > 20)
+      .slice(0, 2); // Get first 2 substantial sentences
+    
+    const userPrompt = `Procedure: ${procedureTitle}
 
-Topics that need coverage:
-${topics.filter(t => t.status !== 'thoroughly-covered').map(t => `- ${t.name}`).join('\n')}
+Their Recent Response:
+"${lastResponseText}${lastResponse.length > 200 ? '...' : ''}"
 
-Recent Conversation:
-${recentConversation}
+Specific Technical Terms They Mentioned: ${mentionedTerms.join(', ') || 'general concepts'}
+Key Points They Made: ${specificMentions.join(' | ') || 'general discussion'}
 
-Generate ${count} follow-up questions for the SME, with increasing specificity based on the conversation progress.`;
+Uncovered Topics: ${uncoveredTopics.map(t => t.name).join(', ') || 'most topics covered'}
+Need More Detail: ${briefTopics.map(t => t.name).join(', ') || 'none'}
 
-    const completion = await deepseek.chat.completions.create({
+Generate ${Math.min(count, 3)} SPECIFIC follow-up questions that:
+
+1. **Reference their exact words**: Quote or paraphrase something they specifically said
+2. **Ask for deeper details**: Get concrete examples, step-by-step processes, or specific techniques
+3. **Target gaps**: Focus on UNCOVERED topics (${uncoveredTopics.map(t => t.name).join(', ') || 'none'}) or expand briefly-mentioned concepts
+4. **Sound conversational**: Like a colleague asking for more details, not a generic interview
+5. **AVOID repetition**: Don't ask about topics already thoroughly covered (${thoroughlyDiscussed.map(t => t.name).join(', ') || 'none'})
+
+PRIORITY FOCUS AREAS:
+${finalTopicsToFocus.map(t => `- ${t.name} (${t.coverageScore.toFixed(0)}% covered)`).join('\n') || '- Move to advanced topics or wrap up'}
+
+Examples:
+- "You mentioned '${mentionedTerms[0] || 'optimization'}' - could you walk me through your specific approach to that?"
+- "When you talked about '${mentionedTerms[1] || 'performance issues'}', what specific strategies have you found most effective?"
+- "You brought up '${mentionedTerms[2] || 'technical challenges'}' - what are the biggest gotchas people should watch out for?"
+
+Make each question feel like a natural follow-up that moves the conversation forward to NEW topics.`;
+
+    // More specific cache key that includes conversation context
+    const lastResponseSnippet = conversationHistory[conversationHistory.length - 1]?.content.substring(0, 50) || '';
+    const uncoveredCount = topics.filter(t => t.status === 'not-discussed').length;
+    const cacheKey = `questions_${procedureTitle}_${uncoveredCount}_${lastResponseSnippet}`;
+    
+    const cached = getCachedResponse(cacheKey);
+    if (cached && cached.length > 0) {
+      console.log('Using cached batch questions');
+      return cached;
+    }
+
+    // Use two-stage model selection
+    const model = shouldUseFastModel(procedureTitle + ' ' + (conversationHistory[0]?.content || ''), { task: 'questions' }) ? fastModel : detailedModel;
+    const optimizedPrompt = getOptimizedPrompt('questionGeneration', { priority: 'speed' });
+    
+    // Ensure prompt contains "json" for response_format requirement
+    const finalPrompt = optimizedPrompt ? 
+      `${optimizedPrompt} Return response as valid JSON format.` : 
+      `${systemPrompt} IMPORTANT: Return your response in valid JSON format.`;
+    
+    const completion = await model.chat.completions.create({
       model: "deepseek-chat",
       messages: [
-        { role: "system", content: systemPrompt },
+        { role: "system", content: finalPrompt },
         { role: "user", content: userPrompt }
       ],
       temperature: 0.7,
-      max_tokens: 1500,
+      max_tokens: 800,
       response_format: { type: "json_object" }
     });
 
@@ -745,7 +934,7 @@ Generate ${count} follow-up questions for the SME, with increasing specificity b
     
     try {
       // Handle both array and object wrapper formats
-      const jsonMatch = responseText.match(/\[\s*\{.*\}\s*\]/s);
+      const jsonMatch = responseText.match(/\[\s*\{[\s\S]*\}\s*\]/);
       if (jsonMatch) {
         parsedResponse = JSON.parse(jsonMatch[0]);
       } else {
@@ -757,7 +946,7 @@ Generate ${count} follow-up questions for the SME, with increasing specificity b
       console.log('Raw response:', responseText);
       
       // Fallback questions if parsing fails
-      return [
+      const fallbackResult = [
         {
           id: `fallback-1-${Date.now()}`,
           question: `Could you elaborate more on the ${procedureTitle} process?`,
@@ -824,43 +1013,57 @@ async function generateInitialGeneralQuestions(
   try {
     console.log('Generating initial general questions with DeepSeek API...');
     console.log('DeepSeek API key available:', !!apiKey);
-    const systemPrompt = `You are an expert interviewer gathering detailed information about a procedure or process from a subject matter expert (SME).
+    const systemPrompt = `You are an expert interviewer who asks intelligent, domain-specific follow-up questions. Generate contextual questions that would naturally follow an overview discussion about this topic.
+
+Create questions that:
+- Are specific to the domain (not generic templates)  
+- Would logically follow after someone gives an overview
+- Ask for concrete details, examples, or processes
+- Feel like natural conversation progression
+
+Return response in valid JSON format: [{"question": "text", "category": "category", "keywords": ["keyword1"], "priority": 1, "relatedTopics": []}]`;
+
+    const userPrompt = `Topic/Procedure: "${procedureTitle}"
+Available Topics: ${topics.map(t => `${t.name} (${t.keywords.slice(0, 3).join(', ')})`).join(', ')}
+
+After someone gives an overview of "${procedureTitle}", what are 2-3 intelligent follow-up questions that would:
+
+1. **Ask for specific processes**: "How do you..." or "What's your approach to..."
+2. **Target key aspects**: Reference the important topics like ${topics.slice(0, 2).map(t => t.name).join(' and ')}
+3. **Request concrete examples**: "Can you walk me through..." or "What does that look like in practice?"
+
+Examples for different domains:
+- Baking: "What's your approach to achieving the right gluten development?" "How do you know when fermentation is complete?"
+- Software: "How do you handle edge cases in your implementation?" "What's your debugging process when things go wrong?"
+- Training: "How do you adapt your approach for different skill levels?" "What indicators tell you the training is effective?"
+
+Generate 2-3 domain-appropriate questions for "${procedureTitle}".`;
+
+    // Check cache first
+    const cacheKey = `initial_questions_${procedureTitle}`;
+    const cached = getCachedResponse(cacheKey);
+    if (cached) {
+      console.log('Using cached initial questions');
+      return cached;
+    }
+
+    // Use fast model for initial questions
+    const model = fastModel;
+    const optimizedPrompt = getOptimizedPrompt('questionGeneration', { priority: 'speed' });
     
-Generate 3 initial general, open-ended questions for the SME about the topic "${procedureTitle}". These should be broad questions that allow the SME to share their general knowledge before getting into specifics.
-
-Question Guidelines:
-- Questions should be general and open-ended
-- Each question should approach the topic from a different angle
-- Questions should encourage detailed responses
-- Questions should help establish the SME's level of expertise
-- Questions should be clear and conversational
-
-Return the questions in valid JSON format:
-[
-  {
-    "question": "question text",
-    "category": "general topic area",
-    "keywords": ["keyword1", "keyword2"],
-    "priority": 1-3 (1 being highest priority),
-    "relatedTopics": []
-  }
-]`;
-
-    const userPrompt = `Procedure Title: ${procedureTitle}
-
-Initial Context:
-${initialContext}
-
-Generate 3 general, open-ended questions to start the interview about "${procedureTitle}".`;
-
-    const completion = await deepseek.chat.completions.create({
+    // Ensure prompt contains "json" for response_format requirement
+    const finalPrompt = optimizedPrompt ? 
+      `${optimizedPrompt} Return response as valid JSON format.` : 
+      `${systemPrompt} IMPORTANT: Return your response in valid JSON format.`;
+    
+    const completion = await model.chat.completions.create({
       model: "deepseek-chat",
       messages: [
-        { role: "system", content: systemPrompt },
+        { role: "system", content: finalPrompt },
         { role: "user", content: userPrompt }
       ],
       temperature: 0.7,
-      max_tokens: 1000,
+      max_tokens: 500,
       response_format: { type: "json_object" }
     });
 
@@ -869,7 +1072,7 @@ Generate 3 general, open-ended questions to start the interview about "${procedu
     
     try {
       // Handle both array and object wrapper formats
-      const jsonMatch = responseText.match(/\[\s*\{.*\}\s*\]/s);
+      const jsonMatch = responseText.match(/\[\s*\{[\s\S]*\}\s*\]/);
       if (jsonMatch) {
         parsedResponse = JSON.parse(jsonMatch[0]);
       } else {
@@ -879,31 +1082,36 @@ Generate 3 general, open-ended questions to start the interview about "${procedu
     } catch (parseError) {
       console.error('Error parsing initial questions JSON:', parseError);
       
-      // Default general questions if parsing fails
-      return [
+      // Create smart fallback questions based on the available topics
+      const topicNames = topics.slice(0, 3).map(t => t.name);
+      const fallbackResult = [
         {
           id: `initial-1-${Date.now()}`,
-          question: `Could you describe ${procedureTitle} in your own words and explain why it's important?`,
-          category: 'General Overview',
-          keywords: [procedureTitle.toLowerCase(), 'overview', 'importance'],
+          question: topicNames[0] ? 
+            `How do you approach ${topicNames[0].toLowerCase()} when working with ${procedureTitle}?` :
+            `What's your specific approach to ${procedureTitle}?`,
+          category: topicNames[0] || 'Process',
+          keywords: topicNames[0] ? [topicNames[0].toLowerCase(), 'approach'] : ['approach', 'process'],
           used: false,
           priority: 1,
-          relatedTopics: []
+          relatedTopics: topics[0] ? [topics[0].id] : []
         },
         {
           id: `initial-2-${Date.now()}`,
-          question: `What are the main components or steps involved in ${procedureTitle}?`,
-          category: 'Process Steps',
-          keywords: ['steps', 'components', 'process'],
+          question: topicNames[1] ? 
+            `Can you walk me through ${topicNames[1].toLowerCase()} in ${procedureTitle}?` :
+            `What are the key considerations for ${procedureTitle}?`,
+          category: topicNames[1] || 'Implementation',
+          keywords: topicNames[1] ? [topicNames[1].toLowerCase(), 'process'] : ['considerations', 'key'],
           used: false,
           priority: 2,
-          relatedTopics: []
+          relatedTopics: topics[1] ? [topics[1].id] : []
         },
         {
           id: `initial-3-${Date.now()}`,
-          question: `What common challenges or misconceptions do people have about ${procedureTitle}?`,
-          category: 'Challenges',
-          keywords: ['challenges', 'misconceptions', 'problems'],
+          question: `What practical challenges have you encountered with ${procedureTitle}?`,
+          category: 'Practical Experience',
+          keywords: ['challenges', 'practical', 'experience'],
           used: false,
           priority: 3,
           relatedTopics: []
@@ -923,31 +1131,36 @@ Generate 3 general, open-ended questions to start the interview about "${procedu
   } catch (error) {
     console.error('Error generating initial general questions:', error);
     
-    // Return default general questions
+    // Return contextual fallback questions based on available topics
+    const topicNames = topics.slice(0, 3).map(t => t.name);
     return [
       {
         id: `initial-fallback-1-${Date.now()}`,
-        question: `Could you describe ${procedureTitle} in your own words and explain why it's important?`,
-        category: 'General Overview',
-        keywords: [procedureTitle.toLowerCase(), 'overview', 'importance'],
+        question: topicNames[0] ? 
+          `What's your approach to ${topicNames[0].toLowerCase()} in ${procedureTitle}?` :
+          `What's the most critical aspect of ${procedureTitle}?`,
+        category: topicNames[0] || 'Critical Aspects',
+        keywords: topicNames[0] ? [topicNames[0].toLowerCase(), 'approach'] : ['critical', 'important'],
         used: false,
         priority: 1,
-        relatedTopics: []
+        relatedTopics: topics[0] ? [topics[0].id] : []
       },
       {
         id: `initial-fallback-2-${Date.now()}`,
-        question: `What are the main components or steps involved in ${procedureTitle}?`,
-        category: 'Process Steps',
-        keywords: ['steps', 'components', 'process'],
+        question: topicNames[1] ? 
+          `How do you handle ${topicNames[1].toLowerCase()} when doing ${procedureTitle}?` :
+          `What specific techniques do you use for ${procedureTitle}?`,
+        category: topicNames[1] || 'Techniques',
+        keywords: topicNames[1] ? [topicNames[1].toLowerCase(), 'handle'] : ['techniques', 'specific'],
         used: false,
         priority: 2,
-        relatedTopics: []
+        relatedTopics: topics[1] ? [topics[1].id] : []
       },
       {
         id: `initial-fallback-3-${Date.now()}`,
-        question: `What common challenges or misconceptions do people have about ${procedureTitle}?`,
-        category: 'Challenges',
-        keywords: ['challenges', 'misconceptions', 'problems'],
+        question: `What would you say are the biggest pitfalls to avoid with ${procedureTitle}?`,
+        category: 'Best Practices',
+        keywords: ['pitfalls', 'avoid', 'mistakes'],
         used: false,
         priority: 3,
         relatedTopics: []
