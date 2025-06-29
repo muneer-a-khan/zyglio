@@ -100,12 +100,26 @@ export function VoiceCertNew({ moduleId, userId, onComplete }: VoiceCertNewProps
   const audioChunksRef = useRef<Blob[]>([]);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  // Single initialization useEffect to prevent duplicate API calls
+  // Single initialization useEffect with better duplicate prevention
+  const [hasInitialized, setHasInitialized] = useState(false);
+  
   useEffect(() => {
-    console.log("🚀 Starting multi-scenario certification for:", { moduleId, userId });
-    if (moduleId && userId && !certification && !loading) {
-      initializeCertification();
+    console.log("🚀 Starting multi-scenario certification for:", { moduleId, userId, hasInitialized, certification: !!certification, loading });
+    
+    // Reset initialization state when moduleId or userId changes
+    if (moduleId && userId) {
+      if (!hasInitialized && !certification && !loading) {
+        setHasInitialized(true);
+        initializeCertification();
+      }
     }
+    
+    // Cleanup function to reset state when component unmounts or key props change
+    return () => {
+      if (!certification) { // Only reset if certification hasn't been established
+        setHasInitialized(false);
+      }
+    };
   }, [moduleId, userId]);
 
   // Timer for elapsed time

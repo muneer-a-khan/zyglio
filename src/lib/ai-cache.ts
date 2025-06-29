@@ -385,10 +385,10 @@ export function clearCache() {
   console.log('Cache cleared successfully');
 }
 
-// Auto-clear cache in development to ensure fresh analysis
+// Auto-clear cache in development to ensure fresh analysis (but less frequently)
 if (process.env.NODE_ENV !== 'production') {
-  // Clear caches every 30 minutes in development
-  setInterval(() => clearCache(), 30 * 60 * 1000);
+  // Clear caches every 2 hours in development to reduce noise
+  setInterval(() => clearCache(), 2 * 60 * 60 * 1000);
 }
 
 // Initialize on module load
