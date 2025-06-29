@@ -41,6 +41,7 @@ export async function POST(request: NextRequest) {
       
       const templateResult = getTemplateScore(response, scenario.expectedCompetencies);
       if (templateResult) {
+        console.log(`🎯 Template scoring result: ${templateResult.responseScore}/10 for response: "${response.substring(0, 50)}..."`);
         cacheScoringResult(cacheKey, templateResult);
         return NextResponse.json(templateResult);
       }
@@ -118,7 +119,7 @@ Return ONLY valid JSON with this exact structure:
             content: enhancedScoringPrompt
           }
         ],
-        temperature: 0.1, // Low temperature for consistent scoring
+        temperature: 0.3, // Moderate temperature for more natural variation while maintaining accuracy
         max_tokens: 800 // Increased for detailed feedback
       });
 
@@ -168,7 +169,7 @@ Return ONLY valid JSON with this exact structure:
       // Cache the result
       cacheScoringResult(cacheKey, scoringData);
 
-      console.log(`✅ Scenario-aware scoring completed: ${scoringData.responseScore}/10`);
+      console.log(`🤖 AI scoring result: ${scoringData.responseScore}/10 for response: "${response.substring(0, 50)}..."`);
 
       return NextResponse.json(scoringData);
 
@@ -184,6 +185,7 @@ Return ONLY valid JSON with this exact structure:
         maxQuestions
       );
 
+      console.log(`🔄 Fallback scoring result: ${fallbackResult.responseScore}/10 for response: "${response.substring(0, 50)}..."`);
       return NextResponse.json(fallbackResult);
     }
 
@@ -213,49 +215,91 @@ function generateEnhancedFallbackScoring(
 ) {
   const responseLength = response.trim().length;
   const wordCount = response.trim().split(/\s+/).length;
+  const lowercaseResponse = response.toLowerCase().trim();
   
-  // Base scoring on response quality indicators
-  let baseScore = 5;
+  // Add randomization for more natural scoring (±0.3)
+  const randomVariation = () => (Math.random() - 0.5) * 0.6;
   
-  // Length and detail assessment
-  if (wordCount >= 50 && responseLength >= 200) baseScore += 1.5;
-  else if (wordCount >= 20 && responseLength >= 100) baseScore += 0.5;
-  else if (wordCount < 10) baseScore -= 1.5;
-
-  // Scenario-relevant keyword analysis
-  const scenarioKeywords = [
-    ...(scenario.title?.toLowerCase().split(' ') || []),
-    ...(scenario.expectedCompetencies?.join(' ').toLowerCase().split(' ') || []),
-    'safety', 'procedure', 'step', 'process', 'consider', 'ensure', 'check'
+  // Detect poor responses
+  const poorResponses = [
+    "i don't know", "i have no idea", "no idea", "not sure", "don't know",
+    "i'm not sure", "no clue", "can't say", "unsure", "i wouldn't know",
+    "i don't", "idk", "dunno", "no", "nope", "nothing", "n/a"
   ];
   
+  const isPoorResponse = poorResponses.some(poor => 
+    lowercaseResponse.includes(poor) || lowercaseResponse === poor
+  );
+  
+  // Use generic indicators of thoughtful responses (works for any topic)
+  const hasStructuredThinking = /\b(first|then|next|finally|step|approach|method|process)\b/.test(lowercaseResponse);
+  const hasReasoningLanguage = /\b(because|since|reason|so|therefore|due to|in order to|as a result)\b/.test(lowercaseResponse);
+  const hasConditionalThinking = /\b(if|when|would|could|should|might|may|depending on)\b/.test(lowercaseResponse);
+  const hasActionOrientation = /\b(try|attempt|consider|ensure|check|verify|assess|evaluate|analyze)\b/.test(lowercaseResponse);
+  
+  // Count different types of thoughtful indicators
+  let thoughtfulnessScore = 0;
+  if (hasStructuredThinking) thoughtfulnessScore += 1;
+  if (hasReasoningLanguage) thoughtfulnessScore += 1;
+  if (hasConditionalThinking) thoughtfulnessScore += 1;
+  if (hasActionOrientation) thoughtfulnessScore += 1;
+  
+  // Start with base score focused on demonstrated thinking quality
+  let baseScore;
+  if (isPoorResponse && thoughtfulnessScore === 0) {
+    baseScore = 1.5; // Clearly doesn't know and shows no thinking
+  } else if (thoughtfulnessScore >= 3) {
+    baseScore = 5.5; // Shows multiple types of thoughtful analysis
+  } else if (thoughtfulnessScore === 2) {
+    baseScore = 4.0; // Shows good thinking in multiple areas
+  } else if (thoughtfulnessScore === 1) {
+    baseScore = 3.0; // Shows some thoughtful consideration
+  } else {
+    baseScore = 2.5; // Basic response without clear thinking indicators
+  }
+  
+  // Minor adjustments for communication completeness
+  if (wordCount >= 25) baseScore += 0.4; // Small bonus for thorough explanation
+  else if (wordCount < 4) baseScore -= 1.0; // Penalty for extremely brief
+  
+  // Additional penalty only for truly poor responses
+  if (isPoorResponse && thoughtfulnessScore === 0) {
+    baseScore -= 1.0; // Additional penalty for completely unhelpful responses
+  }
+
+  // Scenario relevance analysis (focus on meaningful connections)
+  const scenarioKeywords = [
+    ...(scenario.title?.toLowerCase().split(' ') || []),
+    ...(scenario.expectedCompetencies?.join(' ').toLowerCase().split(' ') || [])
+  ].filter(word => word.length > 3); // Only meaningful words
+  
   const responseWords = response.toLowerCase().split(/\s+/);
-  const keywordMatches = scenarioKeywords.filter(keyword => 
+  const relevantMatches = scenarioKeywords.filter(keyword => 
     responseWords.some(word => word.includes(keyword))
   ).length;
   
-  if (keywordMatches >= 3) baseScore += 1;
-  else if (keywordMatches >= 1) baseScore += 0.5;
-
-  // Structure and detail indicators
-  if (response.includes('first') || response.includes('then') || response.includes('next')) {
-    baseScore += 0.5; // Shows structured thinking
-  }
+  // Reward scenario relevance but don't heavily penalize lack of specific keywords
+  if (relevantMatches >= 2) baseScore += 0.8;
+  else if (relevantMatches >= 1) baseScore += 0.4;
   
-  if (response.includes('because') || response.includes('since') || response.includes('reason')) {
-    baseScore += 0.5; // Shows reasoning
+  // Structure and reasoning indicators (already analyzed above, minor bonus)
+  if (hasActionOrientation && hasReasoningLanguage) {
+    baseScore += 0.3; // Small bonus for combining action and reasoning
   }
 
-  // Ensure score is within bounds
-  const finalScore = Math.max(2, Math.min(9, baseScore));
+  // Apply randomization
+  baseScore += randomVariation();
 
-  // Generate competency scores based on response characteristics
+  // Ensure score is within bounds - much stricter range
+  const finalScore = Math.max(1, Math.min(8.5, baseScore));
+
+  // Generate competency scores based on response characteristics with more variation
   const competencyScores = {
-    accuracy: Math.max(3, Math.min(8, finalScore - 0.5 + (keywordMatches * 0.2))),
-    application: Math.max(3, Math.min(8, finalScore + (responseLength > 150 ? 0.5 : -0.5))),
-    communication: Math.max(3, Math.min(8, finalScore + (wordCount > 30 ? 0.5 : -0.5))),
-    problemSolving: Math.max(3, Math.min(8, finalScore + (response.includes('would') || response.includes('could') ? 0.5 : 0))),
-    completeness: Math.max(3, Math.min(8, finalScore + (wordCount > 40 ? 0.5 : -0.5)))
+    accuracy: Math.max(1, Math.min(8, finalScore - 0.3 + (relevantMatches * 0.3) + randomVariation())),
+    application: Math.max(1, Math.min(8, finalScore + (hasActionOrientation ? 0.8 : -0.5) + randomVariation())),
+    communication: Math.max(1, Math.min(8, finalScore + (wordCount > 15 ? 0.4 : -0.3) + randomVariation())),
+    problemSolving: Math.max(1, Math.min(8, finalScore + (hasConditionalThinking ? 0.6 : -0.3) + randomVariation())),
+    completeness: Math.max(1, Math.min(8, finalScore + (hasStructuredThinking ? 0.5 : -0.4) + randomVariation()))
   };
 
   // Determine completion based on enhanced criteria
@@ -263,21 +307,61 @@ function generateEnhancedFallbackScoring(
                     currentQuestionNumber >= maxQuestions || 
                     (finalScore >= 7 && wordCount >= 60);
 
-  // Generate contextual feedback
-  let feedback = `Your response shows ${finalScore >= 7 ? 'good' : finalScore >= 5 ? 'adequate' : 'developing'} understanding of the scenario. `;
+  // Generate contextual feedback with more variation
+  const feedbackOptions = {
+    excellent: [
+      "Excellent response demonstrating strong competency.",
+      "Outstanding understanding and application.",
+      "Very comprehensive and well-reasoned response."
+    ],
+    good: [
+      "Good response showing solid understanding.",
+      "Your approach demonstrates competency.",
+      "Well-structured response with good reasoning."
+    ],
+    adequate: [
+      "Your response shows basic understanding but needs development.",
+      "Adequate response, but could be more detailed.",
+      "You're on the right track but need more specificity."
+    ],
+    poor: [
+      "Your response needs significant improvement.",
+      "This response doesn't demonstrate the required competency.",
+      "Much more detail and specific knowledge is needed."
+    ],
+    veryPoor: [
+      "This response is insufficient for certification purposes.",
+      "Your response indicates a lack of understanding.",
+      "Substantial improvement needed to meet competency standards."
+    ]
+  };
+
+  let feedbackCategory = 'poor';
+  if (finalScore >= 7.5) feedbackCategory = 'excellent';
+  else if (finalScore >= 6.0) feedbackCategory = 'good';
+  else if (finalScore >= 4.0) feedbackCategory = 'adequate';
+  else if (finalScore >= 2.0) feedbackCategory = 'poor';
+  else feedbackCategory = 'veryPoor';
+
+  let feedback = feedbackOptions[feedbackCategory as keyof typeof feedbackOptions][Math.floor(Math.random() * feedbackOptions[feedbackCategory as keyof typeof feedbackOptions].length)];
   
-  if (wordCount < 20) {
-    feedback += "Consider providing more detailed explanations of your approach. ";
+  // Add specific improvement suggestions
+  if (isPoorResponse) {
+    feedback += " Instead of expressing uncertainty, try to work through what you do know or what logical steps you might take.";
+  } else if (wordCount < 15) {
+    feedback += " Consider providing much more detailed explanations of your approach and reasoning.";
+  } else if (relevantMatches < 2) {
+    feedback += ` Try to more specifically address the scenario context: "${scenario.title}".`;
   }
   
-  if (keywordMatches < 2) {
-    feedback += `Try to more specifically address the scenario context: "${scenario.title}". `;
-  }
-  
-  if (finalScore >= 7) {
-    feedback += "You demonstrate solid practical thinking for this scenario.";
-  } else {
-    feedback += "Focus on explaining your specific steps and reasoning within this scenario context.";
+  if (finalScore < 5) {
+    const improvements = [
+      " Focus on demonstrating practical knowledge and specific procedures.",
+      " Explain your step-by-step approach in detail.",
+      " Show understanding of safety considerations and best practices.",
+      " Provide concrete examples of how you would handle the situation."
+    ];
+    feedback += improvements[Math.floor(Math.random() * improvements.length)];
   }
 
   return {
@@ -290,6 +374,6 @@ function generateEnhancedFallbackScoring(
     reasoningForNext: isComplete ? 
       "Response demonstrates sufficient competency for this scenario" : 
       "Additional questions needed to fully assess scenario competency",
-    scenarioSpecificNotes: `Fallback evaluation based on response length (${wordCount} words), scenario relevance (${keywordMatches} keywords), and structure analysis`
+    scenarioSpecificNotes: `Fallback evaluation based on response length (${wordCount} words), scenario relevance (${relevantMatches} keywords), and structure analysis`
   };
 } 

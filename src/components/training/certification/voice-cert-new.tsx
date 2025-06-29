@@ -367,8 +367,25 @@ export function VoiceCertNew({ moduleId, userId, onComplete }: VoiceCertNewProps
 
         // Check if scenario is complete
         if (data.scenarioComplete || currentProgress.questionsAsked >= currentScenario.maxQuestions) {
-          console.log(`✅ Scenario complete! Reason: ${data.scenarioComplete ? 'AI determined complete' : 'Max questions reached'}`);
-          await completeScenario(currentScenarioIndex, data.scenarioScore || 75);
+          let completionReason: 'threshold' | 'maxQuestions' | 'ai' = 'threshold';
+          
+          if (currentProgress.questionsAsked >= currentScenario.maxQuestions) {
+            completionReason = 'maxQuestions';
+          } else if (data.reasoningForNext?.includes('complete') || data.reasoningForNext?.includes('threshold')) {
+            // Check if it's due to progressive threshold logic
+            const progressiveThresholds = { 1: 9.0, 2: 8.0, 3: 6.5, 4: 5.5, 5: 4.5 };
+            const requiredThreshold = progressiveThresholds[Math.min(currentProgress.questionsAsked, 5) as keyof typeof progressiveThresholds];
+            if (data.score >= requiredThreshold) {
+              completionReason = 'threshold';
+            } else {
+              completionReason = 'ai';
+            }
+          } else {
+            completionReason = 'ai';
+          }
+          
+          console.log(`✅ Scenario complete! Reason: ${completionReason === 'ai' ? 'AI determined complete' : completionReason === 'maxQuestions' ? 'Max questions reached' : 'Score met threshold'}`);
+          await completeScenario(currentScenarioIndex, data.scenarioScore || 75, completionReason);
         } else {
           console.log('🔄 Continuing with next question...');
           // Get next adaptive question
@@ -419,6 +436,17 @@ export function VoiceCertNew({ moduleId, userId, onComplete }: VoiceCertNewProps
     const progress = newProgress[scenarioIndex];
 
     console.log(`✅ Completed scenario ${scenarioIndex + 1} with score: ${scenarioScore}%`);
+
+    // Show toast notification
+    const completionMessage = completionReason === 'threshold' 
+      ? `Scenario ${scenarioIndex + 1} completed! Score met threshold.`
+      : completionReason === 'maxQuestions'
+      ? `Scenario ${scenarioIndex + 1} completed! All questions answered.`
+      : `Scenario ${scenarioIndex + 1} completed! AI assessment complete.`;
+    
+    toast.success(completionMessage, {
+      duration: 3000,
+    });
 
     // Show scenario completion summary
     setShowScenarioCompletion({
@@ -512,6 +540,120 @@ export function VoiceCertNew({ moduleId, userId, onComplete }: VoiceCertNewProps
         <CardContent className="flex items-center justify-center p-8">
           <Loader2 className="h-8 w-8 animate-spin mr-3" />
           <span>Generating certification scenarios...</span>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  // Scenario Completion Screen
+  if (showScenarioCompletion) {
+    const completion = showScenarioCompletion;
+    const isLastScenario = completion.scenarioIndex + 1 >= (certification?.scenarios.length || 0);
+    
+    const getCompletionMessage = () => {
+      switch (completion.completionReason) {
+        case 'threshold':
+          return `Excellent work! You scored ${completion.score}% and met the performance threshold for this scenario.`;
+        case 'maxQuestions':
+          return `You've completed all ${completion.maxQuestions} questions for this scenario with a score of ${completion.score}%.`;
+        case 'ai':
+          return `Great job! The AI assessment determined you've demonstrated sufficient competency with a score of ${completion.score}%.`;
+        default:
+          return `Scenario completed with a score of ${completion.score}%.`;
+      }
+    };
+
+    const getCompletionReason = () => {
+      switch (completion.completionReason) {
+        case 'threshold':
+          return `✅ Performance Threshold Met`;
+        case 'maxQuestions':
+          return `📝 All Questions Completed`;
+        case 'ai':
+          return `🤖 AI Assessment Complete`;
+        default:
+          return `✅ Scenario Complete`;
+      }
+    };
+
+    return (
+      <Card className="w-full max-w-4xl mx-auto">
+        <CardHeader className="text-center">
+          <div className="flex justify-center mb-4">
+            {completion.passed ? (
+              <CheckCircle className="h-16 w-16 text-green-500" />
+            ) : (
+              <AlertTriangle className="h-16 w-16 text-orange-500" />
+            )}
+          </div>
+          <CardTitle className="text-2xl">
+            Scenario {completion.scenarioIndex + 1} Complete
+          </CardTitle>
+          <p className="text-lg text-gray-600 mt-2">{completion.scenarioTitle}</p>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="text-center">
+            <div className="text-4xl font-bold mb-2 text-blue-600">{completion.score}%</div>
+            <Badge variant={completion.passed ? "default" : "secondary"} className="text-lg px-4 py-1">
+              {completion.passed ? '✅ Passed' : '❌ Not Passed'}
+            </Badge>
+          </div>
+
+          <div className="bg-blue-50 border border-blue-200 p-4 rounded-lg">
+            <h4 className="font-medium text-blue-900 mb-2">{getCompletionReason()}</h4>
+            <p className="text-blue-800">{getCompletionMessage()}</p>
+          </div>
+
+          <div className="grid grid-cols-3 gap-4 text-center">
+            <div className="bg-gray-50 p-3 rounded-lg">
+              <div className="font-medium text-gray-700">Questions Asked</div>
+              <div className="text-xl font-bold text-gray-900">{completion.questionsAsked}/{completion.maxQuestions}</div>
+            </div>
+            <div className="bg-gray-50 p-3 rounded-lg">
+              <div className="font-medium text-gray-700">Average Score</div>
+              <div className="text-xl font-bold text-gray-900">
+                {completion.responses.length > 0 
+                  ? (completion.responses.reduce((sum, r) => sum + r.score, 0) / completion.responses.length).toFixed(1)
+                  : '0.0'}/10
+              </div>
+            </div>
+            <div className="bg-gray-50 p-3 rounded-lg">
+              <div className="font-medium text-gray-700">Scenario Status</div>
+              <div className={`text-xl font-bold ${completion.passed ? 'text-green-600' : 'text-orange-600'}`}>
+                {completion.passed ? 'PASSED' : 'NEEDS WORK'}
+              </div>
+            </div>
+          </div>
+
+          {completion.responses.length > 0 && (
+            <div className="space-y-3">
+              <h4 className="font-semibold">Response Summary:</h4>
+              {completion.responses.map((response, index) => (
+                <div key={index} className="bg-gray-50 p-3 rounded-lg">
+                  <div className="flex justify-between items-start mb-2">
+                    <h5 className="font-medium text-sm">Q{index + 1}: {response.question.substring(0, 100)}...</h5>
+                    <Badge variant={response.score >= 7 ? "default" : "secondary"}>
+                      {response.score}/10
+                    </Badge>
+                  </div>
+                  <p className="text-sm text-gray-600">{response.response.substring(0, 150)}...</p>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="flex justify-center space-x-4">
+            <Button onClick={continueToNextScenario} size="lg" className="bg-blue-500 hover:bg-blue-600">
+              {isLastScenario ? 'Complete Certification' : 'Continue to Next Scenario'}
+              <ArrowRight className="h-5 w-5 ml-2" />
+            </Button>
+          </div>
+
+          <div className="text-center text-sm text-gray-500">
+            {isLastScenario 
+              ? 'Ready to complete your certification assessment'
+              : 'Automatically continuing in 5 seconds...'}
+          </div>
         </CardContent>
       </Card>
     );

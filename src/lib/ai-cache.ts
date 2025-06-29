@@ -231,32 +231,45 @@ export function shouldUseTemplateScoring(response: string, currentQuestionNumber
          (currentQuestionNumber === 1 && wordCount < 25);
 }
 
-// Enhanced template scoring that considers scenario competencies
+// Enhanced template scoring that prioritizes content accuracy over length
 export function getTemplateScore(response: string, expectedCompetencies?: string[]): any | null {
   const wordCount = response.trim().split(/\s+/).length;
-  const responseLength = response.trim().length;
+  const lowercaseResponse = response.toLowerCase().trim();
   
-  if (wordCount < 5) {
+  // Add randomization factor for more natural variation (±0.3)
+  const randomVariation = () => (Math.random() - 0.5) * 0.6;
+  
+  // Only catch the most obvious "don't know" responses - let AI handle everything else
+  const completelyUnknown = [
+    "i don't know", "i have no idea", "no idea", "don't know",
+    "i'm not sure", "no clue", "can't say", "idk", "dunno"
+  ];
+  
+  const isCompletelyUnknown = completelyUnknown.some(phrase => 
+    lowercaseResponse.includes(phrase)
+  );
+  
+  // Only score extremely short responses that are clearly unhelpful
+  if (wordCount < 4 && isCompletelyUnknown) {
+    const baseScore = 1.2;
+    const finalScore = Math.max(1, Math.min(2, baseScore + randomVariation()));
+    
     return {
-      responseScore: 2,
-      competencyScores: { accuracy: 2, application: 2, communication: 3, problemSolving: 2, completeness: 2 },
-      feedback: "Response is too brief. Please provide more detailed explanations.",
+      responseScore: Math.round(finalScore * 10) / 10,
+      competencyScores: { 
+        accuracy: Math.max(1, Math.min(2.5, finalScore + randomVariation())), 
+        application: Math.max(1, Math.min(2.5, finalScore + randomVariation())), 
+        communication: Math.max(1, Math.min(3, finalScore + 0.5 + randomVariation())), 
+        problemSolving: Math.max(1, Math.min(2.5, finalScore + randomVariation())), 
+        completeness: Math.max(1, Math.min(2, finalScore - 0.3 + randomVariation()))
+      },
+      feedback: "Try to think through what you do know or what logical steps you might take, even if you're not familiar with the specific topic.",
       isComplete: false,
-      reasoningForNext: "Need more comprehensive response"
+      reasoningForNext: "Needs to demonstrate some problem-solving approach"
     };
   }
   
-  if (wordCount < 15) {
-    return {
-      responseScore: 4,
-      competencyScores: { accuracy: 4, application: 4, communication: 5, problemSolving: 4, completeness: 3 },
-      feedback: "Brief response showing basic understanding. Consider adding more detail about your approach.",
-      isComplete: false,
-      reasoningForNext: "Response shows minimal understanding, needs elaboration"
-    };
-  }
-  
-  return null; // Use AI scoring for longer responses
+  return null; // Use AI scoring for other responses
 }
 
 // Smart prompt selection based on context
