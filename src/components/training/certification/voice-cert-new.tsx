@@ -45,6 +45,7 @@ interface ScenarioProgress {
     response: string;
     timestamp: Date;
     score?: number;
+    competencyScores?: Record<string, number>;
   }>;
   competencyScores: Record<string, number>;
   completed: boolean;
@@ -93,7 +94,7 @@ export function VoiceCertNew({ moduleId, userId, onComplete }: VoiceCertNewProps
     questionsAsked: number;
     maxQuestions: number;
     completionReason: 'threshold' | 'maxQuestions' | 'ai';
-    responses: Array<{ question: string; response: string; score: number; }>;
+    responses: Array<{ question: string; response: string; score: number; competencyScores?: Record<string, number>; }>;
   } | null>(null);
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -186,6 +187,8 @@ export function VoiceCertNew({ moduleId, userId, onComplete }: VoiceCertNewProps
     }
   };
 
+  const [questionGenerationInProgress, setQuestionGenerationInProgress] = useState(false);
+
   const startScenarioWithData = async (scenarioIndex: number, certificationData: CertificationData) => {
     const scenario = certificationData?.scenarios[scenarioIndex];
     if (!scenario) {
@@ -208,6 +211,14 @@ export function VoiceCertNew({ moduleId, userId, onComplete }: VoiceCertNewProps
     const fallbackQuestion = `Let's begin with this scenario: ${scenario.context}. How would you approach this situation? Please walk me through your initial thoughts and the steps you would take.`;
     setCurrentQuestion(fallbackQuestion);
     console.log(`📝 Fallback question set immediately: ${fallbackQuestion}`);
+    
+    // Prevent duplicate question generation calls
+    if (questionGenerationInProgress) {
+      console.log('🚫 Question generation already in progress, skipping');
+      return;
+    }
+    
+    setQuestionGenerationInProgress(true);
     
     try {
       console.log('🔄 Requesting first question from API...');
@@ -255,6 +266,8 @@ export function VoiceCertNew({ moduleId, userId, onComplete }: VoiceCertNewProps
       console.error('❌ Error starting scenario:', error);
       console.log('📝 Keeping fallback question due to error');
       toast.error('Using fallback question - API error');
+    } finally {
+      setQuestionGenerationInProgress(false);
     }
   };
 
@@ -370,7 +383,8 @@ export function VoiceCertNew({ moduleId, userId, onComplete }: VoiceCertNewProps
           question: currentQuestion,
           response: data.transcription,
           timestamp: new Date(),
-          score: data.responseScore
+          score: data.responseScore,
+          competencyScores: data.competencyScores || {}
         });
         currentProgress.questionsAsked++;
         currentProgress.competencyScores = { ...currentProgress.competencyScores, ...data.competencyScores };
@@ -474,20 +488,13 @@ export function VoiceCertNew({ moduleId, userId, onComplete }: VoiceCertNewProps
       responses: progress.responses.map(r => ({
         question: r.question,
         response: r.response,
-        score: r.score || 0
+        score: r.score || 0,
+        competencyScores: r.competencyScores || {}
       }))
     });
 
-    // Auto-continue to next scenario after 5 seconds, or complete certification
-    setTimeout(() => {
-      setShowScenarioCompletion(null);
-      if (scenarioIndex + 1 >= certification!.scenarios.length) {
-        completeCertification();
-      } else {
-        setCurrentScenarioIndex(scenarioIndex + 1);
-        startScenario(scenarioIndex + 1);
-      }
-    }, 5000);
+    // Manual continue only - no auto-timer
+    // User must click "Continue" button to proceed to next scenario
   };
 
   const continueToNextScenario = () => {
@@ -627,7 +634,18 @@ export function VoiceCertNew({ moduleId, userId, onComplete }: VoiceCertNewProps
               <div className="font-medium text-gray-700">Average Score</div>
               <div className="text-xl font-bold text-gray-900">
                 {completion.responses.length > 0 
-                  ? (completion.responses.reduce((sum, r) => sum + r.score, 0) / completion.responses.length).toFixed(1)
+                  ? (() => {
+                      // Calculate based on competency averages like the API does
+                      const questionAverages = completion.responses.map(r => {
+                        if (r.competencyScores && Object.keys(r.competencyScores).length > 0) {
+                          const competencyValues = Object.values(r.competencyScores);
+                          return competencyValues.reduce((sum, score) => sum + score, 0) / competencyValues.length;
+                        }
+                        return r.score || 0;
+                      });
+                      const scenarioAverage = questionAverages.reduce((sum, avg) => sum + avg, 0) / questionAverages.length;
+                      return scenarioAverage.toFixed(1);
+                    })()
                   : '0.0'}/10
               </div>
             </div>
@@ -641,18 +659,49 @@ export function VoiceCertNew({ moduleId, userId, onComplete }: VoiceCertNewProps
 
           {completion.responses.length > 0 && (
             <div className="space-y-3">
-              <h4 className="font-semibold">Response Summary:</h4>
-              {completion.responses.map((response, index) => (
-                <div key={index} className="bg-gray-50 p-3 rounded-lg">
-                  <div className="flex justify-between items-start mb-2">
-                    <h5 className="font-medium text-sm">Q{index + 1}: {response.question.substring(0, 100)}...</h5>
-                    <Badge variant={response.score >= 7 ? "default" : "secondary"}>
-                      {response.score}/10
-                    </Badge>
+              <h4 className="font-semibold">Detailed Question Breakdown:</h4>
+              {completion.responses.map((response, index) => {
+                const competencyScores = response.competencyScores || {};
+                const hasCompetencyData = Object.keys(competencyScores).length > 0;
+                
+                // Calculate competency average if available
+                const competencyAverage = hasCompetencyData 
+                  ? Object.values(competencyScores).reduce((sum, score) => sum + score, 0) / Object.values(competencyScores).length
+                  : response.score;
+                
+                return (
+                  <div key={index} className="bg-gray-50 p-4 rounded-lg">
+                    <div className="flex justify-between items-start mb-2">
+                      <h5 className="font-medium text-sm">Q{index + 1}: {response.question.substring(0, 80)}...</h5>
+                      <div className="text-right">
+                        <Badge variant={response.score >= 7 ? "default" : "secondary"} className="mb-1">
+                          {response.score}/10
+                        </Badge>
+                        {hasCompetencyData && (
+                          <div className="text-xs text-gray-500">
+                            Avg: {competencyAverage.toFixed(1)}/10
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    
+                    <p className="text-sm text-gray-600 mb-3">{response.response.substring(0, 120)}...</p>
+                    
+                    {hasCompetencyData && (
+                      <div className="grid grid-cols-5 gap-2 text-xs">
+                        {Object.entries(competencyScores).map(([competency, score]) => (
+                          <div key={competency} className="text-center">
+                            <div className="capitalize font-medium text-gray-700">{competency.replace(/([A-Z])/g, ' $1').trim()}</div>
+                            <div className={`font-bold ${score >= 7 ? 'text-green-600' : score >= 5 ? 'text-yellow-600' : 'text-red-600'}`}>
+                              {score}/10
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                  <p className="text-sm text-gray-600">{response.response.substring(0, 150)}...</p>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
 
@@ -666,7 +715,7 @@ export function VoiceCertNew({ moduleId, userId, onComplete }: VoiceCertNewProps
           <div className="text-center text-sm text-gray-500">
             {isLastScenario 
               ? 'Ready to complete your certification assessment'
-              : 'Automatically continuing in 5 seconds...'}
+              : 'Review your feedback above, then click Continue when ready'}
           </div>
         </CardContent>
       </Card>

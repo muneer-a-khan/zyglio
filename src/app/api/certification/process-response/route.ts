@@ -226,10 +226,32 @@ export async function POST(request: NextRequest) {
 
     let scenarioScore = null;
     if (scenarioComplete) {
-      // Calculate average score for this scenario and convert to percentage
-      const allResponses = [...previousResponses, { score: scoringData.responseScore }];
-      const averageScore = allResponses.reduce((sum, r) => sum + r.score, 0) / allResponses.length;
-      scenarioScore = Math.round((averageScore / 10) * 100); // Convert 1-10 scale to percentage
+      // Calculate scenario score by properly averaging competency scores
+      const allResponses = [...previousResponses, { 
+        score: scoringData.responseScore, 
+        competencyScores: scoringData.competencyScores || {}
+      }];
+      
+      // For each response, calculate the average of its 5 competency scores
+      const questionAverages = allResponses.map(response => {
+        if (response.competencyScores) {
+          const competencyValues = Object.values(response.competencyScores);
+          const competencyAverage = competencyValues.reduce((sum, score) => sum + (score || 0), 0) / competencyValues.length;
+          return competencyAverage;
+        }
+        // Fallback to response score if no competency breakdown
+        return response.score || 0;
+      });
+      
+      // Average all question averages to get scenario score
+      const scenarioAverage = questionAverages.reduce((sum, avg) => sum + avg, 0) / questionAverages.length;
+      scenarioScore = Math.round((scenarioAverage / 10) * 100); // Convert 1-10 scale to percentage
+      
+      console.log('📊 Scenario scoring breakdown:', {
+        questionAverages: questionAverages.map(avg => `${avg.toFixed(1)}/10`),
+        scenarioAverage: `${scenarioAverage.toFixed(1)}/10`,
+        finalPercentage: `${scenarioScore}%`
+      });
     }
 
     // Step 5: Prepare response
