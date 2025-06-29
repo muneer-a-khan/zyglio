@@ -80,6 +80,21 @@ export function VoiceCertNew({ moduleId, userId, onComplete }: VoiceCertNewProps
   const [questionAudio, setQuestionAudio] = useState<string | null>(null);
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
   const [timeStarted, setTimeStarted] = useState(false);
+  const [lastResponseFeedback, setLastResponseFeedback] = useState<{
+    score: number;
+    feedback: string;
+    competencyScores: Record<string, number>;
+  } | null>(null);
+  const [showScenarioCompletion, setShowScenarioCompletion] = useState<{
+    scenarioIndex: number;
+    scenarioTitle: string;
+    passed: boolean;
+    score: number;
+    questionsAsked: number;
+    maxQuestions: number;
+    completionReason: 'threshold' | 'maxQuestions' | 'ai';
+    responses: Array<{ question: string; response: string; score: number; }>;
+  } | null>(null);
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -171,6 +186,9 @@ export function VoiceCertNew({ moduleId, userId, onComplete }: VoiceCertNewProps
       context: scenario.context?.substring(0, 100) + '...',
       maxQuestions: scenario.maxQuestions
     });
+    
+    // Clear previous feedback when starting new scenario
+    setLastResponseFeedback(null);
     
     // Immediately set a fallback question to ensure there's always something to show
     const fallbackQuestion = `Let's begin with this scenario: ${scenario.context}. How would you approach this situation? Please walk me through your initial thoughts and the steps you would take.`;
@@ -324,6 +342,13 @@ export function VoiceCertNew({ moduleId, userId, onComplete }: VoiceCertNewProps
           competencyScores: data.competencyScores
         });
         
+        // Store feedback for display to user
+        setLastResponseFeedback({
+          score: data.responseScore,
+          feedback: data.feedback || "Response received and evaluated.",
+          competencyScores: data.competencyScores || {}
+        });
+        
         // Update scenario progress
         const newProgress = [...scenarioProgress];
         const currentProgress = newProgress[currentScenarioIndex];
@@ -383,22 +408,55 @@ export function VoiceCertNew({ moduleId, userId, onComplete }: VoiceCertNewProps
     }
   };
 
-  const completeScenario = async (scenarioIndex: number, scenarioScore: number) => {
+  const completeScenario = async (scenarioIndex: number, scenarioScore: number, completionReason: 'threshold' | 'maxQuestions' | 'ai' = 'threshold') => {
     const newProgress = [...scenarioProgress];
     newProgress[scenarioIndex].completed = true;
     newProgress[scenarioIndex].finalScore = scenarioScore;
     newProgress[scenarioIndex].passed = scenarioScore >= certification!.scenarios[scenarioIndex].passingScore;
     setScenarioProgress(newProgress);
 
+    const currentScenario = certification!.scenarios[scenarioIndex];
+    const progress = newProgress[scenarioIndex];
+
     console.log(`✅ Completed scenario ${scenarioIndex + 1} with score: ${scenarioScore}%`);
 
-    // Check if all scenarios are complete
+    // Show scenario completion summary
+    setShowScenarioCompletion({
+      scenarioIndex,
+      scenarioTitle: currentScenario.title,
+      passed: progress.passed,
+      score: scenarioScore,
+      questionsAsked: progress.questionsAsked,
+      maxQuestions: currentScenario.maxQuestions,
+      completionReason,
+      responses: progress.responses.map(r => ({
+        question: r.question,
+        response: r.response,
+        score: r.score || 0
+      }))
+    });
+
+    // Auto-continue to next scenario after 5 seconds, or complete certification
+    setTimeout(() => {
+      setShowScenarioCompletion(null);
+      if (scenarioIndex + 1 >= certification!.scenarios.length) {
+        completeCertification();
+      } else {
+        setCurrentScenarioIndex(scenarioIndex + 1);
+        startScenario(scenarioIndex + 1);
+      }
+    }, 5000);
+  };
+
+  const continueToNextScenario = () => {
+    const scenarioIndex = showScenarioCompletion!.scenarioIndex;
+    setShowScenarioCompletion(null);
+    
     if (scenarioIndex + 1 >= certification!.scenarios.length) {
-      await completeCertification();
+      completeCertification();
     } else {
-      // Move to next scenario
       setCurrentScenarioIndex(scenarioIndex + 1);
-      setTimeout(() => startScenario(scenarioIndex + 1), 2000);
+      startScenario(scenarioIndex + 1);
     }
   };
 
@@ -623,9 +681,36 @@ export function VoiceCertNew({ moduleId, userId, onComplete }: VoiceCertNewProps
             </div>
           </div>
 
+          {/* Previous Response Feedback */}
+          {lastResponseFeedback && (
+            <div className="bg-yellow-50 border border-yellow-200 p-4 rounded-lg">
+              <div className="flex items-center justify-between mb-2">
+                <h4 className="font-medium text-yellow-900">Previous Response Feedback</h4>
+                <Badge variant={lastResponseFeedback.score >= 7 ? "default" : "secondary"}>
+                  {lastResponseFeedback.score}/10
+                </Badge>
+              </div>
+              <p className="text-sm text-yellow-800 mb-3">{lastResponseFeedback.feedback}</p>
+              <div className="grid grid-cols-5 gap-2 text-xs">
+                {Object.entries(lastResponseFeedback.competencyScores).map(([competency, score]) => (
+                  <div key={competency} className="text-center">
+                    <div className="font-medium capitalize">{competency}</div>
+                    <div className={`rounded px-1 py-0.5 ${
+                      score >= 7 ? 'bg-green-100 text-green-800' : 
+                      score >= 5 ? 'bg-yellow-100 text-yellow-800' : 
+                      'bg-red-100 text-red-800'
+                    }`}>
+                      {score}/10
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="grid grid-cols-2 gap-4 text-sm">
             <div>
-              <strong>Questions Asked:</strong> {currentProgress?.questionsAsked || 0}/{currentScenario?.maxQuestions}
+              <strong>Question:</strong> {(currentProgress?.questionsAsked || 0) + 1}/{currentScenario?.maxQuestions}
             </div>
             <div>
               <strong>Expected Competencies:</strong> {currentScenario?.expectedCompetencies.length}

@@ -4,12 +4,16 @@ import { createHash } from 'crypto';
 const promptCache = new Map<string, any>();
 const responseCache = new Map<string, any>();
 const templateCache = new Map<string, string>();
+const scoringCache = new Map<string, any>(); // New: Cache for scoring results
+const audioCache = new Map<string, string>(); // New: Cache for TTS audio
 
 // Cache TTL in milliseconds
 const CACHE_TTL = {
   prompts: 60 * 60 * 1000, // 1 hour
   responses: 30 * 60 * 1000, // 30 minutes
   templates: 24 * 60 * 60 * 1000, // 24 hours
+  scoring: 20 * 60 * 1000, // 20 minutes for scoring
+  audio: 60 * 60 * 1000, // 1 hour for TTS audio
 };
 
 interface CacheEntry<T> {
@@ -28,7 +32,16 @@ const SYSTEM_PROMPTS = {
   
   fastClassification: `Classify this response type: overview|technical|safety|process|other. Return JSON format.`,
   
-  streamingAnalysis: `Analyze this partial response. What topics are being discussed? Return JSON format.`
+  streamingAnalysis: `Analyze this partial response. What topics are being discussed? Return JSON format.`,
+  
+  // New: Certification-specific optimized prompts
+  certificationScoring: `Score response 1-10 for certification. Consider accuracy, application, clarity. Return JSON with score, feedback, isComplete.`,
+  
+  quickFeedback: `Provide brief feedback on response quality. 1-2 sentences. JSON format.`,
+  
+  competencyCheck: `Evaluate competency areas: accuracy, application, communication. Return JSON scores 1-10.`,
+  
+  adaptiveComplete: `Determine if certification questioning complete based on score and threshold. Return JSON with isComplete boolean.`
 };
 
 const QUESTION_TEMPLATES = {
@@ -38,6 +51,38 @@ const QUESTION_TEMPLATES = {
   equipment: "What equipment or tools are needed for {topic}?",
   quality: "How do you ensure quality when performing {topic}?",
   preparation: "What preparation is required before starting {topic}?",
+  
+  // New: Certification-specific question templates
+  certSafety: "Explain the safety protocols for {scenario}",
+  certApplication: "How would you apply {skill} in {scenario}?",
+  certTroubleshooting: "What would you do if {problem} occurred during {scenario}?",
+  certProcedure: "Walk me through your approach to {task} in {scenario}",
+  certQuality: "How do you ensure quality outcomes when {scenario}?",
+  certDecision: "What factors would you consider when deciding {choice} in {scenario}?"
+};
+
+// New: Common certification scoring templates
+const SCORING_TEMPLATES = {
+  excellent: {
+    score: 9,
+    feedback: "Excellent response demonstrating comprehensive understanding and clear communication.",
+    competencyScores: { accuracy: 9, application: 9, communication: 9, problemSolving: 8, completeness: 9 }
+  },
+  good: {
+    score: 7,
+    feedback: "Good response showing solid understanding with minor areas for improvement.",
+    competencyScores: { accuracy: 7, application: 7, communication: 8, problemSolving: 7, completeness: 7 }
+  },
+  adequate: {
+    score: 5,
+    feedback: "Adequate response meeting basic requirements. Consider adding more detail.",
+    competencyScores: { accuracy: 5, application: 5, communication: 6, problemSolving: 5, completeness: 5 }
+  },
+  developing: {
+    score: 3,
+    feedback: "Response shows some understanding but needs improvement in key areas.",
+    competencyScores: { accuracy: 3, application: 3, communication: 4, problemSolving: 3, completeness: 3 }
+  }
 };
 
 // Initialize caches with preloaded content
@@ -48,6 +93,10 @@ export function initializePromptCache() {
   
   Object.entries(QUESTION_TEMPLATES).forEach(([key, template]) => {
     templateCache.set(`question_${key}`, template);
+  });
+  
+  Object.entries(SCORING_TEMPLATES).forEach(([key, template]) => {
+    templateCache.set(`scoring_${key}`, JSON.stringify(template));
   });
   
   console.log('AI prompt cache initialized with', templateCache.size, 'templates');
@@ -101,6 +150,56 @@ export function getCachedResponse(inputKey: string): any | null {
   return null;
 }
 
+// New: Cache scoring results
+export function cacheScoringResult(inputKey: string, result: any): void {
+  const key = generateCacheKey(inputKey);
+  scoringCache.set(key, {
+    data: result,
+    timestamp: Date.now(),
+    hits: 0
+  });
+  
+  if (scoringCache.size > 500) {
+    cleanupCache(scoringCache, CACHE_TTL.scoring);
+  }
+}
+
+// New: Get cached scoring result
+export function getCachedScoringResult(inputKey: string): any | null {
+  const key = generateCacheKey(inputKey);
+  const entry = scoringCache.get(key);
+  
+  if (entry && isCacheValid(entry, CACHE_TTL.scoring)) {
+    entry.hits++;
+    return entry.data;
+  }
+  
+  if (entry) {
+    scoringCache.delete(key);
+  }
+  
+  return null;
+}
+
+// New: Cache TTS audio
+export function cacheAudio(text: string, audioUrl: string): void {
+  const key = generateCacheKey(text);
+  audioCache.set(key, audioUrl);
+  
+  if (audioCache.size > 100) {
+    // Keep only the most recently used audio
+    const entries = Array.from(audioCache.entries());
+    const toDelete = entries.slice(0, entries.length - 100);
+    toDelete.forEach(([k]) => audioCache.delete(k));
+  }
+}
+
+// New: Get cached audio
+export function getCachedAudio(text: string): string | null {
+  const key = generateCacheKey(text);
+  return audioCache.get(key) || null;
+}
+
 // Two-stage LLM routing
 export function shouldUseFastModel(input: string, context: any): boolean {
   // Use fast model for:
@@ -120,6 +219,44 @@ export function generateQuestionFromTemplate(type: string, topic: string): strin
     return template.replace('{topic}', topic);
   }
   return `Tell me more about ${topic}.`;
+}
+
+// Scenario-specific template scoring for short responses
+export function shouldUseTemplateScoring(response: string, currentQuestionNumber: number): boolean {
+  const wordCount = response.trim().split(/\s+/).length;
+  const responseLength = response.trim().length;
+  
+  // Use template scoring for very short responses or first question basics
+  return (wordCount < 15 && responseLength < 80) || 
+         (currentQuestionNumber === 1 && wordCount < 25);
+}
+
+// Enhanced template scoring that considers scenario competencies
+export function getTemplateScore(response: string, expectedCompetencies?: string[]): any | null {
+  const wordCount = response.trim().split(/\s+/).length;
+  const responseLength = response.trim().length;
+  
+  if (wordCount < 5) {
+    return {
+      responseScore: 2,
+      competencyScores: { accuracy: 2, application: 2, communication: 3, problemSolving: 2, completeness: 2 },
+      feedback: "Response is too brief. Please provide more detailed explanations.",
+      isComplete: false,
+      reasoningForNext: "Need more comprehensive response"
+    };
+  }
+  
+  if (wordCount < 15) {
+    return {
+      responseScore: 4,
+      competencyScores: { accuracy: 4, application: 4, communication: 5, problemSolving: 4, completeness: 3 },
+      feedback: "Brief response showing basic understanding. Consider adding more detail about your approach.",
+      isComplete: false,
+      reasoningForNext: "Response shows minimal understanding, needs elaboration"
+    };
+  }
+  
+  return null; // Use AI scoring for longer responses
 }
 
 // Smart prompt selection based on context
@@ -173,11 +310,47 @@ export function preloadCommonResponses(): void {
   });
 }
 
+// New: Preload common certification scenarios
+export function preloadCertificationScenarios(): void {
+  const commonScenarios = [
+    'safety protocols',
+    'equipment operation',
+    'troubleshooting procedures',
+    'quality assurance',
+    'emergency response',
+    'standard operating procedures'
+  ];
+  
+  commonScenarios.forEach(scenario => {
+    // Preload scoring patterns
+    const scoringKey = generateCacheKey(`cert_scoring_${scenario}`);
+    if (!scoringCache.has(scoringKey)) {
+      scoringCache.set(scoringKey, {
+        data: null,
+        timestamp: Date.now(),
+        hits: 0
+      });
+    }
+    
+    // Preload question patterns
+    const questionKey = generateCacheKey(`cert_question_${scenario}`);
+    if (!responseCache.has(questionKey)) {
+      responseCache.set(questionKey, {
+        data: null,
+        timestamp: Date.now(),
+        hits: 0
+      });
+    }
+  });
+}
+
 // Get cache statistics
 export function getCacheStats() {
   return {
     prompts: templateCache.size,
     responses: responseCache.size,
+    scoring: scoringCache.size,
+    audio: audioCache.size,
     totalHits: Array.from(responseCache.values()).reduce((sum, entry) => sum + entry.hits, 0)
   };
 }
@@ -186,6 +359,8 @@ export function getCacheStats() {
 export function clearCaches(): void {
   promptCache.clear();
   responseCache.clear();
+  scoringCache.clear();
+  audioCache.clear();
   // Keep template cache as it contains preloaded content
 }
 
@@ -193,12 +368,14 @@ export function clearCaches(): void {
 export function clearCache() {
   console.log('Clearing response cache...');
   responseCache.clear();
+  scoringCache.clear();
   console.log('Cache cleared successfully');
 }
 
 // Auto-clear cache in development to ensure fresh analysis
 if (process.env.NODE_ENV !== 'production') {
-  clearCache();
+  // Clear caches every 30 minutes in development
+  setInterval(() => clearCache(), 30 * 60 * 1000);
 }
 
 // Initialize on module load
