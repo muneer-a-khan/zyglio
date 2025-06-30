@@ -569,10 +569,7 @@ export default function CreateProcedure() {
               )}
             </div>
             <div className="flex flex-col gap-2">
-              <UserSyncButton />
-              <p className="text-xs text-gray-500 text-center">
-                If you get user errors, try syncing
-              </p>
+              {/* UserSyncButton removed due to incognito issues */}
             </div>
           </div>
         </div>
