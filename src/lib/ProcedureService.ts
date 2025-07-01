@@ -634,11 +634,11 @@ class ProcedureService {
   /**
    * Gets all procedures
    */
-  async getAllProcedures(): Promise<Procedure[]> {
+  async getAllProcedures(ownedOnly: boolean = false): Promise<Procedure[]> {
     try {
       // On client side, use API
       if (!this.isServer) {
-        return this.getAllProceduresViaApi();
+        return this.getAllProceduresViaApi(ownedOnly);
       }
       
       // On server, use Prisma
@@ -660,7 +660,7 @@ class ProcedureService {
       const learningTasks = await prisma.learningTask.findMany({
         where: {
           id: { in: taskIds }
-          // No userId filter
+          // No userId filter here - will be applied in client-side filtering if needed
         }
       });
       
@@ -703,19 +703,27 @@ class ProcedureService {
       
       // Try API fallback if we're on the client side or if Prisma fails
       if (!this.isServer || !prisma) {
-        return this.getAllProceduresViaApi();
+        return this.getAllProceduresViaApi(ownedOnly);
       }
       return [];
     }
+  }
+
+  /**
+   * Gets only the procedures owned by the current user
+   */
+  async getOwnedProcedures(): Promise<Procedure[]> {
+    return this.getAllProcedures(true);
   }
   
   /**
    * Gets all procedures via API when Prisma is not available
    */
-  private async getAllProceduresViaApi(): Promise<Procedure[]> {
+  private async getAllProceduresViaApi(ownedOnly: boolean = false): Promise<Procedure[]> {
     try {
-      console.log('Fetching all procedures via API');
-      const response = await fetch('/api/procedures');
+      const url = ownedOnly ? '/api/procedures?owned=true' : '/api/procedures';
+      console.log(`Fetching ${ownedOnly ? 'owned' : 'all'} procedures via API`);
+      const response = await fetch(url);
       
       // Handle errors gracefully
       if (!response.ok) {
