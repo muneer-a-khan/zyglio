@@ -117,16 +117,29 @@ export async function GET(
     const steps = stepsData.map(step => ({
       id: step.id,
       content: step.content,
-      // comments: step.notes ? [step.notes] : [] // This needs to match ProcedureStep schema
-      order: step.index,
-      isCheckpoint: step.isCheckpoint,
-      expectedResponses: step.expectedResponses
+      comments: step.notes ? [step.notes] : [],
+      order: step.index
     }));
 
     // Get the learning task associated with this procedure
     const task = await prisma.learningTask.findFirst({
       where: { id: procedureData.taskId }
     });
+
+    if (!task) {
+      return NextResponse.json(
+        { success: false, message: "Procedure task not found" },
+        { status: 404 }
+      );
+    }
+
+    // Verify that the current user owns this procedure
+    if (task.userId !== session.user.id) {
+      return NextResponse.json(
+        { success: false, message: "Access denied. You can only view procedures you created." },
+        { status: 403 }
+      );
+    }
 
     // Format procedure with fresh data
     const procedure = {

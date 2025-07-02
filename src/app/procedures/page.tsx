@@ -2,15 +2,17 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import { useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Search, FileText, Plus, Calendar, Tag } from "lucide-react";
+import { Search, FileText, Plus, Calendar, Tag, Lock, Copy } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { procedureService, Procedure } from "@/lib/services";
 import { format } from "date-fns";
 
 export default function ProceduresPage() {
+  const { data: session, status } = useSession();
   const [procedures, setProcedures] = useState<Procedure[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [loading, setLoading] = useState(true);
@@ -21,16 +23,23 @@ export default function ProceduresPage() {
       try {
         setLoading(true);
         setError(null);
-        console.log("Fetching procedures from API...");
+        console.log("Fetching owned procedures from API...");
         
-        // Make direct API call for debugging
-        const apiResponse = await fetch('/api/procedures');
-        const apiData = await apiResponse.json();
-        console.log("Direct API response:", apiData);
+        // If user is not authenticated, don't load any procedures
+        if (status === "unauthenticated") {
+          setProcedures([]);
+          setLoading(false);
+          return;
+        }
         
-        // Use the service to get procedures
-        const data = await procedureService.getAllProcedures();
-        console.log(`Received ${data.length} procedures from API`, data);
+        // Wait for session to be loaded
+        if (status === "loading") {
+          return;
+        }
+        
+        // Use the service to get only owned procedures
+        const data = await procedureService.getOwnedProcedures();
+        console.log(`Received ${data.length} owned procedures from API`, data);
         setProcedures(data);
       } catch (error) {
         console.error("Error loading procedures:", error);
@@ -41,7 +50,7 @@ export default function ProceduresPage() {
     };
 
     loadProcedures();
-  }, []);
+  }, [status]); // Re-run when session status changes
 
   const filteredProcedures = procedures.filter((procedure) => {
     if (!searchTerm) return true;
@@ -73,7 +82,22 @@ export default function ProceduresPage() {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
-          <p className="text-lg">Loading procedures...</p>
+          <p className="text-lg">Loading your procedures...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (status === "unauthenticated") {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <Lock className="h-12 w-12 mx-auto text-gray-400 mb-4" />
+          <h2 className="text-2xl font-bold mb-2">Sign In Required</h2>
+          <p className="text-gray-500 mb-4">You need to sign in to view your procedures.</p>
+          <Link href="/auth/signin">
+            <Button>Sign In</Button>
+          </Link>
         </div>
       </div>
     );
@@ -100,12 +124,12 @@ export default function ProceduresPage() {
       <main className="container py-8">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
           <div>
-            <h1 className="text-3xl font-bold mb-2">Procedures</h1>
+            <h1 className="text-3xl font-bold mb-2">My Procedures</h1>
             <p className="text-gray-500">
-              Browse our complete collection of voice-based procedural learning resources
+              Manage and view your voice-based procedural learning resources
             </p>
             <p className="text-sm text-gray-400 mt-1">
-              Showing {filteredProcedures.length} of {procedures.length} procedures
+              Showing {filteredProcedures.length} of {procedures.length} procedures you've created
             </p>
           </div>
           
@@ -120,7 +144,7 @@ export default function ProceduresPage() {
           <form onSubmit={handleSearch} className="flex w-full max-w-sm items-center space-x-2">
             <Input
               type="search"
-              placeholder="Search procedures..."
+              placeholder="Search your procedures..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
@@ -142,16 +166,18 @@ export default function ProceduresPage() {
               <div>
                 <p className="text-gray-500">
                   {procedures.length === 0 
-                    ? "There are no procedures available yet. Create your first procedure."
-                    : "No published procedures found. Your procedures might need to be configured with simulation settings."}
+                    ? "You haven't created any procedures yet. Create your first procedure to get started."
+                    : "No procedures match your search. Try different keywords or create a new procedure."}
                 </p>
-                <p className="text-sm text-gray-400 mt-2">
-                  Total procedures in database: {procedures.length}
-                </p>
+                {procedures.length === 0 && (
+                  <p className="text-sm text-gray-400 mt-2">
+                    Procedures you create will appear here and will only be visible to you.
+                  </p>
+                )}
               </div>
             )}
             <Link href="/create" className="mt-4 inline-block">
-              <Button className="mt-4">Create New Procedure</Button>
+              <Button className="mt-4">Create Your First Procedure</Button>
             </Link>
           </div>
         ) : (
@@ -194,11 +220,19 @@ export default function ProceduresPage() {
                   </div>
                 </CardContent>
                 <CardFooter className="pt-3 border-t">
-                  <Link href={`/procedures/${procedure.id}`} className="w-full">
-                    <Button variant="default" className="w-full">
-                      View Procedure
-                    </Button>
-                  </Link>
+                  <div className="flex w-full gap-2">
+                    <Link href={`/procedures/${procedure.id}`} className="flex-1">
+                      <Button variant="default" className="w-full">
+                        View Procedure
+                      </Button>
+                    </Link>
+                    <Link href={`/procedures/clone/${procedure.id}`} className="flex-1">
+                      <Button variant="outline" className="w-full flex items-center gap-2">
+                        <Copy className="h-4 w-4" />
+                        Create Copy
+                      </Button>
+                    </Link>
+                  </div>
                 </CardFooter>
               </Card>
             ))}
