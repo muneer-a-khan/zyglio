@@ -34,11 +34,6 @@
 - **Competency Assessments**: Detailed scoring across multiple competency areas
 - **Time Tracking**: Monitor engagement and completion times
 
-### 🤖 RAG (Retrieval-Augmented Generation) System
-- **Context-Aware Content**: Enhanced procedure creation with relevant contextual information
-- **Document Knowledge Base**: Vector-based similarity search for content enhancement
-- **AI-Powered Interviews**: Contextually informed questions during voice sessions
-
 ## 💻 Technology Stack
 
 - **Frontend**: Next.js 14, React 18, TypeScript, Tailwind CSS
@@ -52,7 +47,6 @@
   - DeepSeek API (content generation)
   - OpenAI (voice transcription, scoring)
   - ElevenLabs (text-to-speech)
-- **Vector Database**: pgvector for RAG system
 - **Media Processing**: FFmpeg, React Dropzone
 - **Form Handling**: React Hook Form with Zod validation
 
