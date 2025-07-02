@@ -34,11 +34,6 @@
 - **Competency Assessments**: Detailed scoring across multiple competency areas
 - **Time Tracking**: Monitor engagement and completion times
 
-### 🤖 RAG (Retrieval-Augmented Generation) System
-- **Context-Aware Content**: Enhanced procedure creation with relevant contextual information
-- **Document Knowledge Base**: Vector-based similarity search for content enhancement
-- **AI-Powered Interviews**: Contextually informed questions during voice sessions
-
 ## 💻 Technology Stack
 
 - **Frontend**: Next.js 14, React 18, TypeScript, Tailwind CSS
@@ -52,7 +47,6 @@
   - DeepSeek API (content generation)
   - OpenAI (voice transcription, scoring)
   - ElevenLabs (text-to-speech)
-- **Vector Database**: pgvector for RAG system
 - **Media Processing**: FFmpeg, React Dropzone
 - **Form Handling**: React Hook Form with Zod validation
 
@@ -69,17 +63,16 @@
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/muneer-a-khan/zyglio.git
-   cd zyglio
+   git clone https://github.com/Zyglio/voice-system.git
    ```
 
 2. **Install dependencies:**
    ```bash
-   npm install
+   npm install --legacy-peer-deps
    ```
 
 3. **Environment Setup:**
-   Create a `.env.local` file with the following:
+   Create a `.env` file with the following:
    ```env
    # Database
    DATABASE_URL="postgresql://username:password@localhost:5432/zyglio_db"
@@ -101,11 +94,9 @@
 
 4. **Database Setup:**
    ```bash
-   # Run Prisma migrations
-   npx prisma migrate dev
-   
-   # Enable vector extension for RAG
-   npx prisma db execute --file=prisma/migrations/match_chunks_function.sql
+   # Run Prisma
+   npx prisma db pull
+   npx prisma generate
    ```
 
 5. **Start Development Server:**
@@ -229,17 +220,14 @@ refactor(api): extract common validation logic
 
 1. **Self-Review**: Review your own code before submitting
 2. **Automated Checks**: Ensure all tests and linting pass
-3. **Peer Review**: At least one team member must approve
+3. **Peer Review**: Request review from Muneer or Omar
 4. **Testing**: Verify functionality in development environment
-5. **Merge**: Use "Squash and merge" for feature branches
 
 #### PR Requirements:
 
 ✅ **Required Checks:**
-- [ ] All tests pass
-- [ ] No linting errors
 - [ ] No TypeScript errors
-- [ ] Build succeeds
+- [ ] Build succeeds (npm run build)
 - [ ] No console errors in browser
 - [ ] Responsive design verified (if UI changes)
 - [ ] Database migrations run successfully (if schema changes)
@@ -360,7 +348,7 @@ Common issues and solutions:
 
 ## 📝 Contributing
 
-1. Fork the repository
+1. REFER TO GUIDELINES ABOVE
 2. Create a feature branch following naming conventions
 3. Make your changes with proper testing
 4. Submit a pull request following the guidelines above
@@ -379,7 +367,7 @@ For technical support or questions:
 
 ---
 
-**Last Updated**: January 2025  
+**Last Updated**: July 2025  
 **Version**: 2.0.0  
 **Next.js Version**: 14.x  
 **Node.js Version**: 18+
