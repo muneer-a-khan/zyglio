@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Mic, MicOff, Loader2, Volume2, AlertCircle, CheckCircle, Play, Pause, StopCircle, Sparkles, Brain, HelpCircle, MessageSquare, Activity } from "lucide-react";
+import { Mic, MicOff, Loader2, Volume2, AlertCircle, CheckCircle, Play, Pause, StopCircle, Sparkles, Brain, HelpCircle, MessageSquare, Activity, Info, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { MicrophoneTest } from './microphone-test';
 import { Badge } from "@/components/ui/badge";
@@ -58,6 +58,15 @@ interface StreamingState {
   wordCount: number;
 }
 
+// Word limit constants
+const MAX_RESPONSE_WORDS = 200; // Adjust this number as needed
+const WARNING_THRESHOLD = 180; // Show warning when approaching limit
+
+// Helper function to count words
+const countWords = (text: string): number => {
+  return text.trim().split(/\s+/).filter(word => word.length > 0).length;
+};
+
 export default function VoiceInterview({
   procedureId,
   initialSessionId,
@@ -93,6 +102,10 @@ export default function VoiceInterview({
   const [isEditingTranscript, setIsEditingTranscript] = useState(false);
   const [editedTranscript, setEditedTranscript] = useState('');
   const [isReadyToSubmit, setIsReadyToSubmit] = useState(false);
+  
+  // Word count and limit states
+  const [responseWordCount, setResponseWordCount] = useState(0);
+  const [isAtWordLimit, setIsAtWordLimit] = useState(false);
   
   // Refs
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -193,6 +206,11 @@ export default function VoiceInterview({
           // Update display: accumulated final + current interim
           const displayTranscript = (accumulatedFinalTranscriptRef.current + ' ' + interimTranscript).trim();
           setAccumulatedTranscript(displayTranscript);
+          
+          // Update real-time word count
+          const currentWordCount = countWords(displayTranscript);
+          setResponseWordCount(currentWordCount);
+          setIsAtWordLimit(currentWordCount >= MAX_RESPONSE_WORDS);
         };
   
         recognition.onerror = (event: any) => {
@@ -656,6 +674,10 @@ Generate one specific follow-up question to get more detail. Be concise.`
         setEditedTranscript('');
         setIsReadyToSubmit(false);
         
+        // Reset word count states for new recording
+        setResponseWordCount(0);
+        setIsAtWordLimit(false);
+        
         // Clear streaming state
         setStreamingState({
           agents: {},
@@ -754,6 +776,11 @@ Generate one specific follow-up question to get more detail. Be concise.`
         setFinalTranscript(whisperTranscript);
         setAccumulatedTranscript(whisperTranscript);
         
+        // Update word count for Whisper transcript
+        const wordCount = countWords(whisperTranscript);
+        setResponseWordCount(wordCount);
+        setIsAtWordLimit(wordCount >= MAX_RESPONSE_WORDS);
+        
         toast.success('High-accuracy transcription complete! You can edit it if needed before submitting.');
         
         // Initialize the editing state for user review
@@ -792,6 +819,17 @@ Generate one specific follow-up question to get more detail. Be concise.`
     
     if (!completeTranscript) {
       toast.error('No speech detected. Please try again.');
+      return;
+    }
+
+    // Check word limit and warn user
+    const wordCount = countWords(completeTranscript);
+    if (wordCount > MAX_RESPONSE_WORDS) {
+      toast.error(`Your response is ${wordCount} words, which exceeds the ${MAX_RESPONSE_WORDS} word limit. Please edit your response to prevent processing issues.`);
+      setIsEditingTranscript(true);
+      setEditedTranscript(completeTranscript);
+      setResponseWordCount(wordCount);
+      setIsAtWordLimit(true);
       return;
     }
 
@@ -899,13 +937,39 @@ Generate one specific follow-up question to get more detail. Be concise.`
   const handleEditTranscript = () => {
     setEditedTranscript(accumulatedTranscript);
     setIsEditingTranscript(true);
+    setResponseWordCount(countWords(accumulatedTranscript));
+  };
+
+  // Handle transcript changes with word limiting
+  const handleTranscriptChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const text = e.target.value;
+    const wordCount = countWords(text);
+    
+    // If at word limit, only allow deletions or edits that don't increase word count
+    if (wordCount > MAX_RESPONSE_WORDS) {
+      // Don't update if we're over the limit
+      return;
+    }
+    
+    setEditedTranscript(text);
+    setResponseWordCount(wordCount);
+    setIsAtWordLimit(wordCount >= MAX_RESPONSE_WORDS);
   };
 
   const handleSaveTranscriptEdit = () => {
+    const wordCount = countWords(editedTranscript);
+    
+    if (wordCount > MAX_RESPONSE_WORDS) {
+      toast.error(`Please reduce your response to ${MAX_RESPONSE_WORDS} words or fewer before saving.`);
+      return;
+    }
+    
     if (editedTranscript.trim()) {
       setAccumulatedTranscript(editedTranscript);
       accumulatedFinalTranscriptRef.current = editedTranscript;
       setIsEditingTranscript(false);
+      setResponseWordCount(0);
+      setIsAtWordLimit(false);
       toast.success('Transcript updated!');
     }
   };
@@ -913,11 +977,16 @@ Generate one specific follow-up question to get more detail. Be concise.`
   const handleCancelTranscriptEdit = () => {
     setEditedTranscript('');
     setIsEditingTranscript(false);
+    setResponseWordCount(0);
+    setIsAtWordLimit(false);
   };
 
   // Submit the final answer for processing
   const submitAnswer = async () => {
     setIsReadyToSubmit(false);
+    // Reset word count states after submission
+    setResponseWordCount(0);
+    setIsAtWordLimit(false);
     await processCompleteResponse();
   };
 
@@ -1486,6 +1555,86 @@ Generate one specific follow-up question to get more detail. Be concise.`
                   </div>
                 )}
 
+                {/* Word Limit Notice - Always Visible */}
+                {!interviewCompleted && (
+                  <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                    <div className="flex items-start gap-2">
+                      <Info className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" />
+                      <div className="text-sm text-blue-700 flex-1">
+                        <p className="font-medium">Response Guidelines:</p>
+                        <p className="mt-1">
+                          For optimal processing, please keep responses under {MAX_RESPONSE_WORDS} words. 
+                          Don't worry about covering everything in one answer - follow-up questions will give you 
+                          opportunities to share additional details and insights.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Real-time Word Count */}
+                {accumulatedTranscript && !isEditingTranscript && (
+                  <div className="flex items-center justify-between p-2 bg-gray-100 rounded text-sm">
+                    <span className="text-gray-600">Current response:</span>
+                    <div className="flex items-center gap-2">
+                      <span className={`font-medium ${
+                        countWords(accumulatedTranscript) > MAX_RESPONSE_WORDS 
+                          ? 'text-red-600' 
+                          : countWords(accumulatedTranscript) >= WARNING_THRESHOLD 
+                            ? 'text-yellow-600' 
+                            : 'text-gray-700'
+                      }`}>
+                        {countWords(accumulatedTranscript)}/{MAX_RESPONSE_WORDS} words
+                      </span>
+                      {countWords(accumulatedTranscript) > MAX_RESPONSE_WORDS && (
+                        <Badge variant="outline" className="text-xs text-red-600 border-red-200">
+                          Over limit - please edit
+                        </Badge>
+                      )}
+                      {countWords(accumulatedTranscript) >= WARNING_THRESHOLD && countWords(accumulatedTranscript) <= MAX_RESPONSE_WORDS && (
+                        <Badge variant="outline" className="text-xs text-yellow-600 border-yellow-200">
+                          Approaching limit
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Word Limit Warning - Visible During Recording */}
+                {accumulatedTranscript && !isEditingTranscript && countWords(accumulatedTranscript) >= WARNING_THRESHOLD && (
+                  <div className={`p-3 rounded-lg border ${
+                    countWords(accumulatedTranscript) > MAX_RESPONSE_WORDS 
+                      ? 'bg-red-50 border-red-200' 
+                      : 'bg-yellow-50 border-yellow-200'
+                  }`}>
+                    <div className="flex items-start gap-2">
+                      {countWords(accumulatedTranscript) > MAX_RESPONSE_WORDS ? (
+                        <AlertCircle className="w-4 h-4 text-red-600 mt-0.5 flex-shrink-0" />
+                      ) : (
+                        <AlertTriangle className="w-4 h-4 text-yellow-600 mt-0.5 flex-shrink-0" />
+                      )}
+                      <div className="text-sm">
+                        <p className={`font-medium ${
+                          countWords(accumulatedTranscript) > MAX_RESPONSE_WORDS ? 'text-red-700' : 'text-yellow-700'
+                        }`}>
+                          {countWords(accumulatedTranscript) > MAX_RESPONSE_WORDS 
+                            ? 'Word limit exceeded!' 
+                            : 'Approaching word limit'
+                          }
+                        </p>
+                        <p className={`mt-1 ${
+                          countWords(accumulatedTranscript) > MAX_RESPONSE_WORDS ? 'text-red-600' : 'text-yellow-600'
+                        }`}>
+                          {countWords(accumulatedTranscript) > MAX_RESPONSE_WORDS 
+                            ? 'Consider stopping here and continuing your thoughts in the next question. You can also edit your response before submitting.'
+                            : `You have ${MAX_RESPONSE_WORDS - countWords(accumulatedTranscript)} words remaining. Consider wrapping up your current point.`
+                          }
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {/* Live transcript display */}
                 {(accumulatedTranscript || isEditingTranscript) && (
                   <div className="p-3 bg-gray-50 border rounded-lg">
@@ -1547,15 +1696,102 @@ Generate one specific follow-up question to get more detail. Be concise.`
                     
                     {/* Transcript content */}
                     {isEditingTranscript ? (
-                      <textarea
-                        value={editedTranscript}
-                        onChange={(e) => setEditedTranscript(e.target.value)}
-                        className="w-full h-24 p-2 text-gray-900 bg-white border rounded resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder="Edit your transcript here..."
-                        autoFocus
-                      />
+                      <div className="space-y-3">
+                        <div className="relative">
+                          <textarea
+                            value={editedTranscript}
+                            onChange={handleTranscriptChange}
+                            className={`w-full h-32 p-3 text-gray-900 bg-white border rounded resize-none focus:outline-none focus:ring-2 ${
+                              isAtWordLimit 
+                                ? 'border-red-300 focus:ring-red-500' 
+                                : responseWordCount >= WARNING_THRESHOLD 
+                                  ? 'border-yellow-300 focus:ring-yellow-500' 
+                                  : 'border-gray-300 focus:ring-blue-500'
+                            }`}
+                            placeholder="Edit your transcript here..."
+                            autoFocus
+                          />
+                          
+                          {/* Word count display */}
+                          <div className="absolute bottom-2 right-2 text-xs px-2 py-1 rounded bg-white border shadow-sm">
+                            <span className={`font-medium ${
+                              isAtWordLimit 
+                                ? 'text-red-600' 
+                                : responseWordCount >= WARNING_THRESHOLD 
+                                  ? 'text-yellow-600' 
+                                  : 'text-gray-600'
+                            }`}>
+                              {responseWordCount}/{MAX_RESPONSE_WORDS} words
+                            </span>
+                          </div>
+                        </div>
+                        
+                        {/* Word limit warning */}
+                        {responseWordCount >= WARNING_THRESHOLD && (
+                          <div className={`p-3 rounded-lg border ${
+                            isAtWordLimit 
+                              ? 'bg-red-50 border-red-200' 
+                              : 'bg-yellow-50 border-yellow-200'
+                          }`}>
+                            <div className="flex items-start gap-2">
+                              {isAtWordLimit ? (
+                                <AlertCircle className="w-4 h-4 text-red-600 mt-0.5 flex-shrink-0" />
+                              ) : (
+                                <AlertTriangle className="w-4 h-4 text-yellow-600 mt-0.5 flex-shrink-0" />
+                              )}
+                              <div className="text-sm">
+                                <p className={`font-medium ${
+                                  isAtWordLimit ? 'text-red-700' : 'text-yellow-700'
+                                }`}>
+                                  {isAtWordLimit 
+                                    ? 'Word limit reached!' 
+                                    : 'Approaching word limit'
+                                  }
+                                </p>
+                                <p className={`mt-1 ${
+                                  isAtWordLimit ? 'text-red-600' : 'text-yellow-600'
+                                }`}>
+                                  {isAtWordLimit 
+                                    ? 'Please edit your response to stay within the limit. Don\'t worry - future questions will ask about additional details you want to cover.'
+                                    : `You have ${MAX_RESPONSE_WORDS - responseWordCount} words remaining. Consider wrapping up your current point.`
+                                  }
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                        
+                        {/* Helpful note about response limits */}
+                        <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                          <div className="flex items-start gap-2">
+                            <Info className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" />
+                            <div className="text-sm text-blue-700">
+                              <p className="font-medium">About response limits:</p>
+                              <p className="mt-1">
+                                We limit responses to {MAX_RESPONSE_WORDS} words to ensure optimal processing and prevent technical issues. 
+                                Don't worry if you have more to say - the interview will continue with follow-up questions that 
+                                give you opportunities to share additional details and insights.
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
                     ) : (
-                      <p className="text-gray-900 whitespace-pre-wrap">{accumulatedTranscript}</p>
+                      <div className="space-y-2">
+                        <p className="text-gray-900 whitespace-pre-wrap">{accumulatedTranscript}</p>
+                        
+                        {/* Word count display for read-only view */}
+                        {accumulatedTranscript && (
+                          <div className="text-xs text-gray-500 flex items-center gap-2">
+                            <span>{countWords(accumulatedTranscript)} words</span>
+                            {countWords(accumulatedTranscript) > MAX_RESPONSE_WORDS && (
+                              <Badge variant="outline" className="text-xs text-red-600 border-red-200">
+                                Over limit - please edit
+                              </Badge>
+                            )}
+                          </div>
+                        )}
+                      </div>
                     )}
                     
                     {isEditingTranscript && (
