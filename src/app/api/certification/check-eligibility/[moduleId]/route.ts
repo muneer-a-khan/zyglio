@@ -5,7 +5,7 @@ import { prisma } from '@/lib/prisma';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { moduleId: string } }
+  { params }: { params: Promise<{ moduleId: string }> }
 ) {
   try {
     const session = await getServerSession(authOptions);
@@ -15,7 +15,7 @@ export async function GET(
     }
     
     const userId = session.user.id;
-    const { moduleId } = params;
+    const { moduleId } = await params;
     
     if (!moduleId) {
       return NextResponse.json({ error: 'Module ID is required' }, { status: 400 });
