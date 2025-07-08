@@ -11,7 +11,7 @@ import { ElevenLabsVoiceCertification } from "@/components/training/certificatio
 interface CertificationModule {
   id: string;
   title: string;
-  eligibile: boolean;
+  eligible: boolean;
   completedQuizzes: number;
   totalQuizzes: number;
   progress: number;

@@ -295,7 +295,7 @@ export default function EditTrainingModulePage() {
               <ArrowLeft className="w-4 h-4" />
               Back
             </Button>
-            <Badge variant={module.isApproved ? "success" : "secondary"}>
+            <Badge variant={module.isApproved ? "secondary" : "outline"}>
               {module.isApproved ? 'Approved' : 'Draft'}
             </Badge>
           </div>

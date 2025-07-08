@@ -75,7 +75,7 @@ export default function CertificationPage() {
   const getStatusBadge = (module: EligibleModule) => {
     switch (module.certificationStatus) {
       case "COMPLETED":
-        return <Badge variant="success" className="bg-green-100 text-green-800 hover:bg-green-200">Certified</Badge>;
+        return <Badge variant="secondary" className="bg-green-100 text-green-800 hover:bg-green-200">Certified</Badge>;
       case "FAILED":
         return <Badge variant="destructive" className="bg-red-100 text-red-800 hover:bg-red-200">Failed</Badge>;
       case "VOICE_INTERVIEW_IN_PROGRESS":

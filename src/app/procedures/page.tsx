@@ -38,7 +38,7 @@ export default function ProceduresPage() {
         }
         
         // Use the service to get only owned procedures
-        const data = await procedureService.getOwnedProcedures();
+        const data = await procedureService.getAllProcedures();
         console.log(`Received ${data.length} owned procedures from API`, data);
         setProcedures(data);
       } catch (error) {

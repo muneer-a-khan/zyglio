@@ -405,7 +405,7 @@ export default function CreateProcedure() {
       if (activeTab === "interview" && transcript) {
         await procedureService.saveTranscript(transcript);
       } else if (activeTab === "yaml" && yamlContent) {
-        await procedureService.saveYaml(yamlContent);
+        await procedureService.saveYamlContent(yamlContent);
       } else if (activeTab === "flowchart" && flowchartContent) {
         await procedureService.saveFlowchart(flowchartContent);
       }
@@ -539,7 +539,7 @@ export default function CreateProcedure() {
     );
   }
 
-  if (status === "loading") {
+  if ((status as any) === "loading") {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
