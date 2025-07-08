@@ -461,11 +461,11 @@ export function TriggerLogicEditor({
               <Textarea
                 id="condition"
                 {...register('condition')}
-                placeholder="e.g., state == 'ready' or temperature > 100"
+                placeholder="e.g., state == 'ready' or temperature &gt; 100"
                 className="mt-1"
               />
               <div className="text-xs text-gray-600 mt-1">
-                Use object properties, states, or custom conditions. Examples: state == 'active', temperature > 50, contains('text')
+                Use object properties, states, or custom conditions. Examples: state == 'active', temperature &gt; 50, contains('text')
               </div>
               {errors.condition && (
                 <p className="text-sm text-red-600 mt-1">{errors.condition.message}</p>
