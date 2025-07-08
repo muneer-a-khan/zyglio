@@ -18,22 +18,27 @@ interface CertificationModule {
 }
 
 interface ModuleCertificationPageProps {
-  params: {
+  params: Promise<{
     moduleId: string;
-  };
+  }>;
 }
 
 export default function ModuleCertificationPage({
-  params: { moduleId },
+  params,
 }: ModuleCertificationPageProps) {
   const { data: session, status } = useSession();
   const router = useRouter();
   const [moduleData, setModuleData] = useState<CertificationModule | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [moduleId, setModuleId] = useState<string>("");
 
   useEffect(() => {
-    if (status === "loading") return;
+    params.then(({ moduleId }) => setModuleId(moduleId));
+  }, [params]);
+
+  useEffect(() => {
+    if (status === "loading" || !moduleId) return;
     if (!session) {
       router.push("/auth/signin");
       return;

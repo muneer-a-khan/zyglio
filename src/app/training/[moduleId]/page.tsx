@@ -21,7 +21,7 @@ function ModuleErrorBoundary({ children, fallback }: { children: React.ReactNode
 export default async function TrainingModulePage({
   params
 }: {
-  params: { moduleId: string }
+  params: Promise<{ moduleId: string }>
 }) {
   const session = await getAuthSession();
   

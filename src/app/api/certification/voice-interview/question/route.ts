@@ -71,7 +71,7 @@ export async function POST(request: NextRequest) {
         certificationId,
         userId: certification.userId,
         moduleId: certification.moduleId,
-        eventType: 'VOICE_INTERVIEW_FIRST_QUESTION',
+        eventType: 'TRAINING_STARTED',
         eventData: {
           question: questionData.aiQuestionText?.substring(0, 100) + "..."
         }

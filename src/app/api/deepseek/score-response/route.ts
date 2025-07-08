@@ -129,7 +129,7 @@ Return ONLY valid JSON with this exact structure:
       }
 
       // Parse and validate response
-      let scoringData;
+      let scoringData: any;
       try {
         const cleanedResponse = aiResponse
           .replace(/```json\s*/g, '')

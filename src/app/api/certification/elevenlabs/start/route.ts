@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
       where: { id: moduleId },
       include: {
         procedure: true,
-        quizzes: {
+        quizBanks: {
           include: {
             attempts: {
               where: { userId },
@@ -60,8 +60,8 @@ export async function POST(request: NextRequest) {
       subtopics.every(subtopic => completedSubtopics.includes(subtopic.id));
 
     // Check quiz completion
-    const requiredQuizzes = module.quizzes.length;
-    const passedQuizzes = module.quizzes.reduce((count, quiz) => {
+    const requiredQuizzes = module.quizBanks.length;
+    const passedQuizzes = module.quizBanks.reduce((count, quiz) => {
       const latestAttempt = quiz.attempts[0];
       return count + (latestAttempt?.passed ? 1 : 0);
     }, 0);
@@ -90,7 +90,7 @@ export async function POST(request: NextRequest) {
     let averageScore = 0;
     
     if (passedQuizzes > 0) {
-      const allPassed = module.quizzes.map(quiz => 
+      const allPassed = module.quizBanks.map(quiz => 
         quiz.attempts.find(attempt => attempt.passed)
       ).filter(Boolean);
       

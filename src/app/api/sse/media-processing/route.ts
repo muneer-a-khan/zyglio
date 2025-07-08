@@ -1,8 +1,6 @@
 import { NextRequest } from 'next/server';
 import { getAuthSession } from '@/lib/auth';
-
-// Store active connections
-const connections = new Map<string, ReadableStreamDefaultController>();
+import { SSEService } from '@/lib/services/sse.service';
 
 export async function GET(request: NextRequest) {
   const session = await getAuthSession();
@@ -23,7 +21,7 @@ export async function GET(request: NextRequest) {
       const connectionId = `${session.user.id}-${taskId}`;
       
       // Store the controller for this connection
-      connections.set(connectionId, controller);
+      SSEService.addConnection(connectionId, controller);
       
       // Send initial connection message
       const data = JSON.stringify({
@@ -39,7 +37,7 @@ export async function GET(request: NextRequest) {
       // Handle connection cleanup
       request.signal.addEventListener('abort', () => {
         console.log(`SSE connection closed for task ${taskId}`);
-        connections.delete(connectionId);
+        SSEService.removeConnection(connectionId);
         try {
           controller.close();
         } catch (error) {
@@ -61,81 +59,4 @@ export async function GET(request: NextRequest) {
   });
 }
 
-// Function to broadcast updates to all connected clients for a task
-export function broadcastProcessingUpdate(
-  userId: string, 
-  taskId: string, 
-  update: {
-    mediaItemId: string;
-    status: string;
-    progress: number;
-    stage: string;
-    errorMessage?: string;
-    summary?: string;
-    keyTopics?: string[];
-    filename?: string;
-  }
-) {
-  const connectionId = `${userId}-${taskId}`;
-  const controller = connections.get(connectionId);
-  
-  if (controller) {
-    try {
-      const data = JSON.stringify({
-        type: 'processing_update',
-        taskId,
-        ...update,
-        timestamp: new Date().toISOString()
-      });
-      
-      controller.enqueue(`data: ${data}\n\n`);
-      console.log(`Broadcasted update for ${connectionId}:`, update.stage);
-    } catch (error) {
-      console.error(`Failed to send SSE update for ${connectionId}:`, error);
-      // Remove invalid connection
-      connections.delete(connectionId);
-    }
-  }
-}
-
-// Function to broadcast completion message
-export function broadcastProcessingComplete(
-  userId: string,
-  taskId: string,
-  summary: {
-    total: number;
-    completed: number;
-    failed: number;
-    completedItems: Array<{
-      mediaItemId: string;
-      filename: string;
-      summary?: string;
-      keyTopics?: string[];
-    }>;
-    failedItems: Array<{
-      mediaItemId: string;
-      filename: string;
-      errorMessage: string;
-    }>;
-  }
-) {
-  const connectionId = `${userId}-${taskId}`;
-  const controller = connections.get(connectionId);
-  
-  if (controller) {
-    try {
-      const data = JSON.stringify({
-        type: 'processing_complete',
-        taskId,
-        summary,
-        timestamp: new Date().toISOString()
-      });
-      
-      controller.enqueue(`data: ${data}\n\n`);
-      console.log(`Broadcasted completion for ${connectionId}`);
-    } catch (error) {
-      console.error(`Failed to send SSE completion for ${connectionId}:`, error);
-      connections.delete(connectionId);
-    }
-  }
-} 
+ 

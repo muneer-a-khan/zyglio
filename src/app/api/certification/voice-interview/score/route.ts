@@ -79,7 +79,7 @@ export async function POST(request: NextRequest) {
       // PART 1: Fast keyword-based scoring
       // Count how many keywords are in the response
       const lowercaseResponse = userResponse.toLowerCase();
-      const matchedKeywords = keywords.filter(keyword => 
+      const matchedKeywords = keywords.filter((keyword: string) => 
         lowercaseResponse.includes(keyword.toLowerCase())
       );
       

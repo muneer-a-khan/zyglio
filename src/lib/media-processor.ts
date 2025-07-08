@@ -396,9 +396,9 @@ async function updateProcessingStatus(
   
   // Import the SSE broadcasting function dynamically to avoid circular imports
   try {
-    const { broadcastProcessingUpdate } = await import('@/app/api/sse/media-processing/route');
+    const { SSEService } = await import('@/lib/services/sse.service');
     
-    broadcastProcessingUpdate(context.userId, context.taskId, {
+    SSEService.broadcastProcessingUpdate(context.userId, context.taskId, {
       mediaItemId,
       status,
       progress,

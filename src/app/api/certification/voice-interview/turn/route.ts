@@ -72,7 +72,7 @@ export async function POST(request: NextRequest) {
           certificationId,
           userId: certification.userId,
           moduleId: certification.moduleId,
-          eventType: 'VOICE_INTERVIEW_TURN',
+          eventType: 'VOICE_INTERVIEW_STARTED',
           eventData: {
             turnNumber: turnData.conversationHistory?.length || 0,
             questionsAsked: turnData.questionsAsked || 0

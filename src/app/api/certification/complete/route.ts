@@ -46,7 +46,7 @@ export async function POST(request: NextRequest) {
         certificationId,
         userId: updatedCertification.userId,
         moduleId: updatedCertification.moduleId,
-        eventType: 'CERTIFICATION_COMPLETED',
+        eventType: 'CERTIFICATION_ACHIEVED',
         eventData: {
           overallScore,
           passed,

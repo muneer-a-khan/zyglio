@@ -114,13 +114,13 @@ export async function GET(request: NextRequest) {
       mediaItemId: item.id,
       filename: item.caption || 'Unnamed file',
       type: item.type,
-      status: item.ParsedMediaContent?.processingStatus || 'not_started',
-      errorMessage: item.ParsedMediaContent?.errorMessage,
-      summary: item.ParsedMediaContent?.summary,
-      keyTopics: item.ParsedMediaContent?.keyTopics || [],
-      confidence: item.ParsedMediaContent?.confidence,
-      processingTime: item.ParsedMediaContent?.processingTime,
-      lastUpdated: item.ParsedMediaContent?.updatedAt
+      status: item.ParsedMediaContent?.[0]?.processingStatus || 'not_started',
+      errorMessage: item.ParsedMediaContent?.[0]?.errorMessage,
+      summary: item.ParsedMediaContent?.[0]?.summary,
+              keyTopics: item.ParsedMediaContent?.[0]?.keyTopics || [],
+        confidence: item.ParsedMediaContent?.[0]?.confidence,
+              processingTime: item.ParsedMediaContent?.[0]?.processingTime,
+        lastUpdated: item.ParsedMediaContent?.[0]?.updatedAt
     }));
 
     // Check if all media is processed

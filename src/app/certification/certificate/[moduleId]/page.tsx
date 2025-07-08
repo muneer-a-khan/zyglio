@@ -21,23 +21,26 @@ interface Certificate {
   userName: string;
 }
 
-export default function CertificatePage({ params }: { params: { moduleId: string } }) {
+export default function CertificatePage({ params }: { params: Promise<{ moduleId: string }> }) {
   const { data: session, status } = useSession();
   const router = useRouter();
   const [certificate, setCertificate] = useState<Certificate | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [moduleId, setModuleId] = useState<string>("");
   const certificateRef = useRef<HTMLDivElement>(null);
   
-  // Safely unwrap params
-  const moduleId = React.useMemo(() => params.moduleId, [params]);
+  // Unwrap params Promise
+  useEffect(() => {
+    params.then(({ moduleId }) => setModuleId(moduleId));
+  }, [params]);
 
   useEffect(() => {
     if (status === "unauthenticated") {
       router.push("/auth/signin?callbackUrl=/certification");
     }
 
-    if (status === "authenticated" && session?.user?.id) {
+    if (status === "authenticated" && session?.user?.id && moduleId) {
       fetchCertificate();
     }
   }, [status, session, router, moduleId]);

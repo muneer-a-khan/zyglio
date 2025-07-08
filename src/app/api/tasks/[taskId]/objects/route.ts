@@ -22,7 +22,7 @@ const createObjectSchema = z.object({
  */
 export async function GET(
   request: NextRequest,
-  context: { params: { taskId: string } }
+  context: { params: Promise<{ taskId: string }> }
 ) {
   try {
     const session = await getServerSession(authOptions);
@@ -88,7 +88,7 @@ export async function GET(
  */
 export async function POST(
   request: NextRequest,
-  context: { params: { taskId: string } }
+  context: { params: Promise<{ taskId: string }> }
 ) {
   try {
     const session = await getServerSession(authOptions);

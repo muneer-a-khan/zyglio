@@ -10,16 +10,22 @@ const enhanceScenarioSchema = z.object({
   objects: z.array(z.object({
     id: z.string(),
     name: z.string(),
-    category: z.string(),
+    category: z.enum(["Ingredient", "Tool", "Equipment", "Person", "Location"]),
     states: z.array(z.string()),
     behaviors: z.array(z.string()),
-    signals: z.array(z.string())
+    signals: z.array(z.string()),
+    attributes: z.record(z.any()).optional().default({})
   })),
   steps: z.array(z.object({
     id: z.string(),
     instruction: z.string(),
     requiredObjects: z.array(z.string()),
-    isCheckpoint: z.boolean().optional()
+    requiredActions: z.array(z.string()).optional().default([]),
+    conditions: z.array(z.string()).optional().default([]),
+    feedback: z.string().optional().default(""),
+    position: z.object({ x: z.number(), y: z.number() }).optional().default({ x: 0, y: 0 }),
+    stepIndex: z.number().optional().default(0),
+    isCheckpoint: z.boolean().optional().default(false)
   })),
   learningObjectives: z.array(z.string()).optional()
 });
@@ -29,7 +35,7 @@ const enhanceObjectSchema = z.object({
   object: z.object({
     id: z.string(),
     name: z.string(),
-    category: z.string(),
+    category: z.enum(["Ingredient", "Tool", "Equipment", "Person", "Location"]),
     states: z.array(z.string()),
     behaviors: z.array(z.string()),
     signals: z.array(z.string()),

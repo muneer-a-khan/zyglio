@@ -89,7 +89,7 @@ export async function POST(request: NextRequest) {
         certificationId,
         userId: session.user.id,
         moduleId: certification.moduleId,
-        eventType: passed ? 'CERTIFICATION_COMPLETED' : 'CERTIFICATION_FAILED',
+        eventType: passed ? 'CERTIFICATION_ACHIEVED' : 'CERTIFICATION_FAILED',
         eventData: {
           score: overallScore,
           passingThreshold,

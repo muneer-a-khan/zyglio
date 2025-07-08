@@ -6,7 +6,7 @@ import { VoiceQuestionsService } from '@/lib/services/voice-questions.service';
 
 export async function GET(
   request: NextRequest,
-  context: { params: { moduleId: string } }
+  context: { params: Promise<{ moduleId: string }> }
 ) {
   try {
     const session = await getServerSession(authOptions);
@@ -121,7 +121,7 @@ export async function GET(
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { moduleId: string } }
+  { params }: { params: Promise<{ moduleId: string }> }
 ) {
   try {
     const session = await getServerSession(authOptions);
@@ -129,7 +129,7 @@ export async function PUT(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { moduleId } = params;
+    const { moduleId } = await params;
     const data = await request.json();
 
     // Update the training module

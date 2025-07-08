@@ -47,7 +47,12 @@ export async function POST(request: NextRequest) {
     });
 
     // Check if all subtopics are completed based on progress
-    const subtopics = Array.isArray(module.subtopics) ? module.subtopics.map(s => s.title || s) : [];
+    const subtopics = Array.isArray(module.subtopics) ? module.subtopics.map(s => {
+      if (typeof s === 'object' && s !== null && 'title' in s) {
+        return s.title as string;
+      }
+      return String(s);
+    }) : [];
     const completedSubtopics = Array.isArray(progress?.completedSubtopics) ? progress.completedSubtopics : [];
     
     // Check if all subtopics are completed
@@ -164,7 +169,7 @@ export async function POST(request: NextRequest) {
       where: { id: certification.id },
       data: {
         voiceInterviewData: {
-          ...certification.voiceInterviewData,
+          ...(certification.voiceInterviewData && typeof certification.voiceInterviewData === 'object' ? certification.voiceInterviewData as object : {}),
           sessionId,
           scenarioText,
           startedAt: new Date().toISOString()
