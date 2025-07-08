@@ -10,7 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ArrowLeft, Copy, Loader2, Wand2 } from "lucide-react";
-import { procedureService, Procedure } from "@/lib/ProcedureService";
+import { procedureService, Procedure } from "@/lib/services/procedure.service";
 import { toast } from "sonner";
 
 export default function CloneProcedurePage() {

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { MediaItem } from '@/lib/ProcedureService';
+import { MediaItem } from '@/lib/services/procedure.service';
 import MediaDisplay from '@/components/MediaDisplay';
 import { Card, CardContent, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';

@@ -5,7 +5,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Plus, X } from "lucide-react";
-import { TaskDefinition } from "@/lib/ProcedureService";
+import { TaskDefinition } from "@/lib/services/procedure.service";
 
 export interface TaskDefinitionFormProps {
   onSubmit: (taskData: TaskDefinition) => void;

@@ -34,6 +34,12 @@
     },
     "app/api/certification/**/route.ts": {
       "maxDuration": 30
+    },
+    "app/api/knowledge-base/route.ts": {
+      "maxDuration": 60
+    },
+    "app/api/knowledge-base/text/route.ts": {
+      "maxDuration": 60
     }
   },
   "regions": ["iad1"],

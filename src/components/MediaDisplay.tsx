@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { MediaItem } from '@/lib/ProcedureService';
+import { MediaItem } from '@/lib/services/procedure.service';
 import { Video, FileText, Music, AlertCircle, RefreshCw, ImageIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import NextImage from 'next/image';

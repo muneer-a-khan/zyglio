@@ -32,7 +32,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
-import { Step, procedureService } from "@/lib/ProcedureService";
+import { Step, procedureService } from "@/lib/services/procedure.service";
 
 export interface SimulationSettings {
   enabled: boolean;

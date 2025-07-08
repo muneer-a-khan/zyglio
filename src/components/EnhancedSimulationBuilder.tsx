@@ -17,7 +17,7 @@ import {
   Wand2
 } from "lucide-react";
 import { toast } from "sonner";
-import { Step } from "@/lib/ProcedureService";
+import { Step } from "@/lib/services/procedure.service";
 import { 
   EnhancedSimulationSettings,
   SimulationObject,

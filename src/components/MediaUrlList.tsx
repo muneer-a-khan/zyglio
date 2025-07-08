@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { MediaItem } from '@/lib/ProcedureService';
+import { MediaItem } from '@/lib/services/procedure.service';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Copy, Check, ExternalLink } from 'lucide-react';

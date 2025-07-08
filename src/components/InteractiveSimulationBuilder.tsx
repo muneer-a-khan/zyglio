@@ -39,7 +39,7 @@ import {
   SimulationTrigger,
   SimulationCondition
 } from '@/types/simulation';
-import { Step } from '@/lib/ProcedureService';
+import { Step } from '@/lib/services/procedure.service';
 import { generateSimulationFromYaml } from '@/lib/yaml-to-simulation';
 
 interface InteractiveSimulationBuilderProps {
