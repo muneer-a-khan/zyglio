@@ -15,6 +15,7 @@ model User {
   createdAt        DateTime           @default(now()) @db.Timestamptz(6)
   role             user_role          @default(trainee)
   certifications   Certification[]
+  ElevenLabsAgent  ElevenLabsAgent[]
   LearningTask     LearningTask[]
   quizAttempts     QuizAttempt[]
   approvedModules  TrainingModule[]   @relation("ModuleApprover")
@@ -81,22 +82,24 @@ model LearningTask {
   MediaItem        MediaItem[]
   Procedure        Procedure[]
   Simulation       Simulation[]
+  SimulationObject SimulationObject[]
   YamlOutput       YamlOutput[]
 
   @@index([userId])
 }
 
 model MediaItem {
-  id            String         @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  type          MediaType
-  caption       String?
-  url           String
-  relevance     String?
-  createdAt     DateTime       @default(now()) @db.Timestamptz(6)
-  taskId        String         @db.Uuid
-  stepId        String?        @db.Uuid
-  ProcedureStep ProcedureStep? @relation(fields: [stepId], references: [id], onUpdate: NoAction)
-  LearningTask  LearningTask   @relation(fields: [taskId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  id                 String               @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  type               MediaType
+  caption            String?
+  url                String
+  relevance          String?
+  createdAt          DateTime             @default(now()) @db.Timestamptz(6)
+  taskId             String               @db.Uuid
+  stepId             String?              @db.Uuid
+  ProcedureStep      ProcedureStep?       @relation(fields: [stepId], references: [id], onUpdate: NoAction)
+  LearningTask       LearningTask         @relation(fields: [taskId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  ParsedMediaContent ParsedMediaContent[]
 
   @@index([stepId])
   @@index([taskId])
@@ -176,23 +179,25 @@ model YamlOutput {
 }
 
 model TrainingModule {
-  id                 String              @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  procedureId        String              @db.Uuid
-  title              String
-  subtopics          Json
-  isApproved         Boolean             @default(false)
-  approvedAt         DateTime?           @db.Timestamptz(6)
-  approvedBy         String?             @db.Uuid
-  createdAt          DateTime            @default(now()) @db.Timestamptz(6)
-  updatedAt          DateTime            @default(now()) @updatedAt @db.Timestamptz(6)
-  version            Int                 @default(1)
-  certifications     Certification[]
-  quizBanks          QuizBank[]
-  content            TrainingContent[]
-  approver           User?               @relation("ModuleApprover", fields: [approvedBy], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  procedure          Procedure           @relation(fields: [procedureId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  progress           TrainingProgress[]
-  voiceQuestionBanks VoiceQuestionBank[]
+  id                        String              @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  procedureId               String              @db.Uuid
+  title                     String
+  subtopics                 Json
+  isApproved                Boolean             @default(false)
+  approvedAt                DateTime?           @db.Timestamptz(6)
+  approvedBy                String?             @db.Uuid
+  createdAt                 DateTime            @default(now()) @db.Timestamptz(6)
+  updatedAt                 DateTime            @default(now()) @updatedAt @db.Timestamptz(6)
+  version                   Int                 @default(1)
+  certificationScenarioText String?
+  certifications            Certification[]
+  ElevenLabsAgent           ElevenLabsAgent[]
+  quizBanks                 QuizBank[]
+  content                   TrainingContent[]
+  approver                  User?               @relation("ModuleApprover", fields: [approvedBy], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  procedure                 Procedure           @relation(fields: [procedureId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  progress                  TrainingProgress[]
+  voiceQuestionBanks        VoiceQuestionBank[]
 
   @@index([procedureId])
   @@index([isApproved])
@@ -316,6 +321,109 @@ model VoiceQuestionBank {
   module     TrainingModule @relation(fields: [moduleId], references: [id])
 
   @@unique([moduleId, difficulty])
+}
+
+model Chunk {
+  id             String                 @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  documentid     String                 @db.Uuid
+  text           String
+  embedding      Unsupported("vector")?
+  sequencenumber Int
+  metadata       Json?                  @default("{}") @db.Json
+  createdat      DateTime?              @default(now()) @db.Timestamptz(6)
+  Document       Document               @relation(fields: [documentid], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([documentid], map: "idx_chunks_document_id")
+  @@index([embedding], map: "idx_chunks_embedding")
+  @@index([sequencenumber], map: "idx_chunks_sequence")
+}
+
+model Document {
+  id         String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  title      String
+  content    String?
+  url        String?
+  filepath   String?
+  sourcetype String
+  broadtopic String?
+  metadata   Json?     @default("{}") @db.Json
+  createdat  DateTime? @default(now()) @db.Timestamptz(6)
+  updatedat  DateTime? @default(now()) @db.Timestamptz(6)
+  Chunk      Chunk[]
+
+  @@index([createdat], map: "idx_documents_created_at")
+  @@index([sourcetype], map: "idx_documents_source")
+  @@index([broadtopic], map: "idx_documents_topic")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model ElevenLabsAgent {
+  id                String         @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  agent_id          String         @unique
+  module_id         String         @db.Uuid
+  scenario_id       String
+  name              String
+  description       String?
+  configuration     Json
+  competencies      String[]       @default([])
+  passing_threshold Int            @default(70)
+  difficulty        String         @default("NORMAL")
+  is_active         Boolean        @default(true)
+  created_by        String         @db.Uuid
+  created_at        DateTime       @default(now()) @db.Timestamptz(6)
+  updated_at        DateTime       @default(now()) @db.Timestamptz(6)
+  users             User           @relation(fields: [created_by], references: [id], onUpdate: NoAction)
+  TrainingModule    TrainingModule @relation(fields: [module_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([module_id, scenario_id])
+  @@index([created_by])
+  @@index([is_active])
+  @@index([module_id])
+  @@index([scenario_id])
+}
+
+model ParsedMediaContent {
+  id               String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  mediaItemId      String    @db.Uuid
+  contentType      String
+  extractedText    String?
+  processingStatus String?   @default("pending")
+  errorMessage     String?
+  summary          String?
+  keyTopics        Json?
+  confidence       Float?
+  processingTime   Int?
+  createdAt        DateTime? @default(now()) @db.Timestamptz(6)
+  updatedAt        DateTime? @default(now()) @db.Timestamptz(6)
+  MediaItem        MediaItem @relation(fields: [mediaItemId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([mediaItemId])
+}
+
+model RagQuery {
+  id            String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  query         String
+  retrieveddocs Json      @db.Json
+  response      String?
+  userid        String?   @db.Uuid
+  sessionid     String?
+  createdat     DateTime? @default(now()) @db.Timestamptz(6)
+
+  @@index([createdat], map: "idx_ragquery_created_at")
+  @@index([sessionid], map: "idx_ragquery_session")
+  @@index([userid], map: "idx_ragquery_user")
+}
+
+model SimulationObject {
+  id           String       @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  taskId       String       @db.Uuid
+  name         String
+  description  String?
+  properties   Json?
+  createdAt    DateTime?    @default(now()) @db.Timestamptz(6)
+  LearningTask LearningTask @relation(fields: [taskId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([taskId])
 }
 
 enum MediaType {
