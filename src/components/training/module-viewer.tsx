@@ -14,6 +14,7 @@ import {
   ArrowRight
 } from 'lucide-react';
 import Link from 'next/link';
+import { toast } from 'sonner';
 import { ContentRenderer } from '@/components/training/content-renderer';
 import { QuizInterface } from '@/components/training/quiz/quiz-interface';
 
@@ -67,6 +68,9 @@ export default function ModuleViewer({
   const [currentSubtopic, setCurrentSubtopic] = useState<string>('');
   const [currentView, setCurrentView] = useState<'content' | 'quiz'>('content');
   const [isLoading, setIsLoading] = useState(true);
+  
+  // Add local state to track recently completed subtopics for immediate UI feedback
+  const [locallyCompletedSubtopics, setLocallyCompletedSubtopics] = useState<string[]>([]);
   
   // Use refs for time tracking to avoid re-renders
   const startTimeRef = useRef<Date>(new Date());
@@ -181,6 +185,18 @@ export default function ModuleViewer({
   const markSubtopicComplete = async (subtopic: string) => {
     if (!hasRequiredData || isUpdatingRef.current) return;
     
+    console.log(`🎯 Marking subtopic complete: ${subtopic}`);
+    
+    // Immediately add to local completed state for instant UI feedback
+    setLocallyCompletedSubtopics(prev => {
+      if (!prev.includes(subtopic)) {
+        const newLocal = [...prev, subtopic];
+        console.log(`⚡ Immediately added to local completed:`, newLocal);
+        return newLocal;
+      }
+      return prev;
+    });
+    
     isUpdatingRef.current = true;
     
     try {
@@ -188,6 +204,8 @@ export default function ModuleViewer({
       if (!updatedCompleted.includes(subtopic)) {
         updatedCompleted.push(subtopic);
       }
+      
+      console.log(`📝 Updated completed subtopics for server:`, updatedCompleted);
 
       const response = await fetch('/api/training/progress/update', {
         method: 'POST',
@@ -201,12 +219,32 @@ export default function ModuleViewer({
       });
 
       if (response.ok) {
-        loadProgress(); // Reload progress
+        // Update the server progress state
+        console.log(`✅ Server response OK - updating server state`);
+        setProgress(prev => {
+          const newProgress = prev ? {
+            ...prev,
+            completedSubtopics: updatedCompleted
+          } : null;
+          console.log(`🔄 New server progress state:`, newProgress);
+          return newProgress;
+        });
+        
+        // Remove from local state since it's now in server state
+        setTimeout(() => {
+          setLocallyCompletedSubtopics(prev => prev.filter(s => s !== subtopic));
+          console.log(`🧹 Cleaned up local state for: ${subtopic}`);
+        }, 1000);
+        
       } else {
         console.error('Failed to mark subtopic complete:', response.status);
+        // Remove from local state if server update failed
+        setLocallyCompletedSubtopics(prev => prev.filter(s => s !== subtopic));
       }
     } catch (error) {
       console.error('Error marking subtopic complete:', error);
+      // Remove from local state if there was an error
+      setLocallyCompletedSubtopics(prev => prev.filter(s => s !== subtopic));
     } finally {
       isUpdatingRef.current = false;
     }
@@ -240,26 +278,45 @@ export default function ModuleViewer({
   };
 
   const onQuizComplete = async (passed: boolean, score: number) => {
+    console.log(`🎉 Quiz completed! Passed: ${passed}, Score: ${score}, Subtopic: ${currentSubtopic}`);
+    
     if (passed) {
+      // Show success toast first
+      toast.success(`🎉 Chapter "${currentSubtopic}" completed!`, {
+        description: "Great job! Voice certification is now available.",
+        duration: 4000
+      });
+      
+      // Mark subtopic as complete and update progress
       await markSubtopicComplete(currentSubtopic);
       
-      // If this was the last subtopic, show completion message and certification button
-      const updatedProgress = [...(progress?.completedSubtopics || [])];
-      if (!updatedProgress.includes(currentSubtopic)) {
-        updatedProgress.push(currentSubtopic);
-      }
+      // Switch to content view to show the certification prompt
+      setCurrentView('content');
       
-      // Check if all subtopics are completed
-      const allCompleted = module?.subtopics.every(subtopic => 
-        updatedProgress.includes(subtopic.title)
-      );
+      // Small delay to ensure state updates have propagated
+      setTimeout(() => {
+        console.log(`✅ Quiz completed for: ${currentSubtopic} - Certification prompt should now be visible`);
+        console.log(`🔍 Current progress:`, progress);
+        console.log(`🔍 Is subtopic completed?`, progress?.completedSubtopics.includes(currentSubtopic));
+      }, 200);
       
-      if (allCompleted) {
-        // Move to the next subtopic if available
-        moveToNextSubtopic();
-      }
+    } else {
+      // Show failure toast
+      toast.error(`Quiz not passed for "${currentSubtopic}"`, {
+        description: `Score: ${score}%. You can retry the quiz or review the content.`,
+        duration: 4000
+      });
+      
+      // If failed, just switch back to content view
+      setCurrentView('content');
     }
-    setCurrentView('content');
+  };
+
+  // Helper function to check if a subtopic has been certified
+  const isSubtopicCertified = (subtopicTitle: string) => {
+    // This would normally check the database for certification status
+    // For now, we'll assume it's not certified unless we implement the check
+    return false;
   };
 
   if (!hasRequiredData) {
@@ -294,7 +351,18 @@ export default function ModuleViewer({
   const currentSubtopicIndex = module.subtopics.findIndex(s => s.title === currentSubtopic);
   const currentContent = module.content.find(c => c.subtopic === currentSubtopic);
   const currentQuizBank = module.quizBanks.find(q => q.subtopic === currentSubtopic);
-  const isSubtopicCompleted = progress?.completedSubtopics.includes(currentSubtopic) || false;
+  
+  // Check completion from both server state and local state for immediate feedback
+  const serverCompleted = progress?.completedSubtopics.includes(currentSubtopic) || false;
+  const localCompleted = locallyCompletedSubtopics.includes(currentSubtopic);
+  const isSubtopicCompleted = serverCompleted || localCompleted;
+
+  console.log(`🔍 Debug - Current subtopic: ${currentSubtopic}`);
+  console.log(`📊 Server completed: ${serverCompleted}, Local completed: ${localCompleted}, Final: ${isSubtopicCompleted}`);
+  console.log(`📋 Server completed subtopics:`, progress?.completedSubtopics);
+  console.log(`⚡ Local completed subtopics:`, locallyCompletedSubtopics);
+  console.log(`👀 Current view: ${currentView}`);
+  console.log(`🎯 Should show certification prompt:`, isSubtopicCompleted && currentView === 'content');
 
   return (
     <div className="max-w-7xl mx-auto space-y-6">
@@ -359,34 +427,58 @@ export default function ModuleViewer({
             </CardHeader>
             <CardContent className="space-y-2">
               {module.subtopics.map((subtopic, index) => {
-                const isCompleted = progress?.completedSubtopics.includes(subtopic.title);
+                const serverCompleted = progress?.completedSubtopics.includes(subtopic.title) || false;
+                const localCompleted = locallyCompletedSubtopics.includes(subtopic.title);
+                const isCompleted = serverCompleted || localCompleted;
                 const isCurrent = currentSubtopic === subtopic.title;
+                const isCertified = isSubtopicCertified(subtopic.title);
+                
+                console.log(`📝 Sidebar - ${subtopic.title}: server=${serverCompleted}, local=${localCompleted}, final=${isCompleted}`);
                 
                 return (
-                  <Button
-                    key={subtopic.title}
-                    variant={isCurrent ? "default" : "ghost"}
-                    className={`w-full justify-start text-left h-auto p-3 ${
-                      isCompleted ? 'bg-green-50 border-green-200' : ''
-                    }`}
-                    onClick={() => navigateToSubtopic(subtopic.title)}
-                  >
-                    <div className="flex items-start gap-2 w-full">
-                      <div className="flex-shrink-0 mt-1">
-                        {isCompleted ? (
-                          <CheckCircle className="w-4 h-4 text-green-600" />
-                        ) : (
-                          <div className="w-4 h-4 rounded-full border-2 border-gray-300" />
-                        )}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="font-medium text-sm">{subtopic.title}</div>
-                        <div className="text-xs text-gray-500 mt-1">
-                          {subtopic.estimatedTime} min
+                  <div key={subtopic.title} className="space-y-2">
+                    <Button
+                      variant={isCurrent ? "default" : "ghost"}
+                      className={`w-full justify-start text-left h-auto p-3 ${
+                        isCompleted ? 'bg-green-50 border-green-200' : ''
+                      }`}
+                      onClick={() => navigateToSubtopic(subtopic.title)}
+                    >
+                      <div className="flex items-start gap-2 w-full">
+                        <div className="flex-shrink-0 mt-1">
+                          {isCompleted ? (
+                            <CheckCircle className="w-4 h-4 text-green-600" />
+                          ) : (
+                            <div className="w-4 h-4 rounded-full border-2 border-gray-300" />
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="font-medium text-sm">{subtopic.title}</div>
+                          <div className="text-xs text-gray-500 mt-1">
+                            {subtopic.estimatedTime} min
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  </Button>
+                    </Button>
+                    
+                    {/* Per-Subtopic Certification Button */}
+                    {isCompleted && (
+                      <Button
+                        asChild
+                        size="sm"
+                        className={`w-full text-xs ${
+                          isCertified 
+                            ? 'bg-green-600 hover:bg-green-700 text-white' 
+                            : 'bg-blue-600 hover:bg-blue-700 text-white'
+                        }`}
+                      >
+                        <Link href={`/certification/${moduleId}/${encodeURIComponent(subtopic.title)}`}>
+                          <Award className="w-3 h-3 mr-1" />
+                          {isCertified ? 'View Certificate' : 'Start Certification'}
+                        </Link>
+                      </Button>
+                    )}
+                  </div>
                 );
               })}
             </CardContent>
@@ -412,6 +504,56 @@ export default function ModuleViewer({
             </TabsList>
 
             <TabsContent value="content" className="mt-6">
+              {/* Certification Prompt for Completed Subtopic - Show at top for immediate visibility */}
+              {isSubtopicCompleted && (
+                <Card className="mb-6 bg-gradient-to-r from-green-50 to-blue-50 border-green-200 shadow-lg">
+                  <CardContent className="pt-6">
+                    <div className="text-center">
+                      <div className="flex items-center justify-center gap-2 mb-3">
+                        <CheckCircle className="h-8 w-8 text-green-600" />
+                        <h3 className="text-xl font-bold text-green-800">
+                          🎉 Chapter "{currentSubtopic}" Completed!
+                        </h3>
+                      </div>
+                      <p className="text-blue-700 mb-4 font-medium">
+                        Excellent work! Now demonstrate your mastery with our AI voice certification.
+                      </p>
+                      <div className="flex gap-4 justify-center mb-4">
+                        <Button
+                          asChild
+                          size="lg"
+                          className="bg-blue-600 hover:bg-blue-700 text-white font-semibold"
+                        >
+                          <Link href={`/certification/${moduleId}/${encodeURIComponent(currentSubtopic)}`}>
+                            <Award className="w-5 h-5 mr-2" />
+                            Start Voice Certification
+                          </Link>
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="lg"
+                          onClick={() => {
+                            // Move to next subtopic
+                            const currentIndex = module?.subtopics.findIndex(s => s.title === currentSubtopic) || 0;
+                            const nextSubtopic = module?.subtopics[currentIndex + 1];
+                            if (nextSubtopic) {
+                              navigateToSubtopic(nextSubtopic.title);
+                            }
+                          }}
+                        >
+                          Next Chapter
+                          <ArrowRight className="w-5 h-5 ml-2" />
+                        </Button>
+                      </div>
+                      <p className="text-sm text-blue-600 bg-blue-100 rounded p-2">
+                        💡 <strong>Pro tip:</strong> Voice certification tests your ability to explain concepts aloud - 
+                        take a moment to review the key points before starting!
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
               {currentContent ? (
                 <ContentRenderer content={currentContent} />
               ) : (
@@ -422,7 +564,7 @@ export default function ModuleViewer({
                 </Card>
               )}
               
-              {currentQuizBank && (
+              {currentQuizBank && !isSubtopicCompleted && (
                 <div className="mt-6 flex justify-end">
                   <Button 
                     onClick={startQuiz}
