@@ -112,16 +112,7 @@ export function ElevenLabsVoiceCertification({
       
       // Start conversation with basketball agent
       await conversationSdk.startSession({
-        agentId: 'agent_01jzk7f85fedsssv51bkehfmg5',
-        overrides: {
-          // Pass user and module information for webhook scoring
-          dynamic_variables: {
-            user_id: userId || 'anonymous',
-            module_id: moduleId,
-            certification_type: 'basketball',
-            user_name: 'Student'
-          }
-        }
+        agentId: 'agent_01jzk7f85fedsssv51bkehfmg5'
       });
       
       console.log('🏀 Basketball certification session started!');
