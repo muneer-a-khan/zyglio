@@ -21,12 +21,12 @@ export function VoiceCertificationSession({ moduleId, userId, onComplete }: Voic
     
     onComplete(legacyResult);
   };
-  
+
   return (
     <ElevenLabsVoiceCertification 
       moduleId={moduleId}
       userId={userId}
       onCertificationComplete={handleCertificationComplete}
-    />
+      />
   );
 } 

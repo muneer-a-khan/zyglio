@@ -38,7 +38,7 @@ export default function ModuleCertificationPage({
       router.push("/auth/signin");
       return;
     }
-    checkEligibility();
+      checkEligibility();
   }, [session, status, moduleId]);
 
   const checkEligibility = async () => {
@@ -49,9 +49,9 @@ export default function ModuleCertificationPage({
       if (!response.ok) {
         if (response.status === 404) {
           setError("Module not found");
-        } else {
+          } else {
           setError("Failed to check certification eligibility");
-        }
+      }
         return;
       }
 
@@ -96,15 +96,15 @@ export default function ModuleCertificationPage({
     return (
       <div className="container max-w-4xl mx-auto py-10 px-4">
         <div className="mb-6">
-          <Button
+            <Button 
             variant="outline"
             onClick={() => router.back()}
             className="flex items-center gap-2"
           >
             <ArrowLeft className="h-4 w-4" />
             Back
-          </Button>
-        </div>
+            </Button>
+          </div>
 
         <Card>
           <CardHeader>
@@ -143,15 +143,15 @@ export default function ModuleCertificationPage({
         >
           <ArrowLeft className="h-4 w-4" />
           Back to Training
-        </Button>
-      </div>
-
+          </Button>
+        </div>
+        
       <ElevenLabsVoiceCertification
-        moduleId={moduleId}
-        userId={session.user.id}
+                  moduleId={moduleId}
+                  userId={session.user.id}
         onCertificationComplete={handleCertificationComplete}
         className="w-full"
-      />
+                />
     </div>
   );
 } 
