@@ -19,11 +19,10 @@ import {
 import { toast } from "sonner";
 import { Step } from "@/lib/services/procedure.service";
 import { 
-  EnhancedSimulationSettings,
+  SimulationSettings,
   SimulationObject,
   SimulationScenario,
-  SimulationTrigger,
-  SimulationState
+  SimulationTrigger
 } from "@/types/simulation";
 import { simulationEngine } from "@/lib/simulation-engine";
 import { generateSimulationFromYaml } from "@/lib/yaml-to-simulation";
@@ -34,12 +33,12 @@ import TriggerManager from "./simulation/TriggerManager";
 interface EnhancedSimulationBuilderProps {
   steps: Step[];
   procedureName: string;
-  initialSettings?: Partial<EnhancedSimulationSettings>;
+  initialSettings?: Partial<SimulationSettings>;
   yamlContent?: string;
-  onChange: (settings: EnhancedSimulationSettings) => void;
+  onChange: (settings: SimulationSettings) => void;
 }
 
-const defaultSettings: EnhancedSimulationSettings = {
+const defaultSettings: SimulationSettings = {
   // Existing settings
   enabled: true,
   mode: "guided",
@@ -60,12 +59,7 @@ const defaultSettings: EnhancedSimulationSettings = {
   objects: [],
   scenarios: [],
   triggers: [],
-  enableObjectInteractions: true,
-  enableDynamicScenarios: true,
-  enableAdvancedTriggers: true,
-  environmentType: "virtual",
-  realtimeMonitoring: true,
-  adaptiveDifficulty: false,
+  name: "Simulation",
 };
 
 const EnhancedSimulationBuilder = ({
@@ -76,10 +70,10 @@ const EnhancedSimulationBuilder = ({
   onChange
 }: EnhancedSimulationBuilderProps) => {
   const [activeTab, setActiveTab] = useState("settings");
-  const [settings, setSettings] = useState<EnhancedSimulationSettings>(
+  const [settings, setSettings] = useState<SimulationSettings>(
     { ...defaultSettings, ...initialSettings }
   );
-  const [simulationState, setSimulationState] = useState<SimulationState | null>(null);
+  const [simulationState, setSimulationState] = useState<any>(null);
   const [isRunning, setIsRunning] = useState(false);
   const [selectedObjects, setSelectedObjects] = useState<string[]>([]);
 
@@ -103,7 +97,7 @@ const EnhancedSimulationBuilder = ({
     }
   }, [steps, initialSettings]);
 
-  const handleSettingChange = (key: keyof EnhancedSimulationSettings, value: any) => {
+  const handleSettingChange = (key: keyof SimulationSettings, value: any) => {
     const updatedSettings = {
       ...settings,
       [key]: value
@@ -124,16 +118,6 @@ const EnhancedSimulationBuilder = ({
     handleSettingChange('triggers', triggers);
   };
 
-  const handleScenarioActivation = async (scenarioId: string) => {
-    try {
-      handleSettingChange('activeScenarioId', scenarioId);
-      toast.success("Scenario activated for simulation");
-    } catch (error) {
-      console.error("Error activating scenario:", error);
-      toast.error("Failed to activate scenario");
-    }
-  };
-
   const handleGenerateFromYaml = async () => {
     if (!yamlContent || yamlContent.trim() === "") {
       toast.error("No YAML content available to generate simulation elements");
@@ -144,32 +128,24 @@ const EnhancedSimulationBuilder = ({
       const generatedElements = generateSimulationFromYaml(yamlContent);
       
       const mergedObjects = [
-        ...settings.objects.filter(obj => !generatedElements.objects.some(genObj => genObj.name === obj.name)),
+        ...settings.objects,
         ...generatedElements.objects
       ];
       
       const mergedScenarios = [
-        ...settings.scenarios.filter(scenario => !generatedElements.scenarios.some(genScenario => genScenario.name === scenario.name)),
+        ...settings.scenarios,
         ...generatedElements.scenarios
       ];
       
       const mergedTriggers = [
-        ...settings.triggers.filter(trigger => !generatedElements.triggers.some(genTrigger => genTrigger.name === trigger.name)),
+        ...settings.triggers,
         ...generatedElements.triggers
       ];
-
-      const updatedScenarios = mergedScenarios.map(scenario => ({
-        ...scenario,
-        objects: mergedObjects.map(obj => obj.id),
-        triggers: mergedTriggers
-          .filter(trigger => trigger.tags.some(tag => scenario.tags.includes(tag)))
-          .map(trigger => trigger.id)
-      }));
 
       const updatedSettings = {
         ...settings,
         objects: mergedObjects,
-        scenarios: updatedScenarios,
+        scenarios: mergedScenarios,
         triggers: mergedTriggers
       };
 
@@ -419,15 +395,6 @@ const EnhancedSimulationBuilder = ({
                       <div key={obj.id} className="border rounded-lg p-3">
                         <div className="flex items-center justify-between mb-2">
                           <h4 className="font-medium">{obj.name}</h4>
-                          <Badge variant="secondary">{obj.type}</Badge>
-                        </div>
-                        <p className="text-sm text-gray-600 mb-2">{obj.description}</p>
-                        <div className="flex flex-wrap gap-1">
-                          {obj.tags.map((tag, index) => (
-                            <Badge key={index} variant="outline" className="text-xs">
-                              {tag}
-                            </Badge>
-                          ))}
                         </div>
                       </div>
                     ))}
@@ -474,15 +441,7 @@ const EnhancedSimulationBuilder = ({
                 <TriggerManager
                   objects={settings.objects}
                   triggers={settings.triggers}
-                  onAddTrigger={(trigger) => handleTriggersChange([...settings.triggers, trigger])}
-                  onUpdateTrigger={(id, updatedTrigger) => 
-                    handleTriggersChange(settings.triggers.map(trigger => 
-                      trigger.id === id ? updatedTrigger : trigger
-                    ))
-                  }
-                  onDeleteTrigger={(id) => 
-                    handleTriggersChange(settings.triggers.filter(trigger => trigger.id !== id))
-                  }
+                  onTriggersChange={handleTriggersChange}
                 />
               </CardContent>
             </Card>
@@ -504,18 +463,6 @@ const EnhancedSimulationBuilder = ({
                         {isRunning ? "Running" : "Stopped"}
                       </Badge>
                     </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-gray-600">Active Scenario</span>
-                      <Badge variant="outline">
-                        {settings.activeScenarioId ? "Active" : "None"}
-                      </Badge>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-gray-600">Object Interactions</span>
-                      <Badge variant="outline">
-                        {settings.enableObjectInteractions ? "Enabled" : "Disabled"}
-                      </Badge>
-                    </div>
                   </div>
                 </CardContent>
               </Card>
@@ -530,12 +477,6 @@ const EnhancedSimulationBuilder = ({
                     <div className="flex items-center justify-between">
                       <span className="text-sm text-gray-600">Total Objects</span>
                       <Badge variant="outline">{settings.objects.length}</Badge>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-gray-600">Interactive</span>
-                      <Badge variant="outline">
-                        {settings.objects.filter(obj => obj.interactive).length}
-                      </Badge>
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="text-sm text-gray-600">Selected</span>
@@ -562,12 +503,6 @@ const EnhancedSimulationBuilder = ({
                       <span className="text-sm text-gray-600">Active Triggers</span>
                       <Badge variant="outline">
                         {settings.triggers.filter(trigger => trigger.isActive).length}
-                      </Badge>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-gray-600">Dynamic Scenarios</span>
-                      <Badge variant="outline">
-                        {settings.enableDynamicScenarios ? "Enabled" : "Disabled"}
                       </Badge>
                     </div>
                   </div>

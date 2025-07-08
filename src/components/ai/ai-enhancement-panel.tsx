@@ -18,13 +18,12 @@ import { aiService, ScenarioEnhancement, ObjectEnhancement, ContentGeneration } 
 import { voiceService } from '@/lib/voice-service';
 
 // Types
-import { SmartObject, ScenarioStep, Trigger, LearningTask } from '@/types/unified';
+import { SmartObject, ScenarioStep, Trigger } from '@/types/unified';
 
 interface AIEnhancementPanelProps {
   objects: SmartObject[];
   scenarioSteps: ScenarioStep[];
   triggers: Trigger[];
-  currentTask?: LearningTask;
   onApplyEnhancements: (enhancements: {
     objects?: SmartObject[];
     steps?: ScenarioStep[];
@@ -36,7 +35,6 @@ export function AIEnhancementPanel({
   objects,
   scenarioSteps,
   triggers,
-  currentTask,
   onApplyEnhancements
 }: AIEnhancementPanelProps) {
   const [isLoading, setIsLoading] = useState(false);
@@ -70,8 +68,7 @@ export function AIEnhancementPanel({
     clearError();
 
     try {
-      const learningObjectives = currentTask?.objectives || [];
-      const enhancement = await aiService.enhanceScenario(objects, scenarioSteps, learningObjectives);
+      const enhancement = await aiService.enhanceScenario(objects, scenarioSteps, []);
       setScenarioEnhancement(enhancement);
     } catch (error) {
       console.error('Scenario enhancement failed:', error);

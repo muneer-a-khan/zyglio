@@ -49,37 +49,9 @@ export class ProcedureService {
   private currentTaskId: string | null = null;
   private procedureCache: Record<string, Procedure> = {};
 
-  constructor() {
-    // Initialize IDs from storage
-    this.loadStoredIds();
-  }
-
-  // ID Management
-  private loadStoredIds(): void {
-    if (typeof window !== 'undefined') {
-      this.currentProcedureId = localStorage.getItem('currentProcedureId') || sessionStorage.getItem('currentProcedureId');
-      this.currentTaskId = localStorage.getItem('currentTaskId') || sessionStorage.getItem('currentTaskId');
-    }
-  }
-
-  private saveIds(): void {
-    if (typeof window !== 'undefined') {
-      if (this.currentProcedureId) {
-        localStorage.setItem('currentProcedureId', this.currentProcedureId);
-        sessionStorage.setItem('currentProcedureId', this.currentProcedureId);
-      }
-      
-      if (this.currentTaskId) {
-        localStorage.setItem('currentTaskId', this.currentTaskId);
-        sessionStorage.setItem('currentTaskId', this.currentTaskId);
-      }
-    }
-  }
-
   clearCurrentProcedure(): void {
     this.currentProcedureId = null;
     this.currentTaskId = null;
-    
     if (typeof window !== 'undefined') {
       localStorage.removeItem('currentProcedureId');
       sessionStorage.removeItem('currentProcedureId');
@@ -88,7 +60,6 @@ export class ProcedureService {
     }
   }
 
-  // Core API Methods
   async createProcedure(taskDefinition: TaskDefinition): Promise<string> {
     try {
       const response = await fetch('/api/procedures', {
@@ -105,86 +76,40 @@ export class ProcedureService {
       }
 
       const data = await response.json();
-      
       if (!data.success || !data.data?.procedureId || !data.data?.taskId) {
         throw new Error('Failed to create procedure - missing IDs');
       }
-      
       this.currentProcedureId = data.data.procedureId;
       this.currentTaskId = data.data.taskId;
-      this.saveIds();
-      
+      if (typeof window !== 'undefined') {
+        if (this.currentProcedureId) {
+          localStorage.setItem('currentProcedureId', this.currentProcedureId);
+          sessionStorage.setItem('currentProcedureId', this.currentProcedureId);
+        }
+        if (this.currentTaskId) {
+          localStorage.setItem('currentTaskId', this.currentTaskId);
+          sessionStorage.setItem('currentTaskId', this.currentTaskId);
+        }
+      }
       return data.data.procedureId;
     } catch (error) {
       console.error('Error creating procedure:', error);
       throw error;
     }
   }
-  
-  async getProcedure(id?: string): Promise<Procedure | null> {
-    const procedureId = id || this.currentProcedureId;
-    if (!procedureId) return null;
 
-    // Check cache first
-    if (this.procedureCache[procedureId]) {
-      return this.procedureCache[procedureId];
-    }
-    
-    try {
-      const response = await fetch(`/api/procedures/${procedureId}`);
-      
-      if (response.status === 404) return null;
-      if (!response.ok) throw new Error(`Error fetching procedure: ${response.statusText}`);
-      
-      const data = await response.json();
-      if (!data.success || !data.procedure) return null;
-      
-      // Cache the result
-      this.procedureCache[procedureId] = data.procedure;
-      return data.procedure;
-    } catch (error) {
-      console.error('Error fetching procedure:', error);
-      return null;
-    }
-  }
-  
-  async getAllProcedures(): Promise<Procedure[]> {
-    try {
-      const response = await fetch('/api/procedures');
-      
-      if (!response.ok) {
-        console.error(`API error (${response.status}): ${response.statusText}`);
-        return [];
-      }
-      
-      const data = await response.json();
-      
-      // Check if data.procedures exists and is an array
-      if (data?.procedures && Array.isArray(data.procedures)) {
-        return data.procedures;
-      }
-      
-      return [];
-    } catch (error) {
-      console.error('Error fetching all procedures:', error);
-      return [];
-    }
+  getCurrentTaskId(): string | null {
+    return this.currentTaskId;
   }
 
-  // Saving specific data types
-  async saveSteps(procedureId: string, steps: Step[]): Promise<boolean> {
-    return procedureStepsService.saveSteps(procedureId, steps);
+  getCurrentProcedureId(): string | null {
+    return this.currentProcedureId;
   }
-  
-  async saveMediaItems(mediaItems: MediaItem[]): Promise<void> {
-    return mediaItemsService.saveMediaItems(mediaItems);
-  }
-  
+
   async saveTranscript(transcript: string): Promise<void> {
     if (!this.currentTaskId) {
       throw new Error('No task ID available for saving transcript');
     }
-
     try {
       const response = await fetch('/api/procedures/dictation', {
         method: 'POST',
@@ -196,7 +121,6 @@ export class ProcedureService {
           transcript
         }),
       });
-
       if (!response.ok) {
         const data = await response.json();
         throw new Error(data.message || 'Failed to save transcript');
@@ -206,12 +130,19 @@ export class ProcedureService {
       throw error;
     }
   }
-  
+
+  async saveSteps(procedureId: string, steps: Step[]): Promise<boolean> {
+    return procedureStepsService.saveSteps(procedureId, steps);
+  }
+
+  async saveMediaItems(mediaItems: MediaItem[]): Promise<void> {
+    return mediaItemsService.saveMediaItems(mediaItems);
+  }
+
   async saveYamlContent(yamlContent: string): Promise<void> {
     if (!this.currentTaskId) {
       throw new Error('No task ID available for saving YAML content');
     }
-
     try {
       const response = await fetch('/api/procedures/yaml', {
         method: 'POST',
@@ -223,7 +154,6 @@ export class ProcedureService {
           content: yamlContent
         }),
       });
-
       if (!response.ok) {
         const data = await response.json();
         throw new Error(data.message || 'Failed to save YAML content');
@@ -233,12 +163,11 @@ export class ProcedureService {
       throw error;
     }
   }
-  
+
   async saveFlowchart(flowchartCode: string): Promise<void> {
     if (!this.currentTaskId) {
       throw new Error('No task ID available for saving flowchart');
     }
-
     try {
       const response = await fetch('/api/procedures/flowchart', {
         method: 'POST',
@@ -250,7 +179,6 @@ export class ProcedureService {
           mermaid: flowchartCode
         }),
       });
-
       if (!response.ok) {
         const data = await response.json();
         throw new Error(data.message || 'Failed to save flowchart');
@@ -260,13 +188,12 @@ export class ProcedureService {
       throw error;
     }
   }
-  
+
   async saveSimulationSettings(settings: SimulationSettings): Promise<boolean> {
     if (!this.currentProcedureId) {
       console.error('No procedure ID available for saving simulation settings');
       return false;
     }
-
     try {
       const response = await fetch('/api/procedures/simulation', {
         method: 'POST',
@@ -278,25 +205,22 @@ export class ProcedureService {
           settings
         }),
       });
-
       if (!response.ok) {
         const data = await response.json();
         console.error('Error saving simulation settings:', data.message);
         return false;
       }
-
       return true;
     } catch (error) {
       console.error('Error saving simulation settings:', error);
       return false;
     }
   }
-  
+
   async publishProcedure(): Promise<boolean> {
     if (!this.currentProcedureId) {
       throw new Error('No procedure ID available for publishing');
     }
-
     try {
       const response = await fetch('/api/procedures/publish', {
         method: 'POST',
@@ -307,12 +231,10 @@ export class ProcedureService {
           procedureId: this.currentProcedureId
         }),
       });
-
       if (!response.ok) {
         const data = await response.json();
         throw new Error(data.message || 'Failed to publish procedure');
       }
-
       const result = await response.json();
       return result.success || false;
     } catch (error) {
@@ -321,14 +243,42 @@ export class ProcedureService {
     }
   }
 
-  // Getters
-  getCurrentTaskId(): string | null {
-    return this.currentTaskId;
+  async getProcedure(id?: string): Promise<Procedure | null> {
+    const procedureId = id || this.currentProcedureId;
+    if (!procedureId) return null;
+    try {
+      const response = await fetch(`/api/procedures/${procedureId}`);
+      if (response.status === 404) return null;
+      if (!response.ok) throw new Error(`Error fetching procedure: ${response.statusText}`);
+      const data = await response.json();
+      if (!data.success || !data.procedure) return null;
+      return data.procedure;
+    } catch (error) {
+      console.error('Error fetching procedure:', error);
+      return null;
+    }
   }
 
-  getCurrentProcedureId(): string | null {
-    return this.currentProcedureId;
+  async getAllProcedures(): Promise<Procedure[]> {
+    try {
+      const response = await fetch('/api/procedures');
+      if (!response.ok) {
+        console.error(`API error (${response.status}): ${response.statusText}`);
+        return [];
+      }
+      const data = await response.json();
+      if (data?.procedures && Array.isArray(data.procedures)) {
+        return data.procedures;
+      }
+      return [];
+    } catch (error) {
+      console.error('Error fetching all procedures:', error);
+      return [];
+    }
   }
 }
+
+export type { Step } from './procedure-steps.service';
+export type { MediaItem } from './media-items.service';
 
 export const procedureService = new ProcedureService(); 

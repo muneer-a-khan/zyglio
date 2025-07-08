@@ -59,7 +59,7 @@ const ObjectManager: React.FC<ObjectManagerProps> = ({
   const [editingObject, setEditingObject] = useState<SimulationObject | null>(null);
   const [formData, setFormData] = useState({
     name: "",
-    type: "equipment" as SimulationObject['type'],
+    category: "Equipment" as SimulationObject['category'],
     description: "",
     properties: "",
     interactions: "",
@@ -70,7 +70,7 @@ const ObjectManager: React.FC<ObjectManagerProps> = ({
   const resetForm = () => {
     setFormData({
       name: "",
-      type: "equipment",
+      category: "Equipment",
       description: "",
       properties: "",
       interactions: "",
@@ -111,7 +111,7 @@ const ObjectManager: React.FC<ObjectManagerProps> = ({
 
       const objectData = {
         name: formData.name,
-        type: formData.type,
+        category: formData.category,
         description: formData.description,
         properties,
         interactions,
@@ -152,7 +152,7 @@ const ObjectManager: React.FC<ObjectManagerProps> = ({
     setEditingObject(object);
     setFormData({
       name: object.name,
-      type: object.type,
+      category: object.category,
       description: object.description,
       properties: JSON.stringify(object.properties, null, 2),
       interactions: object.interactions.join(", "),
@@ -180,14 +180,14 @@ const ObjectManager: React.FC<ObjectManagerProps> = ({
     }
   };
 
-  const getObjectTypeIcon = (type: string) => {
-    const objectType = OBJECT_TYPES.find(t => t.value === type);
+  const getObjectTypeIcon = (category: string) => {
+    const objectType = OBJECT_TYPES.find(t => t.value.toLowerCase() === category.toLowerCase());
     return objectType ? objectType.icon : Package;
   };
 
-  const getObjectTypeLabel = (type: string) => {
-    const objectType = OBJECT_TYPES.find(t => t.value === type);
-    return objectType ? objectType.label : type;
+  const getObjectTypeLabel = (category: string) => {
+    const objectType = OBJECT_TYPES.find(t => t.value.toLowerCase() === category.toLowerCase());
+    return objectType ? objectType.label : category;
   };
 
   return (
@@ -225,13 +225,13 @@ const ObjectManager: React.FC<ObjectManagerProps> = ({
                   />
                 </div>
                 <div>
-                  <Label htmlFor="type">Object Type</Label>
+                  <Label htmlFor="category">Object Category</Label>
                   <Select
-                    value={formData.type}
-                    onValueChange={(value) => setFormData({ ...formData, type: value as SimulationObject['type'] })}
+                    value={formData.category}
+                    onValueChange={(value) => setFormData({ ...formData, category: value as SimulationObject['category'] })}
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder="Select object type" />
+                      <SelectValue placeholder="Select object category" />
                     </SelectTrigger>
                     <SelectContent>
                       {OBJECT_TYPES.map((type) => (
@@ -333,7 +333,7 @@ const ObjectManager: React.FC<ObjectManagerProps> = ({
           </Card>
         ) : (
           objects.map((object) => {
-            const IconComponent = getObjectTypeIcon(object.type);
+            const IconComponent = getObjectTypeIcon(object.category);
             return (
               <Card key={object.id}>
                 <CardContent className="p-6">
@@ -343,7 +343,7 @@ const ObjectManager: React.FC<ObjectManagerProps> = ({
                         <IconComponent className="w-5 h-5 text-blue-600" />
                         <h4 className="font-medium">{object.name}</h4>
                         <Badge variant="secondary">
-                          {getObjectTypeLabel(object.type)}
+                          {getObjectTypeLabel(object.category)}
                         </Badge>
                       </div>
 

@@ -3,7 +3,7 @@
  * Handles saving and retrieving steps for procedures
  */
 
-export interface Step {
+export type Step = {
   id: string;
   content: string;
   comments: string[];

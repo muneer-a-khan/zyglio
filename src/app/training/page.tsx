@@ -87,10 +87,26 @@ export default async function TrainingModulesPage() {
       title: module.title || 'Untitled Module',
       procedureId: module.procedureId,
       procedureTitle: module.procedure?.title || 'Unknown Procedure',
-      subtopics: Array.isArray(module.subtopics) ? module.subtopics : [],
+      subtopics: Array.isArray(module.subtopics)
+        ? module.subtopics.map((s: any) =>
+            s && typeof s === 'object' && 'title' in s && 'description' in s && 'estimatedTime' in s
+              ? {
+                  title: s.title,
+                  description: s.description,
+                  estimatedTime: typeof s.estimatedTime === 'number' ? s.estimatedTime : 15
+                }
+              : {
+                  title: typeof s === 'string' ? s : 'Untitled',
+                  description: '',
+                  estimatedTime: 15
+                }
+          )
+        : [],
       isApproved: module.isApproved,
       approvedAt: module.approvedAt?.toISOString() || null,
-      approvedBy: module.approver || null,
+      approvedBy: module.approver
+        ? { name: module.approver.name ?? '', email: module.approver.email }
+        : null,
       createdAt: module.createdAt.toISOString(),
       version: module.version || 1,
       isOwned: isSME && module.procedure?.LearningTask?.userId === userId
@@ -102,7 +118,9 @@ export default async function TrainingModulesPage() {
       moduleTitle: p.module?.title || 'Unknown Module',
       procedureTitle: p.module?.procedure?.title || 'Unknown Procedure',
       currentSubtopic: p.currentSubtopic,
-      completedSubtopics: Array.isArray(p.completedSubtopics) ? p.completedSubtopics : [],
+      completedSubtopics: Array.isArray(p.completedSubtopics)
+        ? p.completedSubtopics.filter((s: any) => typeof s === 'string')
+        : [],
       timeSpent: p.timeSpent || 0,
       progressPercentage: p.progressPercentage || 0,
       lastAccessedAt: p.lastAccessedAt.toISOString(),
