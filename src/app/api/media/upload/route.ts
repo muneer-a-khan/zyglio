@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Get user from database
-    const user = await databaseService.getOrCreateUser(session.user.email, session.user.name)
+    const user = await databaseService.getOrCreateUser(session.user.email, session.user.name || undefined)
     if (!user) {
       return NextResponse.json(
         { error: 'User not found' },
@@ -94,7 +94,6 @@ export async function POST(request: NextRequest) {
         
         // Return the uploaded file info directly (no database storage needed)
         uploadResults.push({
-          id: mediaFile.id,
           ...mediaFile,
           success: true
         })
@@ -143,7 +142,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Get user from database
-    const user = await databaseService.getOrCreateUser(session.user.email, session.user.name)
+    const user = await databaseService.getOrCreateUser(session.user.email, session.user.name || undefined)
     if (!user) {
       return NextResponse.json(
         { error: 'User not found' },
