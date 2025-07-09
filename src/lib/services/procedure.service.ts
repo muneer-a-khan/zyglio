@@ -31,6 +31,7 @@ export interface Procedure {
   id?: string;
   title: string;
   description: string;
+  taskId?: string; // Include taskId for YAML saving
   presenter: string;
   affiliation: string;
   kpiTech: string[];
@@ -106,6 +107,63 @@ export class ProcedureService {
     return this.currentProcedureId;
   }
 
+  async getOwnedProcedures(): Promise<Procedure[]> {
+    try {
+      const response = await fetch('/api/procedures?owned=true');
+      
+      if (!response.ok) {
+        console.error(`API error (${response.status}): ${response.statusText}`);
+        return [];
+      }
+      
+      const data = await response.json();
+      
+      // Check if data.procedures exists and is an array
+      if (data?.procedures && Array.isArray(data.procedures)) {
+        return data.procedures;
+      }
+      
+      return [];
+    } catch (error) {
+      console.error('Error fetching owned procedures:', error);
+      return [];
+    }
+  }
+
+  async deleteProcedure(procedureId: string): Promise<void> {
+    try {
+      const response = await fetch(`/api/procedures/${procedureId}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to delete procedure');
+      }
+
+      // Remove from cache if it exists
+      if (this.procedureCache[procedureId]) {
+        delete this.procedureCache[procedureId];
+      }
+
+      // Clear current procedure if it's the one being deleted
+      if (this.currentProcedureId === procedureId) {
+        this.clearCurrentProcedure();
+      }
+    } catch (error) {
+      console.error('Error deleting procedure:', error);
+      throw error;
+    }
+  }
+
+  // Saving specific data types
+  async saveSteps(procedureId: string, steps: Step[]): Promise<boolean> {
+    return procedureStepsService.saveSteps(procedureId, steps);
+  }
+
   async saveTranscript(transcript: string): Promise<void> {
     if (!this.currentTaskId) {
       throw new Error('No task ID available for saving transcript');
@@ -131,16 +189,14 @@ export class ProcedureService {
     }
   }
 
-  async saveSteps(procedureId: string, steps: Step[]): Promise<boolean> {
-    return procedureStepsService.saveSteps(procedureId, steps);
-  }
-
   async saveMediaItems(mediaItems: MediaItem[]): Promise<void> {
     return mediaItemsService.saveMediaItems(mediaItems);
   }
 
-  async saveYamlContent(yamlContent: string): Promise<void> {
-    if (!this.currentTaskId) {
+  async saveYamlContent(yamlContent: string, taskId?: string): Promise<void> {
+    const targetTaskId = taskId || this.currentTaskId;
+    
+    if (!targetTaskId) {
       throw new Error('No task ID available for saving YAML content');
     }
     try {
@@ -150,7 +206,7 @@ export class ProcedureService {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          taskId: this.currentTaskId,
+          taskId: targetTaskId,
           content: yamlContent
         }),
       });

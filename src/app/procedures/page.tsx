@@ -6,10 +6,22 @@ import { useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Search, FileText, Plus, Calendar, Tag, Lock, Copy } from "lucide-react";
+import { Search, FileText, Plus, Calendar, Tag, Lock, Copy, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { procedureService, Procedure } from "@/lib/services";
 import { format } from "date-fns";
+import { toast } from "sonner";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 export default function ProceduresPage() {
   const { data: session, status } = useSession();
@@ -17,6 +29,7 @@ export default function ProceduresPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [deletingProcedure, setDeletingProcedure] = useState<string | null>(null);
 
   useEffect(() => {
     const loadProcedures = async () => {
@@ -50,7 +63,7 @@ export default function ProceduresPage() {
     };
 
     loadProcedures();
-  }, [status]); // Re-run when session status changes
+  }, [status]);
 
   const filteredProcedures = procedures.filter((procedure) => {
     if (!searchTerm) return true;
@@ -76,6 +89,23 @@ export default function ProceduresPage() {
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     // Search is already handled by the filter above
+  };
+
+  const handleDeleteProcedure = async (procedureId: string, title: string) => {
+    try {
+      setDeletingProcedure(procedureId);
+      await procedureService.deleteProcedure(procedureId);
+      
+      // Remove the procedure from the local state
+      setProcedures(prev => prev.filter(p => p.id !== procedureId));
+      
+      toast.success(`"${title}" has been deleted successfully`);
+    } catch (error) {
+      console.error('Error deleting procedure:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to delete procedure');
+    } finally {
+      setDeletingProcedure(null);
+    }
   };
 
   if (loading) {
@@ -180,7 +210,7 @@ export default function ProceduresPage() {
               <Button className="mt-4">Create Your First Procedure</Button>
             </Link>
           </div>
-        ) : (
+        ) :
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredProcedures.map((procedure) => (
               <Card key={procedure.id} className="overflow-hidden flex flex-col">
@@ -226,50 +256,50 @@ export default function ProceduresPage() {
                         View Procedure
                       </Button>
                     </Link>
-                    <Link href={`/procedures/clone/${procedure.id}`} className="flex-1">
-                      <Button variant="outline" className="w-full flex items-center gap-2">
+                    <Link href={`/procedures/clone/${procedure.id}`}>
+                      <Button variant="outline" size="sm" className="flex items-center gap-1">
                         <Copy className="h-4 w-4" />
-                        Create Copy
+                        Copy
                       </Button>
                     </Link>
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                          disabled={deletingProcedure === procedure.id}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Delete Procedure</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            Are you sure you want to delete "{procedure.title}"? This action cannot be undone.
+                            All associated data including steps, training modules, and certifications will be permanently removed.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogAction
+                            onClick={() => handleDeleteProcedure(procedure.id!, procedure.title)}
+                            className="bg-red-600 hover:bg-red-700 text-white"
+                            disabled={deletingProcedure === procedure.id}
+                          >
+                            {deletingProcedure === procedure.id ? 'Deleting...' : 'Delete'}
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
                   </div>
                 </CardFooter>
               </Card>
             ))}
           </div>
-        )}
+        }
       </main>
-
-      <footer className="bg-gray-100 py-6">
-        <div className="container px-4 md:px-6">
-          <div className="flex flex-col items-center justify-between gap-4 md:flex-row">
-            <div className="flex items-center gap-2">
-              <div className="flex items-center justify-center rounded-md bg-blue-600 h-8 w-8">
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  className="h-4 w-4 text-white"
-                  width="24"
-                  height="24"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="3"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <path d="M19 11V9a2 2 0 0 0-2-2H8.5L3 3v18l5.5-4H17a2 2 0 0 0 2-2v-2" />
-                  <path d="M15 9h6" />
-                  <path d="M18 6v6" />
-                </svg>
-              </div>
-              <span className="text-lg font-semibold">Zyglio</span>
-            </div>
-            <p className="text-sm text-gray-500">
-              © 2025 Zyglio. All rights reserved.
-            </p>
-          </div>
-        </div>
-      </footer>
     </div>
   );
 } 
