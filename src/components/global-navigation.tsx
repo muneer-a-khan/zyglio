@@ -64,7 +64,7 @@ export default function GlobalNavigation() {
                 <path d="M18 6v6" />
               </svg>
             </div>
-            <span className="font-semibold text-lg hidden sm:inline-block">Zyglio</span>
+            <span className="font-semibold text-md hidden sm:inline-block">Laborde Products</span>
           </Link>
         </div>
         <nav className="flex items-center justify-between flex-1">
