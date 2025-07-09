@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import React from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
@@ -16,6 +16,7 @@ import FlowchartViewer from "@/components/FlowchartViewer";
 import YamlGenerator from "@/components/YamlGenerator";
 import EnhancedSimulationBuilder from "@/components/EnhancedSimulationBuilder";
 import { GenerateTrainingButton } from "@/components/training/generate-training-button";
+import { generateYamlFromSteps as generateYamlFromStepsViaAPI } from "@/lib/deepseek";
 
 export default function ProcedurePage() {
   const params = useParams();
@@ -41,6 +42,39 @@ export default function ProcedurePage() {
     
     loadProcedure();
   }, [id]);
+  
+  const handleRegenerateYaml = useCallback(async (currentSteps: any[], currentProcedureName: string): Promise<string | null> => {
+    if (!procedure?.taskId) {
+      toast.error("Cannot regenerate YAML: Task ID not available");
+      return null;
+    }
+    
+    if (currentSteps.length === 0) {
+      toast.info("No steps available to generate YAML.");
+      return "";
+    }
+
+    try {
+      const newYaml = await generateYamlFromStepsViaAPI(currentSteps, currentProcedureName);
+      if (newYaml) {
+        // Save the generated YAML using the procedure's taskId
+        await procedureService.saveYamlContent(newYaml, procedure.taskId);
+        
+        // Update the local procedure state
+        setProcedure(prev => prev ? { ...prev, yamlContent: newYaml } : null);
+        
+        toast.success("YAML regenerated and saved successfully!");
+        return newYaml;
+      } else {
+        toast.error("Failed to generate YAML from steps. The API returned no content.");
+        return null;
+      }
+    } catch (error) {
+      console.error("Error regenerating YAML from steps via API:", error);
+      toast.error(`Failed to regenerate YAML: ${error instanceof Error ? error.message : "Unknown API error"}`);
+      return null;
+    }
+  }, [procedure?.taskId]);
   
   const startSimulation = () => {
     toast.success("Simulation would start here in a production environment");
@@ -362,8 +396,9 @@ export default function ProcedurePage() {
                 {procedure.yamlContent ? (
                   <YamlGenerator
                     steps={procedure.steps}
-                    procedureName={procedure.title}
-                    initialYaml={procedure.yamlContent}
+                    procedureName={procedure.title || "Untitled Procedure"}
+                    initialYaml={procedure.yamlContent || ""}
+                    onRegenerateYaml={handleRegenerateYaml}
                   />
                 ) : (
                   <div className="text-center py-12 border rounded-lg">
@@ -387,7 +422,7 @@ export default function ProcedurePage() {
                 {procedure.yamlContent ? (
                   <EnhancedSimulationBuilder
                     steps={procedure.steps}
-                    procedureName={procedure.title}
+                    procedureName={procedure.title || "Untitled Procedure"}
                     yamlContent={procedure.yamlContent}
                     onChange={() => {}} // Read-only view
                   />

@@ -122,7 +122,7 @@ IMPORTANT: Do NOT include any text outside the JSON structure. Ensure all answer
          
          // Process and validate the questions properly
          // Take up to 5 questions from the AI response
-         const generatedQuestions = parsedJson.questions.slice(0, 5).map((q, idx) => {
+         const generatedQuestions = parsedJson.questions.slice(0, 5).map((q: any, idx: number) => {
            // Basic validation first
            if (!q || typeof q !== 'object') {
              console.warn(`Question ${idx} is not a valid object`);
@@ -139,8 +139,8 @@ IMPORTANT: Do NOT include any text outside the JSON structure. Ensure all answer
            if (Array.isArray(q.options) && q.options.length > 0) {
              // Filter out empty options and ensure they're strings
              options = q.options
-               .map(opt => typeof opt === 'string' ? opt.trim() : String(opt))
-               .filter(opt => opt.length > 0);
+               .map((opt: any) => typeof opt === 'string' ? opt.trim() : String(opt))
+               .filter((opt: string) => opt.length > 0);
            }
            
            // If we don't have 4 valid options, create contextualized fallbacks

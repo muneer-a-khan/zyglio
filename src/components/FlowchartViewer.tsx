@@ -9,6 +9,7 @@ import yaml from 'js-yaml';
 export interface FlowchartViewerProps {
   steps: string[];
   onChange?: (content: string) => void;
+  initialMermaid?: string;
 }
 
 // Helper function to extract raw step descriptions from a string
@@ -44,7 +45,7 @@ const extractRawStepsFromString = (inputString: string): string[] => {
   return trimmedInput ? [trimmedInput] : [];
 };
 
-const FlowchartViewer = ({ steps: stepsProp, onChange }: FlowchartViewerProps) => {
+const FlowchartViewer = ({ steps: stepsProp, onChange, initialMermaid }: FlowchartViewerProps) => {
   const [isGeneratingAI, setIsGeneratingAI] = useState(false);
   const [yamlContent, setYamlContent] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
@@ -114,6 +115,43 @@ const FlowchartViewer = ({ steps: stepsProp, onChange }: FlowchartViewerProps) =
   }, [onChange]);
 
   useEffect(() => {
+    // If we have saved flowchart content, use it first
+    if (initialMermaid && initialMermaid.trim() !== "") {
+      console.log('FlowchartViewer: Loading saved flowchart content');
+      console.log('FlowchartViewer: Content length:', initialMermaid.length);
+      console.log('FlowchartViewer: Full content:', initialMermaid);
+      
+      // Parse and analyze the YAML structure
+      try {
+        const parsed = yaml.load(initialMermaid);
+        console.log('FlowchartViewer: Parsed YAML structure:', parsed);
+        
+        if (parsed && typeof parsed === 'object') {
+          if ((parsed as any).steps && Array.isArray((parsed as any).steps)) {
+            console.log(`FlowchartViewer: Found ${(parsed as any).steps.length} steps in saved YAML`);
+            console.log('FlowchartViewer: Step IDs:', (parsed as any).steps.map((s: any, i: number) => s.id || `step_${i+1}`));
+          } else {
+            console.log('FlowchartViewer: No steps array found in parsed YAML');
+            console.log('FlowchartViewer: YAML keys:', Object.keys(parsed));
+          }
+        }
+        
+        console.log('FlowchartViewer: Saved flowchart content is valid YAML');
+        setYamlContent(initialMermaid);
+        if (onChange) {
+          onChange(initialMermaid);
+        }
+        setError(null);
+        return;
+      } catch (yamlError) {
+        console.error('FlowchartViewer: Saved flowchart content has invalid YAML:', yamlError);
+        console.log('FlowchartViewer: Raw content that failed parsing:', initialMermaid);
+        setError(`Saved flowchart has invalid YAML format: ${yamlError instanceof Error ? yamlError.message : 'Unknown error'}\\n\\nRaw content preview: ${initialMermaid.substring(0, 500)}...`);
+        // Don't return here - fall through to generate new flowchart from steps
+      }
+    }
+
+    // Otherwise, generate from steps (existing logic)
     const isInputLikelyFullAiYaml = 
       stepsProp.length === 1 &&
       stepsProp[0] && // ensure stepsProp[0] exists
@@ -121,19 +159,22 @@ const FlowchartViewer = ({ steps: stepsProp, onChange }: FlowchartViewerProps) =
       (stepsProp[0].includes('stages:') || stepsProp[0].includes('steps:'));
 
     if (isInputLikelyFullAiYaml) {
+      console.log('FlowchartViewer: Using single step as complete YAML');
       setYamlContent(stepsProp[0]);
       if (onChange) {
         onChange(stepsProp[0]);
       }
     } else if (stepsProp && stepsProp.length > 0 && stepsProp.some(s => s.trim() !== "")) {
+      console.log('FlowchartViewer: Generating AI YAML from', stepsProp.length, 'steps');
       generateAIYaml(stepsProp);
     } else {
+      console.log('FlowchartViewer: No content to display');
       setYamlContent("");
       if (onChange) {
         onChange("");
       }
     }
-  }, [stepsProp, onChange, generateAIYaml]);
+  }, [stepsProp, onChange, generateAIYaml, initialMermaid]);
 
   return (
     <Card className="shadow-lg border-0 bg-white/95 backdrop-blur-sm">
@@ -158,10 +199,54 @@ const FlowchartViewer = ({ steps: stepsProp, onChange }: FlowchartViewerProps) =
         </div>
       </CardHeader>
       <CardContent className="p-6">
+        {/* Diagnostic Panel */}
+        {initialMermaid && (
+          <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs">
+            <div className="font-semibold text-blue-800 mb-2">Flowchart Diagnostic Info:</div>
+            <div className="text-blue-700 space-y-1">
+              <div>Content Length: {initialMermaid.length} characters</div>
+              {(() => {
+                try {
+                  const parsed = yaml.load(initialMermaid);
+                  if (parsed && typeof parsed === 'object') {
+                    const keys = Object.keys(parsed);
+                    const stepsCount = (parsed as any).steps && Array.isArray((parsed as any).steps) ? (parsed as any).steps.length : 0;
+                    return (
+                      <>
+                        <div>YAML Keys: {keys.join(', ')}</div>
+                        {stepsCount > 0 && <div>Steps Found: {stepsCount}</div>}
+                        {(parsed as any).procedure_name && <div>Procedure: {(parsed as any).procedure_name}</div>}
+                      </>
+                    );
+                  }
+                  return <div>Content Type: {typeof parsed}</div>;
+                } catch {
+                  return <div>Status: Invalid YAML format</div>;
+                }
+              })()}
+            </div>
+          </div>
+        )}
+        
         {error && (
           <div className="bg-gradient-to-r from-red-50 to-pink-50 p-4 mb-6 text-red-700 text-sm rounded-lg border border-red-200 shadow-sm">
-            <p className="font-semibold text-red-800">Error with AI Flowchart Generation:</p>
+            <p className="font-semibold text-red-800">Error with Flowchart:</p>
             <pre className="whitespace-pre-wrap text-xs mt-2 font-mono bg-red-100/50 p-2 rounded border">{error}</pre>
+            <div className="mt-3">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setError(null);
+                  generateAIYaml(stepsProp);
+                }}
+                disabled={isGeneratingAI || !stepsProp || stepsProp.length === 0}
+                className="bg-white text-red-700 border-red-300 hover:bg-red-50"
+              >
+                <RefreshCw className={`mr-2 h-4 w-4 ${isGeneratingAI ? "animate-spin" : ""}`} />
+                {isGeneratingAI ? 'Regenerating...' : 'Regenerate Flowchart'}
+              </Button>
+            </div>
           </div>
         )}
         

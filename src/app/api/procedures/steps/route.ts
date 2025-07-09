@@ -62,9 +62,7 @@ export async function POST(req: NextRequest) {
             id: uuidv4(),
             index,
             content: step.content,
-            procedureId,
-            createdAt: new Date(),
-            updatedAt: new Date()
+            procedureId
           }
         })
       )
