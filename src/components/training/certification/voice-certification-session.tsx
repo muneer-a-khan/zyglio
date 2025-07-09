@@ -1,6 +1,6 @@
 'use client';
 
-import { ElevenLabsVoiceCertification } from './elevenlabs-voice-certification';
+import { SimpleTranscriptTracker } from './simple-transcript-tracker';
 
 interface VoiceCertificationSessionProps {
   moduleId: string;
@@ -9,21 +9,21 @@ interface VoiceCertificationSessionProps {
 }
 
 export function VoiceCertificationSession({ moduleId, userId, onComplete }: VoiceCertificationSessionProps) {
-  console.log("🎯 VoiceCertificationSession using ElevenLabs implementation with auto-generated scenarios");
+  console.log("🎯 VoiceCertificationSession using Simple Transcript Tracker - Reading ElevenLabs Data");
   
   const handleCertificationComplete = (results: any) => {
-    // Convert ElevenLabs results format to legacy format
+    // Convert results format to legacy format
     const legacyResult = {
       passed: results.passed || false,
-      score: results.overallScore || 0,
-      certificationId: results.certificationId || results.id || ''
+      score: results.score || 0,
+      certificationId: results.sessionId || results.id || ''
     };
     
     onComplete(legacyResult);
   };
 
   return (
-    <ElevenLabsVoiceCertification 
+    <SimpleTranscriptTracker 
       moduleId={moduleId}
       userId={userId}
       onCertificationComplete={handleCertificationComplete}

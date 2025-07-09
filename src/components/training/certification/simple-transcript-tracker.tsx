@@ -1,17 +1,15 @@
 "use client";
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useConversation } from '@elevenlabs/react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-// import { Progress } from '@/components/ui/progress';
+import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { 
   Mic, 
   MicOff, 
   Loader2, 
-  CheckCircle, 
-  AlertCircle,
   Award,
   PhoneCall,
   MessageCircle,
@@ -21,7 +19,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 
-interface ElevenLabsVoiceCertificationProps {
+interface SimpleTranscriptTrackerProps {
   moduleId: string;
   userId?: string;
   onCertificationComplete: (results: any) => void;
@@ -42,21 +40,20 @@ interface ProgressData {
   sessionDuration: number;
 }
 
-export function ElevenLabsVoiceCertification({ 
+export function SimpleTranscriptTracker({ 
   moduleId, 
   userId, 
   onCertificationComplete,
   className = '' 
-}: ElevenLabsVoiceCertificationProps) {
-  console.log('🏀 BASKETBALL VOICE CERTIFICATION COMPONENT LOADED - OFFICIAL SDK VERSION');
+}: SimpleTranscriptTrackerProps) {
+  console.log('SimpleTranscriptTracker mounted');
+  console.log('🎯 Simple Transcript Tracker - Reading ElevenLabs Data');
   console.log('Module ID:', moduleId);
-  console.log('Basketball Agent ID: agent_01jzk7f85fedsssv51bkehfmg5');
 
   const [conversation, setConversation] = useState<ConversationMessage[]>([]);
-  const [currentScore, setCurrentScore] = useState(0);
-  const [questionCount, setQuestionCount] = useState(0);
-  const [maxQuestions] = useState(5);
   const [agentStatus, setAgentStatus] = useState<'listening' | 'speaking' | 'thinking'>('listening');
+  const [isSessionActive, setIsSessionActive] = useState(false);
+  const [sessionStartTime, setSessionStartTime] = useState<Date | null>(null);
   const [progressData, setProgressData] = useState<ProgressData>({
     scenariosCompleted: 0,
     totalPoints: 0,
@@ -64,21 +61,23 @@ export function ElevenLabsVoiceCertification({
     totalExchanges: 0,
     sessionDuration: 0
   });
-  const [sessionStartTime, setSessionStartTime] = useState<Date | null>(null);
 
   // Use the official ElevenLabs React SDK
   const conversationSdk = useConversation({
     onConnect: () => {
       console.log('Connected to ElevenLabs conversation');
-      toast.success('Connected to Coach Alex!');
+      toast.success('Connected to certification agent!');
       setAgentStatus('speaking');
+      setIsSessionActive(true);
       setSessionStartTime(new Date());
     },
     onDisconnect: () => {
       console.log('Disconnected from ElevenLabs conversation');
       setAgentStatus('listening');
+      setIsSessionActive(false);
     },
     onMessage: (message: any) => {
+      console.log('onMessage fired:', message);
       const messageContent = (typeof message.message === 'string' ? message.message : '') || (typeof message.text === 'string' ? message.text : '');
       console.log('Agent message content:', messageContent, message);
       
@@ -88,22 +87,29 @@ export function ElevenLabsVoiceCertification({
           content: messageContent,
           timestamp: new Date()
         };
+        
         setConversation(prev => [...prev, newMessage]);
         setAgentStatus('listening');
+        
+        // Check if this is a scenario completion or scoring message
         updateProgressFromTranscript(messageContent, 'agent');
+        
       } else if ((message.type && message.type === 'user_transcript') || (message.source === 'user' && messageContent)) {
         const newMessage: ConversationMessage = {
           role: 'user',
           content: messageContent,
           timestamp: new Date()
         };
+        
         setConversation(prev => [...prev, newMessage]);
         setAgentStatus('thinking');
+
+        // Update progress based on user response
         updateProgressFromTranscript(messageContent, 'user');
       }
     },
     onError: (error) => {
-      console.error('❌ Basketball certification error:', error);
+      console.error('❌ ElevenLabs error:', error);
       toast.error(`Connection error: ${error.message}`);
     },
     onModeChange: (mode: { mode: string }) => {
@@ -115,15 +121,20 @@ export function ElevenLabsVoiceCertification({
   const updateProgressFromTranscript = (content: string, role: 'agent' | 'user') => {
     setProgressData(prev => {
       let newData = { ...prev };
+      
       // Update total exchanges
       newData.totalExchanges = conversation.length + 1;
+      
       // Update session duration
       if (sessionStartTime) {
         newData.sessionDuration = Math.round((new Date().getTime() - sessionStartTime.getTime()) / 1000);
       }
+
       // Look for scenario completion indicators in agent messages
       if (role === 'agent') {
         const lowerContent = content.toLowerCase();
+        
+        // Check for scenario completion phrases
         if (lowerContent.includes('scenario complete') || 
             lowerContent.includes('next scenario') ||
             lowerContent.includes('moving to') ||
@@ -131,6 +142,7 @@ export function ElevenLabsVoiceCertification({
           newData.scenariosCompleted = prev.scenariosCompleted + 1;
           toast.success(`✅ Scenario ${prev.scenariosCompleted + 1} completed!`);
         }
+        
         // Look for scoring information
         const scoreMatch = content.match(/(\d+)\s*(?:points?|score)/i);
         if (scoreMatch) {
@@ -139,6 +151,7 @@ export function ElevenLabsVoiceCertification({
           newData.currentScore = Math.round((newData.totalPoints / (newData.scenariosCompleted * 10)) * 100);
           toast.success(`🎯 +${points} points! Total: ${newData.totalPoints}`);
         }
+        
         // Look for percentage scores
         const percentMatch = content.match(/(\d+)%/);
         if (percentMatch) {
@@ -146,35 +159,39 @@ export function ElevenLabsVoiceCertification({
           newData.currentScore = score;
         }
       }
+
       // Estimate progress based on conversation flow
       if (newData.totalExchanges > 0) {
+        // Assume 5-8 scenarios for certification
         const estimatedScenarios = Math.min(8, Math.max(5, Math.ceil(newData.totalExchanges / 4)));
         const progressPercent = Math.min(100, (newData.scenariosCompleted / estimatedScenarios) * 100);
+        
+        // Update progress if we have scenario data
         if (newData.scenariosCompleted > 0) {
           newData.currentScore = Math.max(newData.currentScore, Math.round(progressPercent));
         }
       }
-      console.log('ProgressData updated:', newData);
+
       return newData;
     });
   };
 
   const startCertification = useCallback(async () => {
     try {
-      console.log('🎬 Starting basketball voice certification...');
+      console.log('Starting ElevenLabs certification...');
       
       // Request microphone permission
       await navigator.mediaDevices.getUserMedia({ audio: true });
       
-      // Start conversation with basketball agent
+      // Start conversation with ElevenLabs agent
       await conversationSdk.startSession({
-        agentId: 'agent_01jzk7f85fedsssv51bkehfmg5'
+        agentId: 'agent_01jzk7f85fedsssv51bkehfmg5' // Replace with your actual agent ID
       });
       
-      console.log('🏀 Basketball certification session started!');
+      console.log('ElevenLabs certification session started!');
       
     } catch (error) {
-      console.error('Failed to start basketball certification:', error);
+      console.error('Failed to start certification:', error);
       toast.error('Failed to start certification. Please check microphone permissions.');
     }
   }, [conversationSdk]);
@@ -182,47 +199,36 @@ export function ElevenLabsVoiceCertification({
   const stopCertification = useCallback(async () => {
     try {
       await conversationSdk.endSession();
-      console.log('🏁 Basketball certification ended');
+      console.log('ElevenLabs certification ended');
       
-      // Calculate final results
-      const finalScore = Math.min(currentScore, 100);
+      // Calculate final results from transcript data
+      const finalScore = progressData.currentScore;
       const passed = finalScore >= 70;
       
       const results = {
         score: finalScore,
         passed,
-        questionsAnswered: questionCount,
+        scenariosCompleted: progressData.scenariosCompleted,
+        totalPoints: progressData.totalPoints,
         conversation: conversation,
-        certificationLevel: passed ? 'Basketball Certified' : 'Needs Improvement'
+        sessionDuration: progressData.sessionDuration,
+        totalExchanges: progressData.totalExchanges,
+        certificationLevel: passed ? 'Certified' : 'Needs Improvement'
       };
       
       if (passed) {
-        toast.success(`🏀 Congratulations! You passed with ${finalScore}%`);
+        toast.success(`🎉 Congratulations! You passed with ${finalScore}%`);
       } else {
-        toast.error(`🏀 Score: ${finalScore}%. You need 70% to pass.`);
+        toast.error(`📊 Score: ${finalScore}%. You need 70% to pass.`);
       }
       
       onCertificationComplete(results);
       
     } catch (error) {
-      console.error('Error ending basketball certification:', error);
+      console.error('Error ending certification:', error);
       toast.error('Error ending certification');
     }
-  }, [conversationSdk, currentScore, questionCount, conversation, onCertificationComplete]);
-
-  const handleManualComplete = () => {
-    // For testing - manually complete certification
-    const results = {
-      score: 85,
-      passed: true,
-      questionsAnswered: 5,
-      conversation: conversation,
-      certificationLevel: 'Basketball Certified'
-    };
-    
-    toast.success('🏀 Basketball Certification Complete! (Manual)');
-    onCertificationComplete(results);
-  };
+  }, [conversationSdk, progressData, conversation, onCertificationComplete]);
 
   const getStatusIcon = () => {
     switch (agentStatus) {
@@ -234,8 +240,8 @@ export function ElevenLabsVoiceCertification({
 
   const getStatusText = () => {
     switch (agentStatus) {
-      case 'speaking': return 'Coach Alex is speaking...';
-      case 'thinking': return 'Coach Alex is thinking...';
+      case 'speaking': return 'Agent is speaking...';
+      case 'thinking': return 'Agent is thinking...';
       default: return 'Listening for your response...';
     }
   };
@@ -246,23 +252,23 @@ export function ElevenLabsVoiceCertification({
 
   return (
     <div className={`space-y-6 ${className}`}>
-      {/* Basketball Header */}
-      <Card className="bg-gradient-to-r from-orange-50 to-red-50 border-orange-200">
+      {/* Header */}
+      <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200">
         <CardHeader className="text-center">
           <div className="flex items-center justify-center gap-3 mb-2">
-            <Award className="h-8 w-8 text-orange-600" />
-            <CardTitle className="text-2xl font-bold text-orange-800">
-              🏀 Basketball Voice Certification
+            <Award className="h-8 w-8 text-blue-600" />
+            <CardTitle className="text-2xl font-bold text-blue-800">
+              🎯 ElevenLabs Voice Certification
             </CardTitle>
           </div>
-          <p className="text-orange-700">
-            Chat with Coach Alex to demonstrate your basketball knowledge
+          <p className="text-blue-700">
+            Real-time transcript tracking with ElevenLabs scoring
           </p>
         </CardHeader>
       </Card>
 
-      {/* Progress Section - Commented out for now */}
-      {/* <Card>
+      {/* Progress Section */}
+      <Card>
         <CardContent className="pt-6">
           <div className="space-y-4">
             <div className="flex justify-between items-center">
@@ -272,6 +278,7 @@ export function ElevenLabsVoiceCertification({
               </span>
             </div>
             <Progress value={progressPercentage} className="w-full" />
+            
             <div className="grid grid-cols-2 gap-4">
               <div className="flex items-center gap-2">
                 <Badge variant="outline" className="bg-green-50">
@@ -289,6 +296,7 @@ export function ElevenLabsVoiceCertification({
                 </Badge>
               </div>
             </div>
+
             <div className="flex justify-between items-center">
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 {getStatusIcon()}
@@ -303,7 +311,38 @@ export function ElevenLabsVoiceCertification({
             </div>
           </div>
         </CardContent>
-      </Card> */}
+      </Card>
+
+      {/* Session Stats */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Session Statistics</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 gap-4 text-sm">
+            <div className="space-y-2">
+              <div className="flex justify-between">
+                <span>Total Exchanges:</span>
+                <span className="font-medium">{progressData.totalExchanges}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Scenarios Done:</span>
+                <span className="font-medium">{progressData.scenariosCompleted}</span>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <div className="flex justify-between">
+                <span>Total Points:</span>
+                <span className="font-medium">{progressData.totalPoints}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Session Time:</span>
+                <span className="font-medium">{progressData.sessionDuration}s</span>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Connection Controls */}
       <Card>
@@ -314,17 +353,17 @@ export function ElevenLabsVoiceCertification({
                 onClick={startCertification}
                 disabled={isConnected || isConnecting}
                 size="lg"
-                className="bg-orange-600 hover:bg-orange-700"
+                className="bg-blue-600 hover:bg-blue-700"
               >
                 {isConnecting ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Connecting to Coach Alex...
+                    Connecting...
                   </>
                 ) : (
                   <>
                     <PhoneCall className="mr-2 h-4 w-4" />
-                    Start Basketball Certification
+                    Start Certification
                   </>
                 )}
               </Button>
@@ -340,7 +379,7 @@ export function ElevenLabsVoiceCertification({
               </Button>
             </div>
 
-            {/* Agent Status */}
+            {/* Session Status */}
             <div className="text-center">
               <div className="flex items-center justify-center gap-2 mb-2">
                 <div className={`w-3 h-3 rounded-full ${
@@ -348,7 +387,7 @@ export function ElevenLabsVoiceCertification({
                   isConnecting ? 'bg-yellow-500 animate-pulse' : 'bg-gray-400'
                 }`} />
                 <span className="text-sm font-medium">
-                  {isConnected ? 'Connected to Coach Alex' : 
+                  {isConnected ? 'Connected to ElevenLabs' : 
                    isConnecting ? 'Connecting...' : 'Not Connected'}
                 </span>
               </div>
@@ -358,41 +397,28 @@ export function ElevenLabsVoiceCertification({
                   {conversationSdk.isSpeaking ? (
                     <>
                       <Volume2 className="h-4 w-4 text-blue-500 animate-pulse" />
-                      Coach Alex is speaking
+                      Agent is speaking
                     </>
                   ) : (
                     <>
                       <Mic className="h-4 w-4 text-green-500" />
-                      Coach Alex is listening
+                      Agent is listening
                     </>
                   )}
                 </div>
               )}
             </div>
-
-            {/* Test Button */}
-            <div className="text-center">
-              <Button
-                onClick={handleManualComplete}
-                variant="outline"
-                size="sm"
-                className="text-xs"
-              >
-                <CheckCircle className="mr-1 h-3 w-3" />
-                Test Complete Certification
-              </Button>
-            </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Conversation History */}
+      {/* Live Transcript */}
       {conversation.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <MessageCircle className="h-5 w-5" />
-              Certification Conversation
+              Live Transcript
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -402,13 +428,13 @@ export function ElevenLabsVoiceCertification({
                   key={index}
                   className={`p-3 rounded-lg ${
                     msg.role === 'agent'
-                      ? 'bg-orange-50 border-l-4 border-orange-500'
-                      : 'bg-blue-50 border-l-4 border-blue-500'
+                      ? 'bg-blue-50 border-l-4 border-blue-500'
+                      : 'bg-green-50 border-l-4 border-green-500'
                   }`}
                 >
                   <div className="flex items-center gap-2 mb-1">
                     <Badge variant={msg.role === 'agent' ? 'default' : 'secondary'}>
-                      {msg.role === 'agent' ? '🏀 Coach Alex' : '👤 You'}
+                      {msg.role === 'agent' ? '🤖 ElevenLabs' : '👤 You'}
                     </Badge>
                     <span className="text-xs text-muted-foreground">
                       {msg.timestamp.toLocaleTimeString()}
@@ -427,15 +453,15 @@ export function ElevenLabsVoiceCertification({
         <CardContent className="pt-6">
           <div className="space-y-2">
             <h4 className="font-semibold text-blue-800 flex items-center gap-2">
-              <AlertCircle className="h-4 w-4" />
+              <Award className="h-4 w-4" />
               How it works:
             </h4>
             <ul className="text-sm text-blue-700 space-y-1">
-              <li>• Click "Start Basketball Certification" to connect to Coach Alex</li>
-              <li>• Speak clearly about basketball concepts and scenarios</li>
-              <li>• Answer 5 scenarios to complete your certification</li>
-              <li>• You need 70% or higher to pass</li>
-              <li>• Your conversation is analyzed in real-time</li>
+              <li>• ElevenLabs handles all scoring and metrics</li>
+              <li>• Progress bar updates based on transcript analysis</li>
+              <li>• Scenarios and points extracted from agent responses</li>
+              <li>• Real-time progress tracking without duplicate scoring</li>
+              <li>• Simple, efficient transcript monitoring</li>
             </ul>
           </div>
         </CardContent>
