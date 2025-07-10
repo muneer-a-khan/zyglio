@@ -1429,14 +1429,14 @@ export default function CreateProcedure() {
         </Tabs>
       </main>
 
-      <footer className="bg-gray-100 py-6">
+      <footer className="bg-muted py-6">
         <div className="container px-4 md:px-6">
           <div className="flex flex-col items-center justify-between gap-4 md:flex-row">
             <div className="flex items-center gap-2">
-              <div className="flex items-center justify-center rounded-md bg-blue-600 h-8 w-8">
+              <div className="flex items-center justify-center rounded-md bg-primary h-8 w-8">
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
-                  className="h-4 w-4 text-white"
+                  className="h-4 w-4 text-primary-foreground"
                   width="24"
                   height="24"
                   viewBox="0 0 24 24"
@@ -1453,7 +1453,7 @@ export default function CreateProcedure() {
               </div>
               <span className="text-lg font-semibold">Zyglio</span>
             </div>
-            <p className="text-sm text-gray-500">
+            <p className="text-sm text-muted-foreground">
               © 2025 Zyglio. All rights reserved.
             </p>
           </div>

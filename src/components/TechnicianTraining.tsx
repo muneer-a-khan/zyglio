@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Clock, Users, Award, HardHat, Cog, Stethoscope, AlertTriangle } from 'lucide-react';
+import Image from 'next/image';
 
 export const TechnicianTraining: React.FC = () => {
   const handleStartTraining = (title: string) => {
@@ -149,9 +150,11 @@ export const TechnicianTraining: React.FC = () => {
                 {/* Add diagnostic equipment image for the active demo */}
                 {module.isDemo && module.isActive && (
                   <div className="relative rounded-lg overflow-hidden">
-                    <img 
+                    <Image 
                       src="/assets/diagnostic-equipment.jpg" 
                       alt="Engine Diagnostic Equipment" 
+                      width={400}
+                      height={128}
                       className="w-full h-32 object-cover"
                     />
                     <div className="absolute inset-0 bg-gradient-primary/20 flex items-center justify-center">

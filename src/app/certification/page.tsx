@@ -77,13 +77,13 @@ export default function CertificationPage() {
       case "COMPLETED":
         return <Badge variant="secondary" className="bg-green-100 text-green-800 hover:bg-green-200">Certified</Badge>;
       case "FAILED":
-        return <Badge variant="destructive" className="bg-red-100 text-red-800 hover:bg-red-200">Failed</Badge>;
+        return <Badge variant="destructive">Failed</Badge>;
       case "VOICE_INTERVIEW_IN_PROGRESS":
         return <Badge variant="outline" className="bg-amber-100 text-amber-800 hover:bg-amber-200">In Progress</Badge>;
       default:
         return module.completedQuizzes === module.totalQuizzes ? 
           <Badge variant="outline" className="bg-blue-100 text-blue-800 hover:bg-blue-200">Ready for Certification</Badge> :
-          <Badge variant="outline" className="bg-gray-100 text-gray-800">Quizzes Incomplete</Badge>;
+          <Badge variant="outline">Quizzes Incomplete</Badge>;
     }
   };
 
@@ -193,7 +193,7 @@ export default function CertificationPage() {
           <div className="grid md:grid-cols-2 gap-6">
             {eligibleModules.map((module) => (
               <Card key={module.id} className="overflow-hidden">
-                <CardHeader className="border-b bg-gray-50 pb-3">
+                <CardHeader className="border-b bg-muted pb-3">
                   <div className="flex justify-between items-start">
                     <CardTitle className="text-lg">{module.title}</CardTitle>
                     {getStatusBadge(module)}
@@ -236,7 +236,7 @@ export default function CertificationPage() {
                   </div>
                 </CardContent>
                 
-                <CardFooter className="border-t bg-gray-50 pt-3">
+                <CardFooter className="border-t bg-muted pt-3">
                   {module.certificationStatus === "COMPLETED" ? (
                     <Button asChild variant="outline">
                       <Link href={`/certification/certificate/${module.id}`}>

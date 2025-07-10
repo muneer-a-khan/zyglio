@@ -138,6 +138,34 @@
     background-image: radial-gradient(circle at 1px 1px, rgba(255,255,255,0.15) 1px, transparent 0);
     background-size: 20px 20px;
   }
+
+  /* Fix image display issues */
+  img {
+    max-width: 100%;
+    height: auto;
+  }
+
+  /* Ensure Next.js Image components display properly */
+  .next-image-wrapper {
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* Prevent layout shift during image loading */
+  .image-container {
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* Smooth transitions for image loading */
+  .image-fade-in {
+    opacity: 0;
+    transition: opacity 0.3s ease-in-out;
+  }
+
+  .image-fade-in.loaded {
+    opacity: 1;
+  }
 }
 
 @layer components {
@@ -158,5 +186,18 @@
   
   .btn-voice {
     @apply bg-gradient-voice text-accent-foreground hover:shadow-voice transition-all duration-300;
+  }
+
+  /* Media display fixes */
+  .media-display img {
+    display: block;
+    max-width: 100%;
+    height: auto;
+  }
+
+  .media-display .next-image-wrapper {
+    display: block;
+    width: 100%;
+    height: auto;
   }
 }

@@ -3,16 +3,19 @@
 import React from 'react';
 import { Button } from '@/components/ui/button';
 import { Wrench, GraduationCap, Shield, Zap } from 'lucide-react';
+import Image from 'next/image';
 
 export const HeroSection: React.FC = () => {
   return (
     <section className="relative text-primary-foreground py-20 overflow-hidden">
       {/* Single Clean Hero Background */}
       <div className="absolute inset-0">
-        <img 
+        <Image 
           src="/assets/hero-banner.jpg" 
           alt="Laborde Products Marine Engine Training" 
-          className="w-full h-full object-cover"
+          fill
+          className="object-cover"
+          priority
         />
         <div className="absolute inset-0 bg-primary/80"></div>
       </div>

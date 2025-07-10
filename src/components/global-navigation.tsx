@@ -4,12 +4,11 @@ import Link from "next/link";
 import { useSession, signOut } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 
 export default function GlobalNavigation() {
   const { data: session, status, update } = useSession();
   const pathname = usePathname();
-  const [mounted, setMounted] = useState(false);
 
   // Force session update when status changes
   useEffect(() => {
@@ -18,13 +17,7 @@ export default function GlobalNavigation() {
     }
   }, [status, session, update]);
 
-  // Ensure we're on the client side to prevent hydration mismatches
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
   const isActive = (path: string) => {
-    if (!mounted) return false; // Default state during SSR
     return pathname === path || pathname?.startsWith(path + '/');
   };
 
@@ -38,8 +31,8 @@ export default function GlobalNavigation() {
     { href: '/dashboard', label: 'Dashboard' },
   ];
   
-  // Add SME-specific links
-  const displayLinks = mounted && session?.user?.role === 'sme' 
+  // Add SME-specific links - use session data directly without mounted state
+  const displayLinks = session?.user?.role === 'sme' 
     ? [...baseLinks, { href: '/sme/training', label: 'Review Training' }, { href: '/sme/dashboard', label: 'SME Dashboard' }]
     : baseLinks;
 
@@ -64,7 +57,7 @@ export default function GlobalNavigation() {
                 <path d="M18 6v6" />
               </svg>
             </div>
-            <span className="font-semibold text-md hidden sm:inline-block">Laborde Products</span>
+            <span className="font-semibold text-lg hidden sm:inline-block">Zyglio</span>
           </Link>
         </div>
         <nav className="flex items-center justify-between flex-1">
@@ -82,37 +75,36 @@ export default function GlobalNavigation() {
             ))}
           </div>
           <div className="flex items-center space-x-2 ml-auto pl-1">
-            {mounted ? (
-              session?.user ? (
-                <div className="flex items-center space-x-1 md:space-x-2">
-                  <span className="text-xs md:text-sm text-gray-600 hidden sm:inline truncate max-w-[120px] md:max-w-[150px]">
-                    Hi, {session.user.name || session.user.email}
-                  </span>
-                  <Button 
-                    variant="outline" 
-                    size="sm"
-                    className="text-xs px-2 py-1 h-7"
-                    onClick={() => signOut({ callbackUrl: '/' })}
-                  >
-                    Sign Out
-                  </Button>
-                </div>
-              ) : (
-                <Button 
-                  size="sm" 
-                  className="bg-blue-600 hover:bg-blue-700 text-xs px-2 py-1 h-7"
-                  asChild
-                >
-                  <Link href="/auth/signin">Sign In</Link>
-                </Button>
-              )
-            ) : (
+            {status === "loading" ? (
               <Button 
                 size="sm" 
                 variant="outline"
-                className="opacity-0 text-xs px-2 py-1 h-7"
+                className="opacity-50 text-xs px-2 py-1 h-7"
+                disabled
               >
                 Loading
+              </Button>
+            ) : session?.user ? (
+              <div className="flex items-center space-x-1 md:space-x-2">
+                <span className="text-xs md:text-sm text-gray-600 hidden sm:inline truncate max-w-[120px] md:max-w-[150px]">
+                  Hi, {session.user.name || session.user.email}
+                </span>
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  className="text-xs px-2 py-1 h-7"
+                  onClick={() => signOut({ callbackUrl: '/' })}
+                >
+                  Sign Out
+                </Button>
+              </div>
+            ) : (
+              <Button 
+                size="sm" 
+                className="bg-blue-600 hover:bg-blue-700 text-xs px-2 py-1 h-7"
+                asChild
+              >
+                <Link href="/auth/signin">Sign In</Link>
               </Button>
             )}
           </div>

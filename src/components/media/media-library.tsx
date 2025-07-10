@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { MediaFile } from '@/lib/storage-service'
 import { cn, formatTimestamp } from '@/lib/utils'
+import Image from 'next/image';
 
 interface MediaLibraryProps {
   files: MediaFile[]
@@ -165,9 +166,11 @@ export function MediaLibrary({
   const MediaPreview = ({ file }: { file: MediaFile }) => {
     if (file.type.startsWith('image/')) {
       return (
-        <img
+        <Image
           src={file.url}
           alt={file.originalName}
+          width={400}
+          height={300}
           className="max-w-full max-h-96 object-contain"
         />
       )
@@ -220,9 +223,11 @@ export function MediaLibrary({
               {/* File preview/icon */}
               <div className="aspect-square bg-gray-100 rounded-lg flex items-center justify-center overflow-hidden">
                 {file.type.startsWith('image/') ? (
-                  <img
+                  <Image
                     src={file.url}
                     alt={file.originalName}
+                    width={96}
+                    height={96}
                     className="w-full h-full object-cover"
                   />
                 ) : (

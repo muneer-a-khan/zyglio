@@ -310,9 +310,11 @@ const MediaUploader = ({ mediaItems = [], onChange }: MediaUploaderProps) => {
         return (
           <div className="relative h-24 w-24 rounded overflow-hidden bg-gray-100 flex items-center justify-center">
             {item.url ? (
-              <img 
+              <Image 
                 src={item.url} 
                 alt={item.caption || 'Image preview'} 
+                width={96}
+                height={96}
                 className="h-full w-full object-cover"
                 onError={(e) => {
                   (e.target as HTMLImageElement).src = 'https://placehold.co/100x100?text=Invalid';

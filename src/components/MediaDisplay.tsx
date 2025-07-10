@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { MediaItem } from '@/lib/services/procedure.service';
 import { Video, FileText, Music, AlertCircle, RefreshCw, ImageIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import NextImage from 'next/image';
+import Image from 'next/image';
 
 interface MediaDisplayProps {
   item: MediaItem;
@@ -129,10 +129,12 @@ export default function MediaDisplay({ item }: MediaDisplayProps) {
       case 'IMAGE':
         return (
           <div className="relative rounded overflow-hidden bg-gray-100 flex items-center justify-center min-h-[150px]">
-            {/* Use next/image with fill for better performance */}
-            <img
+            {/* Use next/image with proper sizing */}
+            <Image
               src={mediaUrl}
               alt={item.caption || 'Image'}
+              width={400}
+              height={300}
               className="w-full h-auto max-h-96 object-contain"
               onError={handleMediaError}
               onLoad={(e) => {

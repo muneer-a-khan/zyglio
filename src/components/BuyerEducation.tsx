@@ -4,7 +4,8 @@ import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Clock, Users, Award, Search, Calculator, CheckCircle, CreditCard } from 'lucide-react';
+import { Clock, Users, Award, Search, Calculator, CheckCircle, CreditCard, Play } from 'lucide-react';
+import Image from 'next/image';
 
 export const BuyerEducation: React.FC = () => {
   const handleStartEducation = (title: string) => {
@@ -141,9 +142,11 @@ export const BuyerEducation: React.FC = () => {
                 {/* Add vessel image for the active demo */}
                 {module.isDemo && module.isActive && (
                   <div className="relative rounded-lg overflow-hidden">
-                    <img 
+                    <Image 
                       src="/assets/gulf-coast-vessel.jpg" 
                       alt="Gulf Coast Commercial Vessel" 
+                      width={400}
+                      height={128}
                       className="w-full h-32 object-cover"
                     />
                     <div className="absolute inset-0 bg-gradient-primary/20 flex items-center justify-center">
