@@ -21,6 +21,7 @@ import {
   BarChart3
 } from 'lucide-react';
 import { toast } from 'sonner';
+import Image from 'next/image';
 
 interface EnhancedVoiceCertificationProps {
   moduleId: string;
@@ -358,6 +359,26 @@ export function EnhancedVoiceCertification({
           <p className="text-blue-700">
             Real-time transcript tracking and progress monitoring
           </p>
+          
+          {/* Engine Image for Marine Training Module */}
+          {moduleId === '56178fd2-8106-4b4f-8567-0217fac890f2' && (
+            <div className="mt-4 flex justify-center">
+              <div className="relative w-72 h-48 rounded-lg overflow-hidden border-2 border-blue-200">
+                <Image
+                  src="/assets/engine-s12r.png"
+                  alt="Mitsubishi S12R Engine"
+                  fill
+                  className="object-cover"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-blue-900/20 to-transparent"></div>
+                <div className="absolute bottom-2 left-2 right-2">
+                  <p className="text-white text-xs font-semibold bg-blue-600/80 px-2 py-1 rounded">
+                    Mitsubishi S12R Engine
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
         </CardHeader>
       </Card>
 

@@ -439,9 +439,10 @@ export default function ModuleViewer({
                   <div key={subtopic.title} className="space-y-2">
                     <Button
                       variant={isCurrent ? "default" : "ghost"}
-                      className={`w-full justify-start text-left h-auto p-3 ${
-                        isCompleted ? 'bg-green-50 border-green-200' : ''
-                      }`}
+                      className={`w-full justify-start text-left h-auto p-3 transition-colors
+                        ${isCurrent ? 'bg-blue-800 text-white hover:bg-blue-900' : ''}
+                        ${isCompleted && !isCurrent ? 'bg-green-50 border-green-200 text-green-900' : ''}
+                      `}
                       onClick={() => navigateToSubtopic(subtopic.title)}
                     >
                       <div className="flex items-start gap-2 w-full">
@@ -452,9 +453,13 @@ export default function ModuleViewer({
                             <div className="w-4 h-4 rounded-full border-2 border-gray-300" />
                           )}
                         </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="font-medium text-sm">{subtopic.title}</div>
-                          <div className="text-xs text-gray-500 mt-1">
+                        <div className="flex-1 min-w-0 max-w-full">
+                          <div className="font-medium text-sm whitespace-normal break-words">
+                            {subtopic.title}
+                          </div>
+                          <div className="text-xs mt-1"
+                            style={{ color: isCurrent ? 'rgba(255,255,255,0.85)' : undefined }}
+                          >
                             {subtopic.estimatedTime} min
                           </div>
                         </div>

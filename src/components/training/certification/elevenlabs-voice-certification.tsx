@@ -20,6 +20,7 @@ import {
   TrendingUp
 } from 'lucide-react';
 import { toast } from 'sonner';
+import Image from 'next/image';
 
 interface ElevenLabsVoiceCertificationProps {
   moduleId: string;
@@ -246,20 +247,54 @@ export function ElevenLabsVoiceCertification({
 
   return (
     <div className={`space-y-6 ${className}`}>
-      {/* Basketball Header */}
-      <Card className="bg-gradient-to-r from-orange-50 to-red-50 border-orange-200">
-        <CardHeader className="text-center">
-          <div className="flex items-center justify-center gap-3 mb-2">
-            <Award className="h-8 w-8 text-orange-600" />
-            <CardTitle className="text-2xl font-bold text-orange-800">
-              🏀 Basketball Voice Certification
-            </CardTitle>
-          </div>
-          <p className="text-orange-700">
-            Chat with Coach Alex to demonstrate your basketball knowledge
-          </p>
-        </CardHeader>
-      </Card>
+      {/* Header - Marine Engine or Basketball */}
+      {moduleId === '56178fd2-8106-4b4f-8567-0217fac890f2' ? (
+        <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200">
+          <CardHeader className="text-center">
+            <div className="flex items-center justify-center gap-3 mb-2">
+              <Award className="h-8 w-8 text-blue-600" />
+              <CardTitle className="text-2xl font-bold text-blue-800">
+                🚢 Marine Engine Voice Certification
+              </CardTitle>
+            </div>
+            <p className="text-blue-700">
+              Chat with Engine Expert to demonstrate your Mitsubishi S12R knowledge
+            </p>
+            
+            {/* Engine Image for Marine Training Module */}
+            <div className="mt-4 flex justify-center">
+              <div className="relative w-72 h-48 rounded-lg overflow-hidden border-2 border-blue-200">
+                <Image
+                  src="/assets/engine-s12r.png"
+                  alt="Mitsubishi S12R Engine"
+                  fill
+                  className="object-cover"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-blue-900/20 to-transparent"></div>
+                <div className="absolute bottom-2 left-2 right-2">
+                  <p className="text-white text-xs font-semibold bg-blue-600/80 px-2 py-1 rounded">
+                    Mitsubishi S12R Engine
+                  </p>
+                </div>
+              </div>
+            </div>
+          </CardHeader>
+        </Card>
+      ) : (
+        <Card className="bg-gradient-to-r from-orange-50 to-red-50 border-orange-200">
+          <CardHeader className="text-center">
+            <div className="flex items-center justify-center gap-3 mb-2">
+              <Award className="h-8 w-8 text-orange-600" />
+              <CardTitle className="text-2xl font-bold text-orange-800">
+                🏀 Basketball Voice Certification
+              </CardTitle>
+            </div>
+            <p className="text-orange-700">
+              Chat with Coach Alex to demonstrate your basketball knowledge
+            </p>
+          </CardHeader>
+        </Card>
+      )}
 
       {/* Progress Section - Commented out for now */}
       {/* <Card>
@@ -314,17 +349,20 @@ export function ElevenLabsVoiceCertification({
                 onClick={startCertification}
                 disabled={isConnected || isConnecting}
                 size="lg"
-                className="bg-orange-600 hover:bg-orange-700"
+                className={moduleId === '56178fd2-8106-4b4f-8567-0217fac890f2' ? 
+                  "bg-blue-600 hover:bg-blue-700" : "bg-orange-600 hover:bg-orange-700"}
               >
                 {isConnecting ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Connecting to Coach Alex...
+                    {moduleId === '56178fd2-8106-4b4f-8567-0217fac890f2' ? 
+                      "Connecting to Engine Expert..." : "Connecting to Coach Alex..."}
                   </>
                 ) : (
                   <>
                     <PhoneCall className="mr-2 h-4 w-4" />
-                    Start Basketball Certification
+                    {moduleId === '56178fd2-8106-4b4f-8567-0217fac890f2' ? 
+                      "Start Engine Certification" : "Start Basketball Certification"}
                   </>
                 )}
               </Button>
@@ -348,7 +386,9 @@ export function ElevenLabsVoiceCertification({
                   isConnecting ? 'bg-yellow-500 animate-pulse' : 'bg-gray-400'
                 }`} />
                 <span className="text-sm font-medium">
-                  {isConnected ? 'Connected to Coach Alex' : 
+                  {isConnected ? 
+                    (moduleId === '56178fd2-8106-4b4f-8567-0217fac890f2' ? 
+                      'Connected to Engine Expert' : 'Connected to Coach Alex') : 
                    isConnecting ? 'Connecting...' : 'Not Connected'}
                 </span>
               </div>
@@ -358,12 +398,14 @@ export function ElevenLabsVoiceCertification({
                   {conversationSdk.isSpeaking ? (
                     <>
                       <Volume2 className="h-4 w-4 text-blue-500 animate-pulse" />
-                      Coach Alex is speaking
+                      {moduleId === '56178fd2-8106-4b4f-8567-0217fac890f2' ? 
+                        'Engine Expert is speaking' : 'Coach Alex is speaking'}
                     </>
                   ) : (
                     <>
                       <Mic className="h-4 w-4 text-green-500" />
-                      Coach Alex is listening
+                      {moduleId === '56178fd2-8106-4b4f-8567-0217fac890f2' ? 
+                        'Engine Expert is listening' : 'Coach Alex is listening'}
                     </>
                   )}
                 </div>
@@ -408,7 +450,9 @@ export function ElevenLabsVoiceCertification({
                 >
                   <div className="flex items-center gap-2 mb-1">
                     <Badge variant={msg.role === 'agent' ? 'default' : 'secondary'}>
-                      {msg.role === 'agent' ? '🏀 Coach Alex' : '👤 You'}
+                      {msg.role === 'agent' ? 
+                        (moduleId === '56178fd2-8106-4b4f-8567-0217fac890f2' ? 
+                          '🚢 Engine Expert' : '🏀 Coach Alex') : '👤 You'}
                     </Badge>
                     <span className="text-xs text-muted-foreground">
                       {msg.timestamp.toLocaleTimeString()}

@@ -6,10 +6,18 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Clock, Users, Award, HardHat, Cog, Stethoscope, AlertTriangle } from 'lucide-react';
 import Image from 'next/image';
+import { useRouter } from 'next/navigation';
 
 export const TechnicianTraining: React.FC = () => {
+  const router = useRouter();
+
   const handleStartTraining = (title: string) => {
     console.log(`Starting training: ${title}`);
+    
+    // Redirect to specific training module for engine sound diagnostics demo
+    if (title.includes('ENGINE SOUND DIAGNOSTICS')) {
+      router.push('/training/56178fd2-8106-4b4f-8567-0217fac890f2');
+    }
   };
 
   const handleVoiceCommand = (command: string, module: string) => {
@@ -187,18 +195,11 @@ export const TechnicianTraining: React.FC = () => {
                 <div className="flex gap-3 pt-4">
                   <Button 
                     onClick={() => module.isActive && handleStartTraining(module.title)}
-                    className="flex-1"
+                    className="w-full"
                     disabled={!module.isActive}
                     variant={module.isActive ? "default" : "secondary"}
                   >
                     {module.isActive ? 'Launch Demo' : 'Coming Soon'}
-                  </Button>
-                  <Button 
-                    variant={module.isActive ? "outline" : "secondary"}
-                    className="flex-1"
-                    disabled={!module.isActive}
-                  >
-                    {module.isActive ? '🎧 Listen to Sounds' : 'Preview'}
                   </Button>
                 </div>
               </CardContent>
