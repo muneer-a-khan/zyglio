@@ -57,7 +57,6 @@ export function SubtopicVoiceCertification({
   console.log(`🎯 SUBTOPIC VOICE CERTIFICATION: ${subtopic} in module ${moduleId}`);
   
   const [sessionStartTime, setSessionStartTime] = useState<Date | null>(null);
-  const [questionCount, setQuestionCount] = useState(0);
   const [maxQuestions] = useState(5);
   const [agentConfig, setAgentConfig] = useState<any>(null);
   // const [progressData, setProgressData] = useState<ProgressData>({
@@ -71,30 +70,18 @@ export function SubtopicVoiceCertification({
   const [isSessionComplete, setIsSessionComplete] = useState(false);
   const [sessionDuration, setSessionDuration] = useState(0);
 
-  // Simple 5-minute timer for certification
+  // Timer for session duration tracking only (no auto-pass)
   useEffect(() => {
     if (sessionStartTime && !isSessionComplete) {
       const interval = setInterval(() => {
         const now = new Date();
         const duration = Math.floor((now.getTime() - sessionStartTime.getTime()) / 1000);
         setSessionDuration(duration);
-        
-        // Allow pass after 5 minutes (300 seconds)
-        if (duration >= 300) {
-          console.log('🎯 5-minute mark reached - allowing certification pass');
-          setIsSessionComplete(true);
-          onCertificationComplete({
-            passed: true,
-            score: 85, // Default passing score
-            duration: duration,
-            conversation: conversation
-          });
-        }
       }, 1000);
 
       return () => clearInterval(interval);
     }
-  }, [sessionStartTime, isSessionComplete, conversation, onCertificationComplete]);
+  }, [sessionStartTime, isSessionComplete]);
 
   // Get agent configuration for this subtopic
   useEffect(() => {
@@ -296,47 +283,14 @@ export function SubtopicVoiceCertification({
       await conversationSdk.endSession();
       console.log(`🏁 ${subtopic} certification ended`);
       
-      // Calculate session duration
-      const sessionDuration = sessionStartTime ? 
-        Math.floor((new Date().getTime() - sessionStartTime.getTime()) / 1000) : 0;
-      
-      // Calculate final results
-      const finalScore = 85; // Default passing score
-      const passingScore = agentConfig?.passingScore || 70;
-      const passed = finalScore >= passingScore;
-      
-      const results = {
-        score: finalScore,
-        passed,
-        questionsAnswered: questionCount,
-        sessionDuration,
-        conversation: conversation,
-        subtopic: subtopic,
-        moduleId: moduleId,
-        agentUsed: agentConfig?.agentId,
-        certificationLevel: passed ? `${subtopic} Certified` : 'Needs Improvement',
-        certificationDate: new Date().toISOString()
-      };
-      
-      if (passed) {
-        toast.success(`🎉 Congratulations! You passed "${subtopic}" with ${finalScore}%`, {
-          description: `You are now certified in this chapter!`,
-          duration: 5000
-        });
-      } else {
-        toast.error(`📚 Score: ${finalScore}%. You need ${passingScore}% to pass "${subtopic}".`, {
-          description: 'You can retry the certification when ready.',
-          duration: 5000
-        });
-      }
-      
-      onCertificationComplete(results);
+      // Simply end the session without showing results
+      toast.info('Certification session ended');
       
     } catch (error) {
       console.error('Error ending certification:', error);
       toast.error('Error ending certification');
     }
-  }, [conversationSdk, questionCount, conversation, subtopic, moduleId, agentConfig, sessionStartTime, onCertificationComplete]);
+  }, [conversationSdk, subtopic]);
 
   const isConnected = sdkStatus === 'connected';
   const isConnecting = sdkStatus === 'connecting';
@@ -477,11 +431,6 @@ export function SubtopicVoiceCertification({
                     <Award className="h-4 w-4" />
                   </div>
                 </div>
-                {sessionDuration >= 300 && (
-                  <div className="mt-2 p-2 bg-green-100 text-green-800 rounded">
-                    ✅ Certification complete! You can end the session.
-                  </div>
-                )}
               </div>
             )}
 

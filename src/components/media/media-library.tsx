@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useEffect, useMemo } from 'react'
-import { Search, Filter, Grid, List, Download, Trash2, Eye, Play, FileText, Image, Video, Music } from 'lucide-react'
+import { Search, Filter, Grid, List, Download, Trash2, Eye, Play, FileText, Image as ImageIcon, Video, Music } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -49,7 +49,7 @@ export function MediaLibrary({
   const [previewFile, setPreviewFile] = useState<MediaFile | null>(null)
 
   const getFileIcon = (fileType: string, size = 'h-5 w-5') => {
-    if (fileType.startsWith('image/')) return <Image className={size} />
+    if (fileType.startsWith('image/')) return <ImageIcon className={size} />
     if (fileType.startsWith('video/')) return <Video className={size} />
     if (fileType.startsWith('audio/')) return <Music className={size} />
     return <FileText className={size} />
