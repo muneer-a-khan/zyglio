@@ -160,9 +160,9 @@ export async function POST(request: NextRequest) {
 export async function GET() {
   try {
     // Basic health check for AI services
-    const hasOpenAI = !!process.env.NEXT_PUBLIC_OPENAI_API_KEY;
-    const hasDeepSeek = !!process.env.NEXT_PUBLIC_DEEPSEEK_API_KEY;
-    const hasElevenLabs = !!process.env.NEXT_PUBLIC_ELEVENLABS_API_KEY;
+    const hasOpenAI = !!process.env.OPENAI_API_KEY;
+    const hasDeepSeek = !!process.env.DEEPSEEK_API_KEY;
+    const hasElevenLabs = !!process.env.ELEVENLABS_API_KEY;
     
     return NextResponse.json({
       success: true,

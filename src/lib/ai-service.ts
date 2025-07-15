@@ -48,15 +48,22 @@ export interface LearningAnalysis {
 }
 
 class AIService {
-  private readonly apiKey: string;
+  private apiKey: string | null = null;
   private readonly baseUrl = 'https://api.deepseek.com/v1';
 
   constructor() {
-    this.apiKey = process.env.NEXT_PUBLIC_DEEPSEEK_API_KEY || '';
-    
-    if (!this.apiKey) {
-      console.warn('DeepSeek API key not found. AI features will not work.');
+    // Lazy initialization - don't access env vars during build
+  }
+
+  private initializeApiKey() {
+    if (this.apiKey === null) {
+      this.apiKey = process.env.DEEPSEEK_API_KEY || '';
+      
+      if (!this.apiKey) {
+        console.warn('DeepSeek API key not found. AI features will not work.');
+      }
     }
+    return this.apiKey;
   }
 
   /**
@@ -66,7 +73,8 @@ class AIService {
     prompt: string,
     options: AIEnhancementOptions = {}
   ): Promise<string> {
-    if (!this.apiKey) {
+    const apiKey = this.initializeApiKey();
+    if (!apiKey) {
       throw new Error('DeepSeek API key not configured');
     }
 
@@ -83,7 +91,7 @@ class AIService {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${this.apiKey}`,
+          'Authorization': `Bearer ${apiKey}`,
           'Connection': 'keep-alive'
         },
         signal: AbortSignal.timeout(15000), // 15-second timeout
