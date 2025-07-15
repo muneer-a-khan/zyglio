@@ -64,7 +64,7 @@ class VoiceService {
    * Check if voice recording is supported in the current browser
    */
   public isSupported(): boolean {
-    return !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.MediaRecorder);
+    return !!(navigator.mediaDevices && window.MediaRecorder);
   }
 
   /**
@@ -479,7 +479,4 @@ class VoiceService {
 }
 
 // Export singleton instance
-export const voiceService = new VoiceService();
-
-// Export types
-export type { VoiceRecordingOptions, VoiceRecording, TranscriptionResult, TTSOptions }; 
+export const voiceService = new VoiceService(); 

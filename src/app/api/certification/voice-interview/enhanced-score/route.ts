@@ -137,7 +137,7 @@ export async function POST(request: NextRequest) {
         certificationId: certification.id,
         userId: session.user.id,
         moduleId: certification.moduleId,
-        eventType: 'RESPONSE_SCORED',
+        eventType: 'VOICE_RESPONSE_SCORED',
         eventData: {
           score: scoreData.score,
           maxScore: scoreData.maxScore,

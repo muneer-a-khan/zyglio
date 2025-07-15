@@ -1,6 +1,12 @@
 import { PrismaClient } from '@prisma/client';
 import OpenAI from 'openai';
-import * as pdfParse from 'pdf-parse';
+let pdfParse: any;
+try {
+  pdfParse = require('pdf-parse');
+} catch (error) {
+  console.warn('pdf-parse library not available:', error);
+  pdfParse = null;
+}
 import * as cheerio from 'cheerio';
 import { parse } from 'node-html-parser';
 import { createWorker } from 'tesseract.js';
@@ -484,6 +490,10 @@ ${content.text}
 
 async function extractTextFromPDF(buffer: ArrayBuffer): Promise<string> {
   try {
+    if (!pdfParse) {
+      console.warn('pdf-parse library not available, skipping PDF text extraction');
+      return "PDF text extraction not available";
+    }
     const data = await pdfParse.default(Buffer.from(buffer));
     return data.text;
   } catch (error) {

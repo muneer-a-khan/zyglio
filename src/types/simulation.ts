@@ -124,6 +124,7 @@ export interface SimulationState {
     type: string;
     details: any;
   }>;
+  outcome?: any;
 }
 
 export interface SimulationSession {

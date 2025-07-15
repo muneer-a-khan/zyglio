@@ -302,7 +302,13 @@ class StorageService {
           canvas.height = img.height * ratio
           
           ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
-          canvas.toBlob(resolve, 'image/jpeg', 0.8)
+          canvas.toBlob((blob) => {
+            if (blob) {
+              resolve(blob)
+            } else {
+              reject(new Error('Failed to create blob from canvas'))
+            }
+          }, 'image/jpeg', 0.8)
           URL.revokeObjectURL(img.src)
         }
         img.onerror = reject
@@ -319,7 +325,13 @@ class StorageService {
           canvas.height = video.videoHeight * ratio
           
           ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
-          canvas.toBlob(resolve, 'image/jpeg', 0.8)
+          canvas.toBlob((blob) => {
+            if (blob) {
+              resolve(blob)
+            } else {
+              reject(new Error('Failed to create blob from canvas'))
+            }
+          }, 'image/jpeg', 0.8)
           URL.revokeObjectURL(video.src)
         }
         video.onerror = reject

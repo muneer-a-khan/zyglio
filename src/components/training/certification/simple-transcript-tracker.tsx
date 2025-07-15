@@ -110,7 +110,7 @@ export function SimpleTranscriptTracker({
     },
     onError: (error) => {
       console.error('❌ ElevenLabs error:', error);
-      toast.error(`Connection error: ${error.message}`);
+      toast.error(`Connection error: ${error}`);
     },
     onModeChange: (mode: { mode: string }) => {
       console.log('🔄 Mode changed:', mode);

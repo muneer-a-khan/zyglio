@@ -4,10 +4,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { 
-  Upload, Image, FileText, Video, File, X, Music, 
+  Upload, Image as ImageIcon, FileText, Video, File, X, Music, 
   Trash2, Plus, ExternalLink, Loader2, UploadCloud, Settings,
   Wifi, WifiOff 
 } from "lucide-react";
+import Image from "next/image";
 import { cn } from "@/lib/utils";
 import { MediaItem } from "@/lib/services";
 import { v4 as uuidv4 } from 'uuid';
@@ -321,7 +322,7 @@ const MediaUploader = ({ mediaItems = [], onChange }: MediaUploaderProps) => {
                 }}
               />
             ) : (
-              <Image className="h-10 w-10 text-gray-400" />
+              <ImageIcon className="h-10 w-10 text-gray-400" />
             )}
           </div>
         );

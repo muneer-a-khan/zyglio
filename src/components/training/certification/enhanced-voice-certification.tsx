@@ -99,8 +99,8 @@ export function EnhancedVoiceCertification({
     onMessage: async (message) => {
       console.log('🤖 Agent message:', message);
       
-      if (message.type === 'agent_response' || (message.source === 'ai' && message.message)) {
-        const messageContent = message.message || message.text || '';
+      if (message.source === 'ai' && message.message) {
+        const messageContent = message.message || '';
         const newMessage: ConversationMessage = {
           role: 'agent',
           content: messageContent,
@@ -126,8 +126,8 @@ export function EnhancedVoiceCertification({
           await updateTranscript(sessionId, messageContent, 'agent_response', lastQuestionContext);
         }
         
-             } else if (message.type === 'user_transcript' || (message.source === 'user' && message.message)) {
-         const messageContent = message.message || message.text || '';
+             } else if (message.source === 'user' && message.message) {
+         const messageContent = message.message || '';
          const speakingTime = currentSpeakingStart ? 
            Math.round((new Date().getTime() - currentSpeakingStart.getTime()) / 1000) : 0;
          
@@ -169,11 +169,11 @@ export function EnhancedVoiceCertification({
          }
        }
     },
-    onError: (error) => {
+    onError: (error: string) => {
       console.error('❌ Certification error:', error);
-      toast.error(`Connection error: ${error.message}`);
+      toast.error(`Connection error: ${error}`);
     },
-    onModeChange: (mode) => {
+    onModeChange: (mode: { mode: string }) => {
       console.log('🔄 Mode changed:', mode);
       setAgentStatus(mode.mode === 'speaking' ? 'speaking' : 'listening');
       

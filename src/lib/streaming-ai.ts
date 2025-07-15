@@ -267,12 +267,12 @@ export class StreamingAIProcessor {
     const now = Date.now();
     const timeout = 5 * 60 * 1000; // 5 minutes
     
-    for (const [sessionId, context] of this.contexts.entries()) {
+    Array.from(this.contexts.entries()).forEach(([sessionId, context]) => {
       // Remove contexts that haven't been updated recently
       if (!context.isProcessing) {
         this.contexts.delete(sessionId);
       }
-    }
+    });
   }
 }
 

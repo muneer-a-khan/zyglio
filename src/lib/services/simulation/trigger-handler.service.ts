@@ -176,10 +176,10 @@ export class TriggerHandlerService {
     if (!this.state) return;
     
     switch (action.type) {
-      case 'change_object_state':
+      case 'change_state':
         await this.changeObjectState(action.parameters);
         break;
-      case 'branch_to_step':
+      case 'branch_step':
         await this.branchToStep(action.parameters);
         break;
       case 'end_simulation':
