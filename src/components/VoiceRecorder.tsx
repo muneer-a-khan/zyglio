@@ -318,7 +318,7 @@ const VoiceRecorder = ({
         // Try to initialize and start if not done earlier
         initializeSpeechRecognition();
         if (recognitionRef.current) {
-          recognitionRef.current.start();
+          (recognitionRef.current as SpeechRecognition).start();
         }
       }
       
@@ -584,8 +584,8 @@ const VoiceRecorder = ({
 // Type declarations for SpeechRecognition since TypeScript doesn't have these built-in
 declare global {
   interface Window {
-    SpeechRecognition?: any;
-    webkitSpeechRecognition?: any;
+    SpeechRecognition?: new () => SpeechRecognition;
+    webkitSpeechRecognition?: new () => SpeechRecognition;
   }
 }
 

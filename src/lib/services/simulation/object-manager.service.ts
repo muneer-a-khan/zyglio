@@ -28,11 +28,11 @@ export class ObjectManagerService {
     
     objects.forEach(obj => {
       activeObjects[obj.id] = {
-        ...obj.properties,
+        ...obj.attributes,
         _meta: {
           id: obj.id,
           name: obj.name,
-          type: obj.type,
+          category: obj.category,
           isVisible: true,
           isInteractable: true,
           lastInteraction: null
@@ -50,12 +50,15 @@ export class ObjectManagerService {
     const newObject: SimulationObject = {
       id: uuidv4(),
       name: objectData.name || 'Unnamed Object',
-      type: objectData.type || 'equipment',
+      category: objectData.category || 'Equipment',
       description: objectData.description || '',
-      properties: objectData.properties || {},
-      interactions: objectData.interactions || [],
+      attributes: objectData.attributes || {},
+      states: objectData.states || [],
+      behaviors: objectData.behaviors || [],
+      signals: objectData.signals || [],
       mediaUrl: objectData.mediaUrl,
-      tags: objectData.tags || [],
+      simulationTags: objectData.simulationTags || [],
+      taskId: objectData.taskId,
       createdAt: new Date(),
       updatedAt: new Date()
     };
@@ -118,7 +121,7 @@ export class ObjectManagerService {
     if (!objectDef) return;
     
     // Find the specific interaction
-    const interactionDef = objectDef.interactions.find(i => i.name === interaction);
+    const interactionDef = objectDef.interactions?.find(i => i.name === interaction);
     if (!interactionDef) return;
     
     // Update the object state based on interaction effects

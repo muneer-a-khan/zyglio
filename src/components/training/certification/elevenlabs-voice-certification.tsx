@@ -62,7 +62,7 @@ export function ElevenLabsVoiceCertification({
     onMessage: (message) => {
       console.log('🤖 Agent message:', message);
       
-      if (message.type === 'agent_response') {
+      if (message.message) {
         const newMessage: ConversationMessage = {
           role: 'agent',
           content: message.message,
@@ -76,7 +76,7 @@ export function ElevenLabsVoiceCertification({
             message.message.toLowerCase().includes('question')) {
           setQuestionCount(prev => prev + 1);
         }
-      } else if (message.type === 'user_transcript') {
+      } else if (message.source === 'user') {
         const newMessage: ConversationMessage = {
           role: 'user',
           content: message.message,
@@ -95,9 +95,9 @@ export function ElevenLabsVoiceCertification({
     },
     onError: (error) => {
       console.error('❌ Basketball certification error:', error);
-      toast.error(`Connection error: ${error.message}`);
+      toast.error(`Connection error: ${error}`);
     },
-    onModeChange: (mode) => {
+    onModeChange: (mode: { mode: string }) => {
       console.log('🔄 Mode changed:', mode);
       setAgentStatus(mode.mode === 'speaking' ? 'speaking' : 'listening');
     }

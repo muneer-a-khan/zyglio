@@ -3,7 +3,7 @@
  * Provides intelligent content generation, scenario optimization, and learning enhancements
  */
 
-import { SmartObject, ScenarioStep, Trigger, LearningTask } from '@/types/unified';
+import { SmartObject, ScenarioStep, Trigger, EnhancedLearningTask } from '@/types/unified';
 
 export interface AIEnhancementOptions {
   temperature?: number;
@@ -294,7 +294,7 @@ class AIService {
       timeSpent: number;
       strugglingAreas: string[];
     },
-    currentTask: LearningTask
+    currentTask: EnhancedLearningTask
   ): Promise<LearningAnalysis> {
     const prompt = `
     Analyze this learner's progress and provide personalized recommendations:
@@ -307,8 +307,7 @@ class AIService {
 
     CURRENT TASK:
     - Title: ${currentTask.title}
-    - Objectives: ${currentTask.objectives?.join(', ') || 'Not specified'}
-    - Estimated difficulty: ${currentTask.difficulty || 'Medium'}
+    - Description: ${currentTask.description || 'Not specified'}
 
     Provide:
     1. Identified knowledge gaps
@@ -495,11 +494,4 @@ class AIService {
 // Export singleton instance
 export const aiService = new AIService();
 
-// Export types
-export type {
-  AIEnhancementOptions,
-  ScenarioEnhancement,
-  ObjectEnhancement,
-  ContentGeneration,
-  LearningAnalysis
-}; 
+// All types are already exported as regular exports above 

@@ -1,6 +1,8 @@
 import { v4 as uuidv4 } from 'uuid';
 import {
   SimulationScenario,
+  SimulationObject,
+  SimulationTrigger,
   EnhancedSimulationSettings,
   SimulationState,
   SimulationAction,
@@ -29,17 +31,29 @@ export class SimulationEngineService {
     this.state = {
       id: uuidv4(),
       sessionId: uuidv4(),
+      currentStep: 0,
       currentStepId: settings.steps?.[0]?.id || '',
-      activeObjects: this.objectManager.initializeObjects(settings.objects),
-      activeTriggers: settings.triggers.filter(t => t.isActive).map(t => t.id),
-      scenarioProgress: {},
-      userActions: [],
+      totalSteps: settings.steps?.length || 0,
+      score: 0,
+      isActive: true,
+      isComplete: false,
+      isPaused: false,
       startTime: new Date(),
       currentTime: new Date(),
-      score: 0,
+      endTime: undefined,
       feedback: [],
-      isComplete: false,
-      isPaused: false
+      objects: settings.objects.reduce((acc: Record<string, any>, obj: any) => {
+        acc[obj.id] = obj;
+        return acc;
+      }, {}),
+      activeObjects: this.objectManager.initializeObjects(settings.objects),
+      scenarios: settings.scenarios,
+      triggers: settings.triggers,
+      activeTriggers: settings.triggers.filter(t => t.isActive).map(t => t.id),
+      completedSteps: [],
+      scenarioProgress: {},
+      userActions: [],
+      interactions: []
     };
 
     // Initialize scenario progress
@@ -72,6 +86,13 @@ export class SimulationEngineService {
   async createScenario(scenarioData: Partial<SimulationScenario>): Promise<SimulationScenario> {
     const newScenario: SimulationScenario = {
       id: uuidv4(),
+      instruction: scenarioData.instruction || 'Complete the scenario',
+      requiredObjects: scenarioData.requiredObjects || [],
+      requiredActions: scenarioData.requiredActions || [],
+      conditions: scenarioData.conditions || [],
+      feedback: scenarioData.feedback || 'Scenario completed',
+      position: scenarioData.position || { x: 0, y: 0 },
+      stepIndex: scenarioData.stepIndex || 0,
       name: scenarioData.name || 'New Scenario',
       description: scenarioData.description || '',
       objectives: scenarioData.objectives || [],
@@ -79,9 +100,8 @@ export class SimulationEngineService {
       estimatedDuration: scenarioData.estimatedDuration || 30,
       objects: scenarioData.objects || [],
       triggers: scenarioData.triggers || [],
-      conditions: scenarioData.conditions || [],
       outcomes: scenarioData.outcomes || [],
-      tags: scenarioData.tags || [],
+      simulationTags: scenarioData.simulationTags || [],
       createdAt: new Date(),
       updatedAt: new Date()
     };
@@ -104,7 +124,7 @@ export class SimulationEngineService {
     this.state.scenarioProgress[scenarioId] = 0;
 
     // Activate scenario-specific triggers
-    scenario.triggers.forEach(triggerId => {
+    scenario.triggers?.forEach(triggerId => {
       if (!this.state!.activeTriggers.includes(triggerId)) {
         this.state!.activeTriggers.push(triggerId);
       }
@@ -117,6 +137,44 @@ export class SimulationEngineService {
   // Object interaction delegated to ObjectManager
   async interactWithObject(objectId: string, interaction: string, data?: any): Promise<void> {
     await this.objectManager.interactWithObject(objectId, interaction, data);
+  }
+
+  // Object management methods delegated to ObjectManager
+  async createObject(objectData: Partial<SimulationObject>): Promise<SimulationObject> {
+    return await this.objectManager.createObject(objectData);
+  }
+
+  async updateObject(objectId: string, updates: Partial<SimulationObject>): Promise<SimulationObject | null> {
+    return await this.objectManager.updateObject(objectId, updates);
+  }
+
+  async deleteObject(objectId: string): Promise<boolean> {
+    return await this.objectManager.deleteObject(objectId);
+  }
+
+  // Trigger management methods
+  async createTrigger(triggerData: Partial<SimulationTrigger>): Promise<SimulationTrigger> {
+    const newTrigger: SimulationTrigger = {
+      id: uuidv4(),
+      objectId: triggerData.objectId || '',
+      signal: triggerData.signal || '',
+      condition: triggerData.condition || '',
+      action: triggerData.action || '',
+      type: triggerData.type || 'event',
+      priority: triggerData.priority || 'medium',
+      isActive: triggerData.isActive ?? true,
+      cooldown: triggerData.cooldown || 0,
+      maxActivations: triggerData.maxActivations || -1,
+      simulationTags: triggerData.simulationTags || [],
+      createdAt: new Date(),
+      ...triggerData
+    };
+
+    if (this.settings) {
+      this.settings.triggers.push(newTrigger);
+    }
+
+    return newTrigger;
   }
 
   // Step progression
@@ -189,16 +247,22 @@ export class SimulationEngineService {
   async createScenarioFromTemplate(template: ScenarioTemplate): Promise<SimulationScenario> {
     const newScenario: SimulationScenario = {
       id: uuidv4(),
+      instruction: template.template?.instruction || 'Complete the scenario',
+      requiredObjects: template.template?.requiredObjects || [],
+      requiredActions: template.template?.requiredActions || [],
+      conditions: template.template?.conditions || [],
+      feedback: template.template?.feedback || 'Scenario completed',
+      position: template.template?.position || { x: 0, y: 0 },
+      stepIndex: template.template?.stepIndex || 0,
       name: template.name,
       description: template.description,
-      objectives: template.objectives,
-      difficulty: template.difficulty,
-      estimatedDuration: template.estimatedDuration,
+      objectives: template.template?.objectives || [],
+      difficulty: template.template?.difficulty || 'beginner',
+      estimatedDuration: template.template?.estimatedDuration || 30,
       objects: [],
       triggers: [],
-      conditions: template.conditions || [],
-      outcomes: template.outcomes || [],
-      tags: template.tags || [],
+      outcomes: template.template?.outcomes || [],
+      simulationTags: template.template?.simulationTags || [],
       createdAt: new Date(),
       updatedAt: new Date()
     };

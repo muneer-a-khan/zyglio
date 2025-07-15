@@ -381,8 +381,6 @@ export function TrainingModuleViewer({ moduleId, userId }: TrainingModuleViewerP
               {currentQuizBank ? (
                 <QuizInterface
                   quizBank={currentQuizBank}
-                  userId={userId}
-                  subtopic={currentSubtopic}
                   onComplete={onQuizComplete}
                 />
               ) : (

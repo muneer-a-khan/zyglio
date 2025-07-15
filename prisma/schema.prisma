@@ -426,6 +426,46 @@ model SimulationObject {
   @@index([taskId])
 }
 
+model GottsQuizQuestions {
+  id             String        @id(map: "gottsquizquestions_pkey1") @db.Uuid
+  quiz_id        String?       @db.Uuid
+  question       String?
+  choices        Json?
+  correct_answer Int?
+  image          String?
+  GottsQuizzes   GottsQuizzes? @relation(fields: [quiz_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "gottsquizquestions_quiz_id_fkey")
+}
+
+model GottsQuizzes {
+  id                    String                  @id(map: "gottsquizzes_pkey") @db.Uuid
+  course                String?
+  module                String?
+  GottsQuizQuestions    GottsQuizQuestions[]
+  GottsUserQuizAttempts GottsUserQuizAttempts[]
+}
+
+model GottsUserQuizAttempts {
+  id            BigInt        @id(map: "gottuserquizattempt_pkey") @default(autoincrement())
+  userid        String?       @db.Uuid
+  quizid        String?       @db.Uuid
+  answers       Json?
+  score         Int?
+  passed        Boolean?
+  timespent     Int?
+  attemptnumber Int?
+  created_at    DateTime?     @default(now()) @db.Timestamptz(6)
+  completedat   DateTime?     @db.Timestamp(6)
+  GottsUsers    GottsUsers?   @relation(fields: [userid], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_user")
+  GottsQuizzes  GottsQuizzes? @relation(fields: [quizid], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "gottuserquizattempt_quizid_fkey")
+}
+
+model GottsUsers {
+  id                    String                  @id(map: "gottsusers_pkey") @db.Uuid
+  name                  String?
+  email                 String?
+  GottsUserQuizAttempts GottsUserQuizAttempts[]
+}
+
 enum MediaType {
   IMAGE
   VIDEO

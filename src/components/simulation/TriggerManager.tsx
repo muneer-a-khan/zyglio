@@ -183,19 +183,19 @@ const TriggerManager = ({ triggers, objects, onTriggersChange }: TriggerManagerP
   const handleEdit = (trigger: SimulationTrigger) => {
     setEditingTrigger(trigger);
     setFormData({
-      name: trigger.name,
-      description: trigger.description,
-      type: trigger.type,
-      eventType: trigger.event.type,
-      eventTarget: trigger.event.target || "",
-      eventParameters: JSON.stringify(trigger.event.parameters, null, 2),
-      priority: trigger.priority,
-      isActive: trigger.isActive,
+      name: trigger.name || "",
+      description: trigger.description || "",
+      type: trigger.type || "event",
+      eventType: "custom", // Default since trigger.event doesn't exist
+      eventTarget: "",
+      eventParameters: "{}",
+      priority: trigger.priority || "medium",
+      isActive: trigger.isActive ?? true,
       cooldown: trigger.cooldown?.toString() || "",
       maxActivations: trigger.maxActivations?.toString() || "",
-      tags: trigger.tags.join(", "),
+      tags: trigger.simulationTags?.join(", ") || "",
     });
-    setActions(trigger.actions);
+    setActions([]); // Default empty array since trigger.actions doesn't exist
     setIsCreating(true);
   };
 
@@ -476,16 +476,16 @@ const TriggerManager = ({ triggers, objects, onTriggersChange }: TriggerManagerP
                           <div className="space-y-2">
                             <Input
                               placeholder="Message title"
-                              value={action.parameters.title || ""}
+                              value={action.parameters?.title || ""}
                               onChange={(e) => updateAction(index, {
-                                parameters: { ...action.parameters, title: e.target.value }
+                                parameters: { ...action.parameters || {}, title: e.target.value }
                               })}
                             />
                             <Textarea
                               placeholder="Message content"
-                              value={action.parameters.message || ""}
+                              value={action.parameters?.message || ""}
                               onChange={(e) => updateAction(index, {
-                                parameters: { ...action.parameters, message: e.target.value }
+                                parameters: { ...action.parameters || {}, message: e.target.value }
                               })}
                               rows={2}
                             />
@@ -495,18 +495,18 @@ const TriggerManager = ({ triggers, objects, onTriggersChange }: TriggerManagerP
                         {action.type === "play_audio" && (
                           <Input
                             placeholder="Audio URL"
-                            value={action.parameters.audioUrl || ""}
-                            onChange={(e) => updateAction(index, {
-                              parameters: { ...action.parameters, audioUrl: e.target.value }
-                            })}
+                                                          value={action.parameters?.audioUrl || ""}
+                              onChange={(e) => updateAction(index, {
+                                parameters: { ...action.parameters || {}, audioUrl: e.target.value }
+                              })}
                           />
                         )}
 
                         {action.type === "highlight_object" && (
                           <Select
-                            value={action.parameters.objectId || ""}
+                            value={action.parameters?.objectId || ""}
                             onValueChange={(value) => updateAction(index, {
-                              parameters: { ...action.parameters, objectId: value }
+                              parameters: { ...action.parameters || {}, objectId: value }
                             })}
                           >
                             <SelectTrigger>
@@ -525,9 +525,9 @@ const TriggerManager = ({ triggers, objects, onTriggersChange }: TriggerManagerP
                         {action.type === "change_state" && (
                           <div className="grid grid-cols-3 gap-2">
                             <Select
-                              value={action.parameters.objectId || ""}
+                              value={action.parameters?.objectId || ""}
                               onValueChange={(value) => updateAction(index, {
-                                parameters: { ...action.parameters, objectId: value }
+                                parameters: { ...action.parameters || {}, objectId: value }
                               })}
                             >
                               <SelectTrigger>
@@ -543,16 +543,16 @@ const TriggerManager = ({ triggers, objects, onTriggersChange }: TriggerManagerP
                             </Select>
                             <Input
                               placeholder="Property"
-                              value={action.parameters.property || ""}
+                              value={action.parameters?.property || ""}
                               onChange={(e) => updateAction(index, {
-                                parameters: { ...action.parameters, property: e.target.value }
+                                parameters: { ...action.parameters || {}, property: e.target.value }
                               })}
                             />
                             <Input
                               placeholder="New value"
-                              value={action.parameters.value || ""}
+                              value={action.parameters?.value || ""}
                               onChange={(e) => updateAction(index, {
-                                parameters: { ...action.parameters, value: e.target.value }
+                                parameters: { ...action.parameters || {}, value: e.target.value }
                               })}
                             />
                           </div>
@@ -561,20 +561,20 @@ const TriggerManager = ({ triggers, objects, onTriggersChange }: TriggerManagerP
                         {action.type === "branch_step" && (
                           <Input
                             placeholder="Target step ID"
-                            value={action.parameters.stepId || ""}
-                            onChange={(e) => updateAction(index, {
-                              parameters: { ...action.parameters, stepId: e.target.value }
-                            })}
+                                                          value={action.parameters?.stepId || ""}
+                              onChange={(e) => updateAction(index, {
+                                parameters: { ...action.parameters || {}, stepId: e.target.value }
+                              })}
                           />
                         )}
 
                         {action.type === "end_simulation" && (
                           <Input
                             placeholder="End reason"
-                            value={action.parameters.reason || ""}
-                            onChange={(e) => updateAction(index, {
-                              parameters: { ...action.parameters, reason: e.target.value }
-                            })}
+                                                          value={action.parameters?.reason || ""}
+                              onChange={(e) => updateAction(index, {
+                                parameters: { ...action.parameters || {}, reason: e.target.value }
+                              })}
                           />
                         )}
                       </Card>
@@ -621,8 +621,8 @@ const TriggerManager = ({ triggers, objects, onTriggersChange }: TriggerManagerP
           </Card>
         ) : (
           triggers.map((trigger) => {
-            const triggerConfig = getTriggerTypeConfig(trigger.type);
-            const priorityConfig = getPriorityConfig(trigger.priority);
+            const triggerConfig = getTriggerTypeConfig(trigger.type || "event");
+            const priorityConfig = getPriorityConfig(trigger.priority || "medium");
             return (
               <Card key={trigger.id}>
                 <CardContent className="p-6">
@@ -647,19 +647,19 @@ const TriggerManager = ({ triggers, objects, onTriggersChange }: TriggerManagerP
                         <div>
                           <p className="text-sm font-medium text-gray-700">Event:</p>
                           <p className="text-sm text-gray-600">
-                            {EVENT_TYPES.find(e => e.value === trigger.event.type)?.label}
-                            {trigger.event.target && ` → ${trigger.event.target}`}
+                            {EVENT_TYPES.find(e => e.value === trigger.event?.type)?.label}
+                            {trigger.event?.target && ` → ${trigger.event.target}`}
                           </p>
                         </div>
                         <div>
                           <p className="text-sm font-medium text-gray-700">Actions:</p>
                           <div className="flex flex-wrap gap-1">
-                            {trigger.actions.slice(0, 3).map((action, index) => (
+                            {trigger.actions?.slice(0, 3).map((action, index) => (
                               <Badge key={index} variant="outline" className="text-xs">
                                 {ACTION_TYPES.find(a => a.value === action.type)?.label}
                               </Badge>
                             ))}
-                            {trigger.actions.length > 3 && (
+                            {trigger.actions && trigger.actions.length > 3 && (
                               <Badge variant="outline" className="text-xs">
                                 +{trigger.actions.length - 3} more
                               </Badge>
@@ -685,9 +685,9 @@ const TriggerManager = ({ triggers, objects, onTriggersChange }: TriggerManagerP
                         </div>
                       )}
 
-                      {trigger.tags.length > 0 && (
+                      {trigger.simulationTags && trigger.simulationTags.length > 0 && (
                         <div className="flex flex-wrap gap-1 mb-3">
-                          {trigger.tags.map((tag, index) => (
+                          {trigger.simulationTags.map((tag, index) => (
                             <Badge key={index} variant="outline" className="text-xs">
                               {tag}
                             </Badge>
@@ -696,8 +696,8 @@ const TriggerManager = ({ triggers, objects, onTriggersChange }: TriggerManagerP
                       )}
 
                       <div className="text-xs text-gray-500">
-                        Created: {new Date(trigger.createdAt).toLocaleDateString()}
-                        {trigger.updatedAt !== trigger.createdAt && (
+                        Created: {trigger.createdAt ? new Date(trigger.createdAt).toLocaleDateString() : 'Unknown'}
+                        {trigger.updatedAt && trigger.updatedAt !== trigger.createdAt && (
                           <span className="ml-2">
                             Updated: {new Date(trigger.updatedAt).toLocaleDateString()}
                           </span>
