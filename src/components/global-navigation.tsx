@@ -30,6 +30,7 @@ export default function GlobalNavigation() {
 
   // Base links for all users
   const baseLinks = [
+    { href: '/demo', label: 'Demo' },
     { href: '/create', label: 'New Procedure' },
     { href: '/procedures', label: 'Procedures' },
     { href: '/training', label: 'Training' },

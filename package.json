@@ -10,7 +10,7 @@
     "generate:voice-questions": "node scripts/generate-voice-questions.js"
   },
   "dependencies": {
-    "@elevenlabs/react": "^0.2.1",
+    "@elevenlabs/react": "^0.2.2",
     "@ffmpeg/ffmpeg": "^0.12.15",
     "@ffmpeg/util": "^0.12.2",
     "@hookform/resolvers": "^3.9.0",
