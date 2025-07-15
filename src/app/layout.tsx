@@ -6,8 +6,8 @@ import { Providers } from "./providers";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Voice Procedural Craftsman",
-  description: "Voice-based procedural documentation platform",
+  title: "Zyglio - Voice AI Training Platform",
+  description: "Transform your industry training with cutting-edge voice AI technology. Used across restaurant, marine, and healthcare industries for professional training and certification.",
 };
 
 export default function RootLayout({
