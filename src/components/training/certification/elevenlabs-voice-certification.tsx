@@ -83,7 +83,11 @@ export function ElevenLabsVoiceCertification({
       const messageContent = (typeof message.message === 'string' ? message.message : '') || (typeof message.text === 'string' ? message.text : '');
       console.log('Agent message content:', messageContent, message);
       
+<<<<<<< HEAD
       if ((message.type && message.type === 'agent_response') || (message.source === 'ai' && messageContent)) {
+=======
+      if (message.message) {
+>>>>>>> refs/remotes/origin/main
         const newMessage: ConversationMessage = {
           role: 'agent',
           content: messageContent,
@@ -91,8 +95,18 @@ export function ElevenLabsVoiceCertification({
         };
         setConversation(prev => [...prev, newMessage]);
         setAgentStatus('listening');
+<<<<<<< HEAD
         updateProgressFromTranscript(messageContent, 'agent');
       } else if ((message.type && message.type === 'user_transcript') || (message.source === 'user' && messageContent)) {
+=======
+        
+        // Track questions and simulate scoring
+        if (message.message.toLowerCase().includes('scenario') || 
+            message.message.toLowerCase().includes('question')) {
+          setQuestionCount(prev => prev + 1);
+        }
+      } else if (message.source === 'user') {
+>>>>>>> refs/remotes/origin/main
         const newMessage: ConversationMessage = {
           role: 'user',
           content: messageContent,
@@ -105,7 +119,7 @@ export function ElevenLabsVoiceCertification({
     },
     onError: (error) => {
       console.error('❌ Basketball certification error:', error);
-      toast.error(`Connection error: ${error.message}`);
+      toast.error(`Connection error: ${error}`);
     },
     onModeChange: (mode: { mode: string }) => {
       console.log('🔄 Mode changed:', mode);

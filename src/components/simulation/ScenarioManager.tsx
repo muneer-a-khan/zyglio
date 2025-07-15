@@ -115,6 +115,13 @@ const ScenarioManager: React.FC<ScenarioManagerProps> = ({
         tags,
         triggers: [], // TODO: Add trigger handling if needed
         conditions: [], // TODO: Add condition handling if needed
+        // Required properties from base ScenarioStep type
+        instruction: formData.description || formData.name,
+        requiredObjects: formData.objects || [],
+        requiredActions: [],
+        feedback: '',
+        position: { x: 0, y: 0 },
+        stepIndex: 0,
         createdAt: new Date(),
         updatedAt: new Date()
       };
@@ -134,16 +141,16 @@ const ScenarioManager: React.FC<ScenarioManagerProps> = ({
   const handleEdit = (scenario: SimulationScenario) => {
     setEditingScenario(scenario);
     setFormData({
-      name: scenario.name,
-      description: scenario.description,
-      objectives: scenario.objectives.join("\n"),
-      difficulty: scenario.difficulty,
-      estimatedDuration: scenario.estimatedDuration,
-      objects: scenario.objects,
-      triggers: scenario.triggers,
-      tags: scenario.tags.join(", "),
+      name: scenario.name || "",
+      description: scenario.description || "",
+      objectives: scenario.objectives?.join("\n") || "",
+      difficulty: scenario.difficulty || "beginner",
+      estimatedDuration: scenario.estimatedDuration || 30,
+      objects: scenario.objects || [],
+      triggers: scenario.triggers || [],
+      tags: scenario.tags?.join(", ") || "",
     });
-    setOutcomes(scenario.outcomes);
+    setOutcomes(scenario.outcomes || []);
     setIsCreating(true);
   };
 
@@ -164,7 +171,6 @@ const ScenarioManager: React.FC<ScenarioManagerProps> = ({
     const newOutcome: ScenarioOutcome = {
       id: `outcome_${Date.now()}`,
       type: "success",
-      title: "",
       description: "",
       feedback: "",
     };
@@ -308,7 +314,7 @@ const ScenarioManager: React.FC<ScenarioManagerProps> = ({
                           }}
                         />
                         <Label htmlFor={`object-${object.id}`} className="text-sm">
-                          {object.name} ({object.type})
+                          {object.name} ({object.category})
                         </Label>
                       </div>
                     ))
@@ -361,11 +367,6 @@ const ScenarioManager: React.FC<ScenarioManagerProps> = ({
                         </div>
 
                         <div className="grid grid-cols-2 gap-3 mb-3">
-                          <Input
-                            placeholder="Outcome title"
-                            value={outcome.title}
-                            onChange={(e) => updateOutcome(index, { title: e.target.value })}
-                          />
                           <Input
                             type="number"
                             placeholder="Score"
@@ -440,7 +441,7 @@ const ScenarioManager: React.FC<ScenarioManagerProps> = ({
                 <div>
                   <h4 className="text-sm font-medium mb-1">Objectives</h4>
                   <ul className="text-sm text-gray-600 list-disc list-inside">
-                    {scenario.objectives.map((obj, index) => (
+                    {scenario.objectives?.map((obj, index) => (
                       <li key={index}>{obj}</li>
                     ))}
                   </ul>
@@ -449,7 +450,7 @@ const ScenarioManager: React.FC<ScenarioManagerProps> = ({
                 <div>
                   <h4 className="text-sm font-medium mb-1">Objects</h4>
                   <div className="flex flex-wrap gap-1">
-                    {scenario.objects.map((objId) => {
+                    {scenario.objects?.map((objId) => {
                       const obj = objects.find(o => o.id === objId);
                       return obj ? (
                         <Badge key={objId} variant="outline" className="text-xs">
@@ -463,7 +464,7 @@ const ScenarioManager: React.FC<ScenarioManagerProps> = ({
                 <div>
                   <h4 className="text-sm font-medium mb-1">Tags</h4>
                   <div className="flex flex-wrap gap-1">
-                    {scenario.tags.map((tag, index) => (
+                    {scenario.tags?.map((tag, index) => (
                       <Badge key={index} variant="outline" className="text-xs">
                         {tag}
                       </Badge>

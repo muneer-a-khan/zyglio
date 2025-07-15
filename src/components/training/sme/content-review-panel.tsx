@@ -62,6 +62,9 @@ interface ModuleDetail {
   isApproved: boolean;
   createdAt: string;
   version: number;
+  approver?: {
+    name: string;
+  };
 }
 
 export function ContentReviewPanel({ smeId }: ContentReviewPanelProps) {

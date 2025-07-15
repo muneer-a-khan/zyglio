@@ -120,7 +120,7 @@ export function ContentRenderer({ content }: ContentRendererProps) {
                       blockquote: ({ node, ...props }) => (
                         <blockquote className="border-l-4 border-blue-300 pl-4 py-2 my-4 bg-blue-50 italic text-blue-800" {...props} />
                       ),
-                      code: ({ node, inline, ...props }) => (
+                      code: ({ node, ...props }) => (
                         <code className="bg-gray-100 px-2 py-1 rounded text-sm font-mono text-gray-800" {...props} />
                       ),
                       pre: ({ node, ...props }) => (

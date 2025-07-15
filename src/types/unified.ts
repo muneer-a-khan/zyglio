@@ -8,6 +8,7 @@ export interface SmartObject {
   id: string;
   name: string;
   category: 'Ingredient' | 'Tool' | 'Equipment' | 'Person' | 'Location';
+  description?: string;
   attributes: Record<string, any>;
   states: string[];
   behaviors: string[];
@@ -44,7 +45,11 @@ export interface Trigger {
   action: string;
   scenarioId?: string; // Link to scenario/procedure
   isActive?: boolean;
+  priority?: 'low' | 'medium' | 'high' | 'critical';
+  description?: string;
+  category?: 'INTERACTION' | 'STATE_CHANGE' | 'TIME_BASED' | 'CONDITION' | 'SYSTEM';
   createdAt?: Date;
+  updatedAt?: Date;
 }
 
 // ============================================================================

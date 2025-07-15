@@ -113,10 +113,12 @@ const ObjectManager: React.FC<ObjectManagerProps> = ({
         name: formData.name,
         category: formData.category,
         description: formData.description,
-        properties,
-        interactions,
+        attributes: properties,
+        behaviors: interactions,
+        signals: [], // Initialize empty signals array
+        states: [], // Initialize empty states array
         mediaUrl: formData.mediaUrl || undefined,
-        tags,
+        simulationTags: tags,
       };
 
       let updatedObjects: SimulationObject[];
@@ -153,11 +155,11 @@ const ObjectManager: React.FC<ObjectManagerProps> = ({
     setFormData({
       name: object.name,
       category: object.category,
-      description: object.description,
-      properties: JSON.stringify(object.properties, null, 2),
-      interactions: object.interactions.join(", "),
+      description: object.description || "",
+      properties: JSON.stringify(object.attributes, null, 2),
+      interactions: object.behaviors.join(", "),
       mediaUrl: object.mediaUrl || "",
-      tags: object.tags.join(", "),
+      tags: object.simulationTags?.join(", ") || "",
     });
     setIsCreating(true);
   };
@@ -351,13 +353,13 @@ const ObjectManager: React.FC<ObjectManagerProps> = ({
                         <p className="text-gray-600 mb-3">{object.description}</p>
                       )}
 
-                      {object.interactions.length > 0 && (
+                      {object.behaviors.length > 0 && (
                         <div className="mb-3">
                           <p className="text-sm font-medium text-gray-700 mb-1">
                             Available Interactions:
                           </p>
                           <div className="flex flex-wrap gap-1">
-                            {object.interactions.map((interaction, index) => (
+                            {object.behaviors.map((interaction, index) => (
                               <Badge key={index} variant="outline" className="text-xs">
                                 {interaction}
                               </Badge>
@@ -366,20 +368,20 @@ const ObjectManager: React.FC<ObjectManagerProps> = ({
                         </div>
                       )}
 
-                      {Object.keys(object.properties).length > 0 && (
+                      {Object.keys(object.attributes).length > 0 && (
                         <div className="mb-3">
                           <p className="text-sm font-medium text-gray-700 mb-1">
                             Properties:
                           </p>
                           <pre className="text-xs bg-gray-100 p-2 rounded overflow-x-auto">
-                            {JSON.stringify(object.properties, null, 2)}
+                            {JSON.stringify(object.attributes, null, 2)}
                           </pre>
                         </div>
                       )}
 
-                      {object.tags.length > 0 && (
+                      {object.simulationTags && object.simulationTags.length > 0 && (
                         <div className="flex flex-wrap gap-1 mb-3">
-                          {object.tags.map((tag, index) => (
+                          {object.simulationTags.map((tag, index) => (
                             <Badge key={index} variant="outline" className="text-xs">
                               <Tag className="w-3 h-3 mr-1" />
                               {tag}
@@ -398,8 +400,8 @@ const ObjectManager: React.FC<ObjectManagerProps> = ({
                       )}
 
                       <div className="text-xs text-gray-500">
-                        Created: {new Date(object.createdAt).toLocaleDateString()}
-                        {object.updatedAt !== object.createdAt && (
+                        Created: {object.createdAt ? new Date(object.createdAt).toLocaleDateString() : 'Unknown'}
+                        {object.updatedAt && object.updatedAt !== object.createdAt && (
                           <span className="ml-2">
                             Updated: {new Date(object.updatedAt).toLocaleDateString()}
                           </span>

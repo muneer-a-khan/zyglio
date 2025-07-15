@@ -59,9 +59,10 @@ export const deepseekApi = typeof window === 'undefined' ? (() => {
             return api.chat;
           }
           // Handle any other property access
-          return typeof api[prop] === 'function' 
-            ? api[prop].bind(api) 
-            : api[prop];
+          const apiProp = (api as any)[prop];
+          return typeof apiProp === 'function' 
+            ? apiProp.bind(api) 
+            : apiProp;
         } catch (error) {
           console.error('Error accessing DeepSeek API:', error);
           return undefined;

@@ -22,21 +22,21 @@ export class TriggerHandlerService {
    */
   setupTriggerListener(trigger: SimulationTrigger): void {
     // Set up different listener types based on trigger event
-    if (trigger.event.type === 'object_interaction') {
+    if (trigger.event?.type === 'object_interaction') {
       this.on('object:interaction', (eventData: any) => {
-        if (eventData.objectId === trigger.event.parameters.objectId) {
+        if (eventData.objectId === trigger.event?.parameters?.objectId) {
           this.evaluateTrigger(trigger, eventData);
         }
       });
-    } else if (trigger.event.type === 'step_start') {
+    } else if (trigger.event?.type === 'step_start') {
       this.on('step:start', (eventData: any) => {
         this.evaluateTrigger(trigger, eventData);
       });
-    } else if (trigger.event.type === 'timer') {
+    } else if (trigger.event?.type === 'timer') {
       // Set timer based on parameters
       const timeout = setTimeout(() => {
         this.evaluateTrigger(trigger, {});
-      }, (trigger.event.parameters.seconds || 10) * 1000);
+      }, (trigger.event?.parameters?.seconds || 10) * 1000);
       
       this.activeTimers.set(trigger.id, timeout);
     }
@@ -68,16 +68,14 @@ export class TriggerHandlerService {
    * Evaluates all conditions for a trigger
    */
   async evaluateTriggerConditions(trigger: SimulationTrigger, eventData: any): Promise<boolean> {
-    // If no conditions, trigger is always valid
-    if (!trigger.conditions || trigger.conditions.length === 0) {
+    // If no condition, trigger is always valid
+    if (!trigger.condition) {
       return true;
     }
     
-    // All conditions must be met (AND logic)
-    for (const condition of trigger.conditions) {
-      const conditionMet = await this.evaluateCondition(condition, eventData);
-      if (!conditionMet) return false; // If any condition fails, return false
-    }
+    // Evaluate the single condition
+    const conditionMet = await this.evaluateCondition(trigger.condition, eventData);
+    if (!conditionMet) return false;
     
     return true;
   }

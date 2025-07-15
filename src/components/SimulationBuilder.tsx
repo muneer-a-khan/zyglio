@@ -189,7 +189,7 @@ const SimulationBuilder = ({
           return {
             ...step,
             expectedResponses: (step.expectedResponses || []).filter(
-              (_, i) => i !== index
+              (_: any, i: number) => i !== index
             ),
           };
         }
@@ -205,17 +205,24 @@ const SimulationBuilder = ({
       setIsSaving(true);
       
       const simulationSettings: SimulationSettings = {
-        name: simulationName,
+        enabled: true,
+        name: simulationName || "Untitled Simulation",
         mode: settings.mode,
+        timeLimit: settings.timeLimit ?? 300,
+        allowRetries: settings.allowRetries ?? true,
+        maxRetries: settings.maxRetries ?? 3,
+        showHints: settings.showHints ?? true,
+        requireMediaConfirmation: settings.requireMediaConfirmation ?? false,
+        feedbackDelay: settings.feedbackDelay ?? 1000,
+        difficulty: settings.difficulty ?? "medium",
         enableVoiceInput: settings.enableVoiceInput ?? true,
         enableTextInput: settings.enableTextInput ?? true,
         feedbackLevel: settings.feedbackLevel ?? "detailed",
         enableScoring: settings.enableScoring ?? true,
-        timeLimit: settings.timeLimit ?? 300,
         steps: settings.steps ?? []
       };
       
-      await procedureService.saveSimulationSettings(simulationSettings);
+      await procedureService.saveSimulationSettings(simulationSettings as any);
       toast.success("Simulation settings saved successfully!");
     } catch (error) {
       console.error("Error saving simulation settings:", error);
@@ -229,8 +236,6 @@ const SimulationBuilder = ({
     switch (settings.mode) {
       case "guided":
         return "Guided mode walks users through each step in order with detailed instructions";
-      case "test":
-        return "Test mode evaluates user knowledge by requiring correct responses at key checkpoints";
       case "freeform":
         return "Freeform mode allows users to navigate the procedure non-linearly through voice commands";
       default:
@@ -422,7 +427,7 @@ const SimulationBuilder = ({
                           </p>
                         ) : (
                           <div className="space-y-2">
-                            {(step.expectedResponses || []).map((response, respIndex) => (
+                            {(step.expectedResponses || []).map((response: any, respIndex: number) => (
                               <div key={respIndex} className="flex items-center gap-2">
                                 <Input
                                   value={response ?? ""}

@@ -241,9 +241,14 @@ export class AIAdapter {
     // Check local services
     if (this.localLLM && this.config.localLLMUrl) {
       try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
+        
         const response = await fetch(`${this.config.localLLMUrl.replace('/v1', '')}/health`, {
-          timeout: 5000,
+          signal: controller.signal,
         });
+        
+        clearTimeout(timeoutId);
         health.local = response.ok;
       } catch {
         health.local = false;
