@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { aiService } from "@/lib/ai-service";
 import { z } from "zod";
 
 // Validation schemas for different enhancement types
@@ -87,6 +86,9 @@ export async function POST(request: NextRequest) {
     const data = validationResult.data;
 
     try {
+      // Dynamic import to avoid build-time initialization
+      const { aiService } = await import("@/lib/ai-service");
+      
       switch (data.type) {
         case "scenario": {
           // Enhance scenario with AI

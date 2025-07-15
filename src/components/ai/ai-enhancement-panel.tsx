@@ -14,7 +14,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 
 // Services
-import { aiService, ScenarioEnhancement, ObjectEnhancement, ContentGeneration } from '@/lib/ai-service';
+import type { ScenarioEnhancement, ObjectEnhancement, ContentGeneration } from '@/lib/ai-service';
 import { voiceService } from '@/lib/voice-service';
 
 // Types
@@ -68,6 +68,7 @@ export function AIEnhancementPanel({
     clearError();
 
     try {
+      const { aiService } = await import('@/lib/ai-service');
       const enhancement = await aiService.enhanceScenario(objects, scenarioSteps, []);
       setScenarioEnhancement(enhancement);
     } catch (error) {
@@ -85,6 +86,7 @@ export function AIEnhancementPanel({
     setSelectedObject(object);
 
     try {
+      const { aiService } = await import('@/lib/ai-service');
       const enhancement = await aiService.enhanceObject(object);
       setObjectEnhancement(enhancement);
     } catch (error) {
@@ -106,6 +108,7 @@ export function AIEnhancementPanel({
     clearError();
 
     try {
+      const { aiService } = await import('@/lib/ai-service');
       const content = await aiService.generateContent(contentType, contentContext, contentTone);
       setContentGeneration(content);
     } catch (error) {
