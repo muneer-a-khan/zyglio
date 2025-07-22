@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Phone, PhoneOff, Loader2, Mic, MicOff, Volume2 } from "lucide-react";
+import { Phone, PhoneOff, Loader2, Volume2, Heart, Brain } from "lucide-react";
 import { toast } from "sonner";
 import { VoiceProvider, useVoice, VoiceReadyState } from "@humeai/voice-react";
 
@@ -13,9 +13,31 @@ function VoiceChat() {
   const [isConnecting, setIsConnecting] = useState(false);
   const [sessionStartTime, setSessionStartTime] = useState<Date | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
+  const [currentEmotions, setCurrentEmotions] = useState<Array<{emotion: string, score: number}>>([]);
 
   // Your specific Hume config ID
   const configId = process.env.NEXT_PUBLIC_HUME_CONFIG_ID;
+
+  // Extract emotions from latest message
+  useEffect(() => {
+    if (messages.length > 0) {
+      const latestMessage = messages[messages.length - 1] as any;
+      
+      // Check for emotion data in various possible locations with type safety
+      const emotionScores = latestMessage?.models?.prosody?.scores || 
+                           latestMessage?.prosody?.scores || 
+                           latestMessage?.emotion?.scores;
+      
+      if (emotionScores && typeof emotionScores === 'object') {
+        const emotions = Object.entries(emotionScores)
+          .map(([emotion, score]) => ({ emotion, score: score as number }))
+          .sort((a, b) => b.score - a.score)
+          .slice(0, 5); // Top 5 emotions
+        
+        setCurrentEmotions(emotions);
+      }
+    }
+  }, [messages]);
 
   // Fetch access token on component mount
   useEffect(() => {
@@ -91,6 +113,7 @@ function VoiceChat() {
     console.log('🔌 Disconnecting from Hume EVI...');
     disconnect();
     setSessionStartTime(null);
+    setCurrentEmotions([]);
     
     toast.info("Conversation Ended", {
       description: "Your voice interview session has ended.",
@@ -125,6 +148,31 @@ function VoiceChat() {
     }
   };
 
+  // Get emotion color based on emotion type
+  const getEmotionColor = (emotion: string): string => {
+    const emotionColors: Record<string, string> = {
+      'joy': 'text-yellow-600 bg-yellow-100',
+      'excitement': 'text-orange-600 bg-orange-100',
+      'confidence': 'text-blue-600 bg-blue-100',
+      'calmness': 'text-green-600 bg-green-100',
+      'interest': 'text-purple-600 bg-purple-100',
+      'curiosity': 'text-indigo-600 bg-indigo-100',
+      'surprise': 'text-pink-600 bg-pink-100',
+      'admiration': 'text-emerald-600 bg-emerald-100',
+      'satisfaction': 'text-teal-600 bg-teal-100',
+      'determination': 'text-red-600 bg-red-100',
+      'concentration': 'text-gray-600 bg-gray-100',
+      'contemplation': 'text-slate-600 bg-slate-100',
+    };
+    
+    return emotionColors[emotion.toLowerCase()] || 'text-gray-600 bg-gray-100';
+  };
+
+  // Format emotion name for display
+  const formatEmotionName = (emotion: string): string => {
+    return emotion.charAt(0).toUpperCase() + emotion.slice(1).toLowerCase();
+  };
+
   const isConnected = readyState === VoiceReadyState.OPEN;
 
   return (
@@ -135,7 +183,7 @@ function VoiceChat() {
             Hume AI Voice Interview Demo
           </CardTitle>
           <p className="text-slate-600 mt-2">
-            Experience Zyglio's advanced voice-to-mastery technology with your custom Hume AI configuration
+            Experience Zyglio's advanced voice-to-mastery technology with emotional intelligence
           </p>
         </CardHeader>
         
@@ -167,6 +215,35 @@ function VoiceChat() {
               </span>
             </div>
           </div>
+
+          {/* Emotion Display */}
+          {isConnected && currentEmotions.length > 0 && (
+            <div className="bg-gradient-to-r from-pink-50 to-purple-50 rounded-lg p-4 border border-pink-200">
+              <div className="flex items-center mb-3">
+                <Brain className="h-5 w-5 text-purple-600 mr-2" />
+                <h4 className="font-semibold text-purple-800">Real-time Emotion Analysis</h4>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {currentEmotions.map((emotion, index) => (
+                  <div 
+                    key={index}
+                    className={`px-3 py-1 rounded-full text-xs font-medium ${getEmotionColor(emotion.emotion)}`}
+                  >
+                    <div className="flex items-center space-x-1">
+                      <Heart className="h-3 w-3" />
+                      <span>{formatEmotionName(emotion.emotion)}</span>
+                      <span className="opacity-70">
+                        {(emotion.score * 100).toFixed(0)}%
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <p className="text-xs text-purple-600 mt-2">
+                These emotions are detected from your voice in real-time by Hume AI
+              </p>
+            </div>
+          )}
 
           {/* Controls */}
           <div className="flex justify-center items-center space-x-4">
@@ -221,7 +298,7 @@ function VoiceChat() {
               <h4 className="font-semibold text-green-800 mb-2">🎉 Conversation Active</h4>
               <p className="text-sm text-green-700 mb-2">
                 Your voice interview session with your custom Hume AI assistant is now active! 
-                The AI is using your specific prompt and configuration.
+                The AI is analyzing your emotions in real-time and responding with emotional intelligence.
               </p>
               <p className="text-xs text-green-600">
                 Session started at: {sessionStartTime.toLocaleTimeString()}
@@ -231,21 +308,54 @@ function VoiceChat() {
 
           {/* Recent Messages */}
           {messages.length > 0 && (
-            <div className="bg-white rounded-lg p-4 border border-gray-200 max-h-48 overflow-y-auto">
+            <div className="bg-white rounded-lg p-4 border border-gray-200 max-h-64 overflow-y-auto">
               <h4 className="font-semibold text-gray-800 mb-2">Conversation History</h4>
-              <div className="space-y-2">
+              <div className="space-y-3">
                 {messages.slice(-5).map((msg, index) => {
                   try {
                     return (
                       <div key={index} className="text-sm">
                         {msg.type === "user_message" && (
-                          <div className="bg-blue-50 p-2 rounded mb-2">
-                            <span className="font-medium text-blue-800">You:</span> {msg.message.content}
+                          <div className="bg-blue-50 p-3 rounded-lg">
+                            <div className="flex items-start justify-between">
+                              <div className="flex-1">
+                                <span className="font-medium text-blue-800">You:</span> 
+                                <span className="ml-2">{msg.message.content}</span>
+                              </div>
+                            </div>
+                            
+                            {/* Display emotions for user messages if available */}
+                            {(() => {
+                              const msgData = msg as any;
+                              const emotionScores = msgData?.models?.prosody?.scores || 
+                                                   msgData?.prosody?.scores || 
+                                                   msgData?.emotion?.scores;
+                              
+                              if (emotionScores && typeof emotionScores === 'object') {
+                                return (
+                                  <div className="mt-2 flex flex-wrap gap-1">
+                                    {Object.entries(emotionScores)
+                                      .sort(([,a], [,b]) => (b as number) - (a as number))
+                                      .slice(0, 3)
+                                      .map(([emotion, score], idx) => (
+                                        <span 
+                                          key={idx}
+                                          className={`px-2 py-1 rounded-full text-xs ${getEmotionColor(emotion)}`}
+                                        >
+                                          {formatEmotionName(emotion)} {((score as number) * 100).toFixed(0)}%
+                                        </span>
+                                      ))}
+                                  </div>
+                                );
+                              }
+                              return null;
+                            })()}
                           </div>
                         )}
                         {msg.type === "assistant_message" && (
-                          <div className="bg-purple-50 p-2 rounded mb-2">
-                            <span className="font-medium text-purple-800">AI:</span> {msg.message.content}
+                          <div className="bg-purple-50 p-3 rounded-lg">
+                            <span className="font-medium text-purple-800">AI:</span> 
+                            <span className="ml-2">{msg.message.content}</span>
                           </div>
                         )}
                       </div>
@@ -270,7 +380,8 @@ function VoiceChat() {
               <li>• Click "Start Voice Conversation" to connect to your custom Hume AI assistant</li>
               <li>• Allow microphone access when prompted</li>
               <li>• Speak naturally - Your AI will respond using your custom prompt and configuration</li>
-              <li>• The AI will respond with voice and show emotional understanding</li>
+              <li>• Watch real-time emotion analysis as you speak</li>
+              <li>• The AI responds with emotional intelligence and empathy</li>
               <li>• Use the "Test Audio" button to verify audio playback works</li>
               <li>• Click "End Conversation" when finished</li>
             </ul>
@@ -280,28 +391,13 @@ function VoiceChat() {
           <div className="bg-purple-50 rounded-lg p-4">
             <h4 className="font-semibold text-purple-800 mb-2">🧠 Powered by Your Custom Hume AI Configuration</h4>
             <p className="text-sm text-purple-600 mt-2">
-              This demo connects to your specific Hume AI configuration ({configId}) with your custom prompt and settings.
+              This demo connects to your specific Hume AI configuration with your custom prompt and settings.
               Experience real-time voice conversations with emotional intelligence tailored to your needs.
             </p>
             <p className="text-xs text-purple-500 mt-2">
-              Features: Your custom prompt, real-time emotion recognition, natural turn-taking, and voice-to-voice interaction.
+              Features: Custom prompt, real-time emotion recognition, natural turn-taking, empathetic responses, and voice-to-voice interaction.
             </p>
           </div>
-
-          {/* Debug Info (Development Only) */}
-          {process.env.NODE_ENV === 'development' && (
-            <div className="bg-gray-100 rounded-lg p-3 text-xs text-gray-600">
-              <div className="font-semibold mb-1">Debug Info:</div>
-              <div>Ready State: {readyState}</div>
-              <div>Connected: {isConnected.toString()}</div>
-              <div>Connecting: {isConnecting.toString()}</div>
-              <div>Messages: {messages.length}</div>
-              <div>Session Start: {sessionStartTime?.toLocaleTimeString() || 'null'}</div>
-              <div>Access Token: {accessToken ? 'Set' : 'Missing'}</div>
-              <div>Config ID: {configId || 'Missing'}</div>
-              <div>Last 3 Message Types: {messages.slice(-3).map(m => m.type).join(', ')}</div>
-            </div>
-          )}
         </CardContent>
       </Card>
     </div>
