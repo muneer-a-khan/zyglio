@@ -9,17 +9,19 @@ datasource db {
 }
 
 model User {
-  id               String             @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  email            String             @unique
-  name             String?
-  createdAt        DateTime           @default(now()) @db.Timestamptz(6)
-  role             user_role          @default(trainee)
-  certifications   Certification[]
-  ElevenLabsAgent  ElevenLabsAgent[]
-  LearningTask     LearningTask[]
-  quizAttempts     QuizAttempt[]
-  approvedModules  TrainingModule[]   @relation("ModuleApprover")
-  trainingProgress TrainingProgress[]
+  id                String              @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  email             String              @unique
+  name              String?
+  createdAt         DateTime            @default(now()) @db.Timestamptz(6)
+  role              user_role           @default(trainee)
+  certifications    Certification[]
+  ElevenLabsAgent   ElevenLabsAgent[]
+  LearningTask      LearningTask[]
+  quizAttempts      QuizAttempt[]
+  approvedModules   TrainingModule[]    @relation("ModuleApprover")
+  trainingProgress  TrainingProgress[]
+  VapiCall          VapiCall[]
+  VapiKnowledgeBase VapiKnowledgeBase[]
 
   @@map("users")
 }
@@ -106,14 +108,16 @@ model MediaItem {
 }
 
 model Procedure {
-  id                 String           @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  id                 String              @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
   title              String
-  taskId             String           @db.Uuid
-  simulationSettings Json?            @default("{}")
+  taskId             String              @db.Uuid
+  simulationSettings Json?               @default("{}")
   certifications     Certification[]
-  LearningTask       LearningTask     @relation(fields: [taskId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  LearningTask       LearningTask        @relation(fields: [taskId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   ProcedureStep      ProcedureStep[]
   trainingModules    TrainingModule[]
+  VapiAssistant      VapiAssistant[]
+  VapiKnowledgeBase  VapiKnowledgeBase[]
 
   @@index([taskId])
 }
@@ -197,6 +201,7 @@ model TrainingModule {
   approver                  User?               @relation("ModuleApprover", fields: [approvedBy], references: [id], onDelete: NoAction, onUpdate: NoAction)
   procedure                 Procedure           @relation(fields: [procedureId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   progress                  TrainingProgress[]
+  VapiAssistant             VapiAssistant[]
   voiceQuestionBanks        VoiceQuestionBank[]
 
   @@index([procedureId])
@@ -464,6 +469,76 @@ model GottsUsers {
   name                  String?
   email                 String?
   GottsUserQuizAttempts GottsUserQuizAttempts[]
+}
+
+model VapiAssistant {
+  id                 String             @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  name               String
+  type               String
+  procedureId        String?            @db.Uuid
+  moduleId           String?            @db.Uuid
+  topic              String
+  expertiseLevel     String?
+  certificationLevel String?
+  passingScore       Int?
+  knowledgeBaseId    String?            @db.Uuid
+  vapiAssistantId    String             @unique
+  createdAt          DateTime           @default(now()) @db.Timestamptz(6)
+  updatedAt          DateTime           @default(now()) @db.Timestamptz(6)
+  VapiKnowledgeBase  VapiKnowledgeBase? @relation(fields: [knowledgeBaseId], references: [id], onUpdate: NoAction)
+  TrainingModule     TrainingModule?    @relation(fields: [moduleId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  Procedure          Procedure?         @relation(fields: [procedureId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  VapiCall           VapiCall[]
+
+  @@index([moduleId])
+  @@index([procedureId])
+  @@index([topic])
+  @@index([type])
+}
+
+model VapiCall {
+  id            String        @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  vapiCallId    String        @unique
+  assistantId   String        @db.Uuid
+  userId        String        @db.Uuid
+  type          String
+  status        String
+  startedAt     DateTime?     @db.Timestamptz(6)
+  endedAt       DateTime?     @db.Timestamptz(6)
+  duration      Int?
+  transcript    Json?
+  recordingUrl  String?
+  analysis      Json?
+  metadata      Json?
+  createdAt     DateTime      @default(now()) @db.Timestamptz(6)
+  updatedAt     DateTime      @default(now()) @db.Timestamptz(6)
+  VapiAssistant VapiAssistant @relation(fields: [assistantId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  users         User          @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([assistantId])
+  @@index([startedAt])
+  @@index([status])
+  @@index([type])
+  @@index([userId])
+}
+
+model VapiKnowledgeBase {
+  id                  String          @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  name                String
+  description         String?
+  procedureId         String          @db.Uuid
+  smeId               String          @db.Uuid
+  topic               String
+  vapiKnowledgeBaseId String          @unique
+  createdAt           DateTime        @default(now()) @db.Timestamptz(6)
+  updatedAt           DateTime        @default(now()) @db.Timestamptz(6)
+  VapiAssistant       VapiAssistant[]
+  Procedure           Procedure       @relation(fields: [procedureId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  users               User            @relation(fields: [smeId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([procedureId])
+  @@index([smeId])
+  @@index([topic])
 }
 
 enum MediaType {
