@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { AnalyticsEventType } from '@prisma/client';
 
 export async function POST(request: NextRequest) {
   try {
@@ -138,7 +139,7 @@ export async function POST(request: NextRequest) {
         certificationId: certification.id,
         userId: session.user.id,
         moduleId: certification.moduleId,
-        eventType: 'TRANSCRIPT_UPDATE',
+        eventType: AnalyticsEventType.TRANSCRIPT_UPDATE,
         eventData: {
           messageType,
           transcriptLength: transcript.length,
