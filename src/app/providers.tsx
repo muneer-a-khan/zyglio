@@ -11,7 +11,12 @@ import {
 import SystemCheck from "@/components/system-check";
 import GlobalNavigation from "@/components/global-navigation";
 
-export function Providers({ children }: { children: React.ReactNode }) {
+interface ProvidersProps {
+  children: React.ReactNode;
+  session?: any;
+}
+
+export function Providers({ children, session }: ProvidersProps) {
   
   // Initialize caching system on app start
   useEffect(() => {
@@ -26,7 +31,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <SessionProvider>
+    <SessionProvider session={session}>
       <SystemCheck />
       <GlobalNavigation />
       {children}

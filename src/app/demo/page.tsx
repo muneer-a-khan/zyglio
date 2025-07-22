@@ -4,7 +4,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { ArrowLeft, Mic, Brain, Zap } from "lucide-react";
-import VoiceInterviewDemo from "@/components/VoiceInterviewDemo";
+import HumeVoiceChat from "@/components/hume-voice-chat";
 
 const LiveDemo = () => {
   return (
@@ -29,10 +29,10 @@ const LiveDemo = () => {
             </Link>
           </div>
           <h1 className="text-4xl md:text-6xl font-bold text-white mb-6">
-            Live Voice Interview Demo
+            Hume AI Voice Interview Demo
           </h1>
           <p className="text-xl md:text-2xl text-blue-100 mb-8 max-w-4xl mx-auto leading-relaxed">
-            Experience Zyglio's voice-to-mastery technology in action with our AI-powered interview assistant
+            Experience Zyglio's voice-to-mastery technology powered by Hume AI's emotional intelligence
           </p>
           
           {/* Feature Highlights */}
@@ -51,7 +51,7 @@ const LiveDemo = () => {
                 <Brain className="h-12 w-12 text-purple-300 mx-auto mb-4" />
                 <h3 className="text-xl font-semibold text-white mb-2">AI Processing</h3>
                 <p className="text-blue-100 text-sm">
-                  Advanced AI analyzes your speech and generates adaptive interview scenarios
+                  Hume AI's emotional intelligence analyzes your speech and emotions for more natural interactions
                 </p>
               </CardContent>
             </Card>
@@ -60,7 +60,7 @@ const LiveDemo = () => {
                 <Zap className="h-12 w-12 text-cyan-300 mx-auto mb-4" />
                 <h3 className="text-xl font-semibold text-white mb-2">Real-time Response</h3>
                 <p className="text-blue-100 text-sm">
-                  Get instant, natural responses from our advanced AI voice assistant
+                  Get instant, emotionally aware responses from our advanced Hume AI voice assistant
                 </p>
               </CardContent>
             </Card>
@@ -70,7 +70,7 @@ const LiveDemo = () => {
 
       {/* Demo Section */}
       <section className="py-16 px-4">
-        <VoiceInterviewDemo />
+        <HumeVoiceChat />
       </section>
 
       {/* How It Works Section */}
@@ -81,8 +81,8 @@ const LiveDemo = () => {
               How the Voice Interview System Works
             </h2>
             <p className="text-lg text-slate-600 max-w-3xl mx-auto">
-              Zyglio's voice interview system demonstrates the power of converting speech into structured,
-              interactive learning experiences using advanced AI technology.
+              Zyglio's voice interview system powered by Hume AI demonstrates the power of emotionally intelligent
+              voice conversations that understand not just what you say, but how you feel.
             </p>
           </div>
           <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
@@ -99,9 +99,9 @@ const LiveDemo = () => {
               <div className="w-16 h-16 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-4">
                 <span className="text-2xl">🧠</span>
               </div>
-              <h3 className="text-xl font-semibold mb-2">AI Analysis</h3>
+              <h3 className="text-xl font-semibold mb-2">Emotional AI Analysis</h3>
               <p className="text-slate-600">
-                Our advanced AI processes your input and generates contextual, intelligent responses
+                Hume AI processes your voice and emotions to generate empathetic, contextually aware responses
               </p>
             </div>
             <div className="text-center">
