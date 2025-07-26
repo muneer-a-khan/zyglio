@@ -3,9 +3,10 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Phone, PhoneOff, Loader2, Volume2, Heart, Brain } from "lucide-react";
+import { Phone, PhoneOff, Loader2, Volume2, Heart, Brain, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { VoiceProvider, useVoice, VoiceReadyState } from "@humeai/voice-react";
+import MediaUploadPanel from "./media-upload-panel";
 
 // Inner component that uses the useVoice hook
 function VoiceChat() {
@@ -14,6 +15,8 @@ function VoiceChat() {
   const [sessionStartTime, setSessionStartTime] = useState<Date | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [currentEmotions, setCurrentEmotions] = useState<Array<{emotion: string, score: number}>>([]);
+  const [showUploadPanel, setShowUploadPanel] = useState(false);
+  const [uploadedKnowledge, setUploadedKnowledge] = useState<string>("");
 
   // Your specific Hume config ID
   const configId = process.env.NEXT_PUBLIC_HUME_CONFIG_ID;
@@ -117,6 +120,13 @@ function VoiceChat() {
     
     toast.info("Conversation Ended", {
       description: "Your voice interview session has ended.",
+    });
+  };
+
+  const handlePromptUpdated = (newContent: string) => {
+    setUploadedKnowledge(newContent);
+    toast.success("AI Knowledge Updated", {
+      description: "Your AI assistant's prompt has been enhanced with a new version!",
     });
   };
 
@@ -248,28 +258,39 @@ function VoiceChat() {
           {/* Controls */}
           <div className="flex justify-center items-center space-x-4">
             {!isConnected ? (
-              <Button
-                onClick={handleConnect}
-                disabled={isConnecting || !accessToken}
-                className="px-12 py-4 rounded-full font-semibold text-lg transition-all duration-300 bg-green-600 hover:bg-green-700 text-white shadow-lg hover:shadow-xl"
-              >
-                {isConnecting ? (
-                  <>
-                    <Loader2 className="mr-3 h-6 w-6 animate-spin" />
-                    Connecting to Your Assistant...
-                  </>
-                ) : !accessToken ? (
-                  <>
-                    <Loader2 className="mr-3 h-6 w-6 animate-spin" />
-                    Authenticating...
-                  </>
-                ) : (
-                  <>
-                    <Phone className="mr-3 h-6 w-6" />
-                    Start Voice Conversation
-                  </>
-                )}
-              </Button>
+              <div className="flex space-x-4">
+                <Button
+                  onClick={handleConnect}
+                  disabled={isConnecting || !accessToken}
+                  className="px-12 py-4 rounded-full font-semibold text-lg transition-all duration-300 bg-green-600 hover:bg-green-700 text-white shadow-lg hover:shadow-xl"
+                >
+                  {isConnecting ? (
+                    <>
+                      <Loader2 className="mr-3 h-6 w-6 animate-spin" />
+                      Connecting to Your Assistant...
+                    </>
+                  ) : !accessToken ? (
+                    <>
+                      <Loader2 className="mr-3 h-6 w-6 animate-spin" />
+                      Authenticating...
+                    </>
+                  ) : (
+                    <>
+                      <Phone className="mr-3 h-6 w-6" />
+                      Start Voice Conversation
+                    </>
+                  )}
+                </Button>
+                
+                <Button
+                  onClick={() => setShowUploadPanel(!showUploadPanel)}
+                  variant="outline"
+                  className="px-6 py-3 rounded-full border-blue-300 text-blue-700 hover:bg-blue-50"
+                >
+                  <Upload className="mr-2 h-5 w-5" />
+                  {showUploadPanel ? "Hide" : "Upload"} Knowledge
+                </Button>
+              </div>
             ) : (
               <div className="flex space-x-4">
                 <Button
@@ -282,6 +303,15 @@ function VoiceChat() {
                 </Button>
                 
                 <Button
+                  onClick={() => setShowUploadPanel(!showUploadPanel)}
+                  variant="outline"
+                  className="px-6 py-3 rounded-full border-blue-300 text-blue-700 hover:bg-blue-50"
+                >
+                  <Upload className="mr-2 h-5 w-5" />
+                  {showUploadPanel ? "Hide" : "Upload"} Knowledge
+                </Button>
+                
+                <Button
                   onClick={handleDisconnect}
                   className="px-12 py-4 rounded-full font-semibold text-lg transition-all duration-300 bg-red-600 hover:bg-red-700 text-white shadow-lg hover:shadow-xl"
                 >
@@ -291,6 +321,13 @@ function VoiceChat() {
               </div>
             )}
           </div>
+
+          {/* Media Upload Panel */}
+          {showUploadPanel && (
+            <div className="mt-6">
+              <MediaUploadPanel onPromptUpdated={handlePromptUpdated} />
+            </div>
+          )}
 
           {/* Session Info */}
           {isConnected && sessionStartTime && (
