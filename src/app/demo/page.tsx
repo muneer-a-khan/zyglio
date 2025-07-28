@@ -22,19 +22,19 @@ const LiveDemo = () => {
         <div className="relative z-20 max-w-7xl mx-auto text-center">
           <div className="mb-6">
             <Link href="/">
-              <Button variant="outline" className="text-white border-white hover:bg-white/10">
+              <Button variant="outline" className="text-purple-500 border-white hover:bg-white/10">
                 <ArrowLeft className="mr-2 h-4 w-4" />
                 Back to Home
               </Button>
             </Link>
           </div>
           <h1 className="text-4xl md:text-6xl font-bold text-white mb-6">
-            Hume AI Voice Interview Demo
+            AI Voice Interview Demo
           </h1>
           <p className="text-xl md:text-2xl text-blue-100 mb-8 max-w-4xl mx-auto leading-relaxed">
-            Experience Zyglio's voice-to-mastery technology powered by Hume AI's emotional intelligence
+            Experience Zyglio's voice-to-mastery technology
           </p>
-          
+
           {/* Feature Highlights */}
           <div className="grid md:grid-cols-3 gap-6 max-w-4xl mx-auto mt-12">
             <Card className="bg-white/10 backdrop-blur-sm border-white/20">
@@ -51,7 +51,7 @@ const LiveDemo = () => {
                 <Brain className="h-12 w-12 text-purple-300 mx-auto mb-4" />
                 <h3 className="text-xl font-semibold text-white mb-2">AI Processing</h3>
                 <p className="text-blue-100 text-sm">
-                  Hume AI's emotional intelligence analyzes your speech and emotions for more natural interactions
+                  Our AI analyzes your speech and emotions for more natural interactions
                 </p>
               </CardContent>
             </Card>
@@ -60,7 +60,7 @@ const LiveDemo = () => {
                 <Zap className="h-12 w-12 text-cyan-300 mx-auto mb-4" />
                 <h3 className="text-xl font-semibold text-white mb-2">Real-time Response</h3>
                 <p className="text-blue-100 text-sm">
-                  Get instant, emotionally aware responses from our advanced Hume AI voice assistant
+                  Get instant, emotionally aware responses from our advanced AI voice assistant
                 </p>
               </CardContent>
             </Card>
@@ -71,83 +71,6 @@ const LiveDemo = () => {
       {/* Demo Section */}
       <section className="py-16 px-4">
         <HumeVoiceChat />
-      </section>
-
-      {/* How It Works Section */}
-      <section className="py-16 px-4 bg-white">
-        <div className="max-w-7xl mx-auto">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl md:text-4xl font-bold text-slate-800 mb-6">
-              How the Voice Interview System Works
-            </h2>
-            <p className="text-lg text-slate-600 max-w-3xl mx-auto">
-              Zyglio's voice interview system powered by Hume AI demonstrates the power of emotionally intelligent
-              voice conversations that understand not just what you say, but how you feel.
-            </p>
-          </div>
-          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
-            <div className="text-center">
-              <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <span className="text-2xl">🎙️</span>
-              </div>
-              <h3 className="text-xl font-semibold mb-2">Voice Capture</h3>
-              <p className="text-slate-600">
-                Your voice is captured and processed in real-time using advanced speech recognition
-              </p>
-            </div>
-            <div className="text-center">
-              <div className="w-16 h-16 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <span className="text-2xl">🧠</span>
-              </div>
-              <h3 className="text-xl font-semibold mb-2">Emotional AI Analysis</h3>
-              <p className="text-slate-600">
-                Hume AI processes your voice and emotions to generate empathetic, contextually aware responses
-              </p>
-            </div>
-            <div className="text-center">
-              <div className="w-16 h-16 bg-cyan-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <span className="text-2xl">🎯</span>
-              </div>
-              <h3 className="text-xl font-semibold mb-2">Adaptive Learning</h3>
-              <p className="text-slate-600">
-                The system adapts to your responses and creates personalized interview scenarios
-              </p>
-            </div>
-            <div className="text-center">
-              <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <span className="text-2xl">📊</span>
-              </div>
-              <h3 className="text-xl font-semibold mb-2">Performance Tracking</h3>
-              <p className="text-slate-600">
-                Your performance is analyzed to provide insights and improvement recommendations
-              </p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Call to Action */}
-      <section className="py-16 px-4 bg-gradient-to-r from-blue-600 to-purple-600">
-        <div className="max-w-4xl mx-auto text-center">
-          <h2 className="text-3xl md:text-4xl font-bold text-white mb-6">
-            Ready to Transform Your Training?
-          </h2>
-          <p className="text-xl text-blue-100 mb-8">
-            Experience the full power of Zyglio's voice-to-mastery platform with a personalized demo
-          </p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Link href="/create">
-              <Button size="lg" className="bg-white text-blue-600 hover:bg-gray-100 px-8 py-3 text-lg">
-                Create Your First Procedure
-              </Button>
-            </Link>
-            <Link href="/training">
-              <Button size="lg" variant="outline" className="border-white text-white hover:bg-white/10 px-8 py-3 text-lg">
-                Explore Training
-              </Button>
-            </Link>
-          </div>
-        </div>
       </section>
     </div>
   );
