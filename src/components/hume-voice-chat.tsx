@@ -59,7 +59,7 @@ function VoiceChat() {
       } catch (error) {
         console.error('❌ Error fetching access token:', error);
         toast.error("Authentication Error", {
-          description: "Failed to authenticate with Hume AI. Please check your API keys.",
+          description: "Failed to authenticate with our AI. Please check your API keys.",
         });
       }
     };
@@ -95,16 +95,16 @@ function VoiceChat() {
         configId: configId // Use your specific config ID
       });
       
-      console.log('🎉 Connected successfully to your specific Hume configuration!');
+      console.log('🎉 Connected successfully to your specific configuration!');
       setSessionStartTime(new Date());
       
       toast.success("Connected!", {
-        description: `Connected to your custom Hume AI assistant configuration!`,
+        description: `Connected to your custom AI assistant configuration!`,
       });
     } catch (error) {
       console.error('💥 Connection failed:', error);
       toast.error("Connection Error", {
-        description: "Failed to connect to Hume AI. Please try again.",
+        description: "Failed to connect to our AI. Please try again.",
       });
     } finally {
       setIsConnecting(false);
@@ -190,7 +190,7 @@ function VoiceChat() {
       <Card className="bg-gradient-to-br from-blue-50 to-purple-50 border-0 shadow-xl">
         <CardHeader className="text-center">
           <CardTitle className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-            Hume AI Voice Interview Demo
+            AI Voice Interview Demo
           </CardTitle>
           <p className="text-slate-600 mt-2">
             Experience Zyglio's advanced voice-to-mastery technology with emotional intelligence
@@ -227,33 +227,7 @@ function VoiceChat() {
           </div>
 
           {/* Emotion Display */}
-          {isConnected && currentEmotions.length > 0 && (
-            <div className="bg-gradient-to-r from-pink-50 to-purple-50 rounded-lg p-4 border border-pink-200">
-              <div className="flex items-center mb-3">
-                <Brain className="h-5 w-5 text-purple-600 mr-2" />
-                <h4 className="font-semibold text-purple-800">Real-time Emotion Analysis</h4>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {currentEmotions.map((emotion, index) => (
-                  <div 
-                    key={index}
-                    className={`px-3 py-1 rounded-full text-xs font-medium ${getEmotionColor(emotion.emotion)}`}
-                  >
-                    <div className="flex items-center space-x-1">
-                      <Heart className="h-3 w-3" />
-                      <span>{formatEmotionName(emotion.emotion)}</span>
-                      <span className="opacity-70">
-                        {(emotion.score * 100).toFixed(0)}%
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <p className="text-xs text-purple-600 mt-2">
-                These emotions are detected from your voice in real-time by Hume AI
-              </p>
-            </div>
-          )}
+
 
           {/* Controls */}
           <div className="flex justify-center items-center space-x-4">
@@ -334,7 +308,7 @@ function VoiceChat() {
             <div className="bg-green-50 rounded-lg p-4 border border-green-200">
               <h4 className="font-semibold text-green-800 mb-2">🎉 Conversation Active</h4>
               <p className="text-sm text-green-700 mb-2">
-                Your voice interview session with your custom Hume AI assistant is now active! 
+                Your voice interview session with your custom AI assistant is now active! 
                 The AI is analyzing your emotions in real-time and responding with emotional intelligence.
               </p>
               <p className="text-xs text-green-600">
@@ -410,30 +384,26 @@ function VoiceChat() {
             </div>
           )}
 
-          {/* Demo Instructions */}
-          <div className="bg-blue-50 rounded-lg p-4">
+          {/* Demo Instructions and Features */}
+          <div className="bg-blue-50 rounded-lg p-4 mb-4">
             <h4 className="font-semibold text-blue-800 mb-2">How to use this demo:</h4>
-            <ul className="text-sm text-blue-700 space-y-1">
-              <li>• Click "Start Voice Conversation" to connect to your custom Hume AI assistant</li>
-              <li>• Allow microphone access when prompted</li>
-              <li>• Speak naturally - Your AI will respond using your custom prompt and configuration</li>
-              <li>• Watch real-time emotion analysis as you speak</li>
-              <li>• The AI responds with emotional intelligence and empathy</li>
-              <li>• Use the "Test Audio" button to verify audio playback works</li>
-              <li>• Click "End Conversation" when finished</li>
+            <ul className="text-sm text-blue-700 space-y-1 list-disc list-inside">
+              <li>Connect your microphone and allow browser access.</li>
+              <li>Speak naturally to the AI assistant.</li>
+              <li>Click End or Stop when finished.</li>
+              <li>(Optional) Upload any multimedia content (documents, images, videos, etc.) you want the AI to have knowledge of for more personalized responses.</li>
             </ul>
           </div>
-
-          {/* Technology Info */}
-          <div className="bg-purple-50 rounded-lg p-4">
-            <h4 className="font-semibold text-purple-800 mb-2">🧠 Powered by Your Custom Hume AI Configuration</h4>
-            <p className="text-sm text-purple-600 mt-2">
-              This demo connects to your specific Hume AI configuration with your custom prompt and settings.
-              Experience real-time voice conversations with emotional intelligence tailored to your needs.
-            </p>
-            <p className="text-xs text-purple-500 mt-2">
-              Features: Custom prompt, real-time emotion recognition, natural turn-taking, empathetic responses, and voice-to-voice interaction.
-            </p>
+          <div className="bg-white rounded-lg p-4 border border-blue-100">
+            <h4 className="font-semibold text-blue-800 mb-2">Features</h4>
+            <ul className="text-sm text-blue-700 space-y-1 list-disc list-inside">
+              <li>Real-time voice-to-voice AI conversation</li>
+              <li>Emotionally intelligent and empathetic responses</li>
+              <li>Live emotion analysis as you speak</li>
+              <li>Support for uploading custom multimedia knowledge</li>
+              <li>Instant, natural language understanding</li>
+              <li>Personalized, context-aware interactions</li>
+            </ul>
           </div>
         </CardContent>
       </Card>

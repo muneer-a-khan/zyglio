@@ -37,6 +37,9 @@ export default function GlobalNavigation() {
     ? [...baseLinks, { href: '/sme/training', label: 'Review Training' }, { href: '/sme/dashboard', label: 'SME Dashboard' }]
     : baseLinks;
 
+  // Only show navigation links when signed in
+  const navigationLinks = session?.user ? displayLinks : [];
+
   return (
     <header className="border-b sticky top-0 z-50 w-full bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="container flex h-16 items-center max-w-7xl mx-auto px-2">
@@ -63,7 +66,7 @@ export default function GlobalNavigation() {
         </div>
         <nav className="flex items-center justify-between flex-1">
           <div className="flex space-x-0.5 md:space-x-1">
-            {displayLinks.map((link) => (
+            {navigationLinks.map((link) => (
               <Button 
                 key={link.href}
                 variant={isActive(link.href) ? "default" : "ghost"} 

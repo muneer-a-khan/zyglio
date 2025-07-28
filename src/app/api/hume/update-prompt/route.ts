@@ -59,7 +59,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const currentConfig = await getConfigResponse.json();
+    const configResponse = await getConfigResponse.json();
+    
+    // Handle the configs_page structure
+    const currentConfig = configResponse.configs_page?.[0] || configResponse;
+    
     console.log('✅ Current config fetched successfully:', {
       configId: currentConfig.id,
       name: currentConfig.name,
@@ -68,15 +72,22 @@ export async function POST(request: NextRequest) {
     });
     
     // Add detailed logging to see the full response
-    console.log('🔍 Full config response:', JSON.stringify(currentConfig, null, 2));
+    console.log('🔍 Full config response:', JSON.stringify(configResponse, null, 2));
 
-    // Use the existing Zyglio Enhanced Assistant prompt ID
-    const existingPromptId = '5ba72392-9a67-455d-abbd-431b3fe7a02f';
-    console.log('📋 Using existing prompt ID:', existingPromptId);
+    // Extract prompt ID from the config
+    const promptId = currentConfig.prompt?.id;
+    if (!promptId) {
+      return NextResponse.json(
+        { error: 'No prompt found in the current configuration' },
+        { status: 500 }
+      );
+    }
+
+    console.log('📋 Using prompt ID from config:', promptId);
 
     // Get the current prompt to understand its structure
     console.log('📡 Fetching current prompt...');
-    const getPromptResponse = await fetch(`${HUME_API_URL}/${existingPromptId}`, {
+    const getPromptResponse = await fetch(`${HUME_API_URL}/${promptId}`, {
       headers: {
         'X-Hume-Api-Key': apiKey,
         'X-Hume-Secret-Key': secretKey,
@@ -105,6 +116,21 @@ export async function POST(request: NextRequest) {
       version: currentPrompt.version,
       name: currentPrompt.name
     });
+    
+    // Add detailed logging to see the full prompt response structure
+    console.log('🔍 Full prompt response:', JSON.stringify(currentPrompt, null, 2));
+
+    // Check if we have the text content
+    if (!currentPrompt.text) {
+      console.error('❌ No text content found in prompt response');
+      return NextResponse.json(
+        { error: 'No text content found in current prompt' },
+        { status: 500 }
+      );
+    }
+
+    console.log('📝 Original prompt text length:', currentPrompt.text.length);
+    console.log('📝 Original prompt text preview:', currentPrompt.text.substring(0, 200) + '...');
 
     // Create enhanced prompt with the new content
     const enhancedPrompt = createEnhancedPrompt(currentPrompt.text, content);
@@ -112,7 +138,7 @@ export async function POST(request: NextRequest) {
 
     // Create a new version of the existing prompt using the Hume AI API
     console.log('📡 Creating new prompt version...');
-    const createVersionResponse = await fetch(`${HUME_API_URL}/${existingPromptId}`, {
+    const createVersionResponse = await fetch(`${HUME_API_URL}/${promptId}`, {
       method: 'POST',
       headers: {
         'X-Hume-Api-Key': apiKey,
@@ -254,6 +280,10 @@ export async function POST(request: NextRequest) {
 }
 
 function createEnhancedPrompt(originalPrompt: string, newContent: string): string {
+  console.log('🔧 Creating enhanced prompt...');
+  console.log('🔧 Original prompt length:', originalPrompt.length);
+  console.log('🔧 New content length:', newContent.length);
+  
   // Create an enhanced version of the original prompt that includes the new content
   const enhancedPrompt = `${originalPrompt}
 
@@ -273,5 +303,8 @@ INSTRUCTIONS FOR USING UPLOADED KNOWLEDGE:
 
 Remember: This additional knowledge enhances my ability to help users with specific topics and information from their uploaded materials. Use it to provide more accurate, relevant, and helpful responses.`;
 
+  console.log('🔧 Enhanced prompt length:', enhancedPrompt.length);
+  console.log('🔧 Enhanced prompt preview:', enhancedPrompt.substring(0, 200) + '...');
+  
   return enhancedPrompt;
 } 
