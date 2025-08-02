@@ -3,10 +3,11 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Phone, PhoneOff, Loader2, Volume2, Heart, Brain, Upload } from "lucide-react";
+import { Phone, PhoneOff, Loader2, Volume2, Heart, Brain, Upload, FileText } from "lucide-react";
 import { toast } from "sonner";
 import { VoiceProvider, useVoice, VoiceReadyState } from "@humeai/voice-react";
 import MediaUploadPanel from "./media-upload-panel";
+import TranscriptViewer from "./transcript-viewer";
 
 // Inner component that uses the useVoice hook
 function VoiceChat() {
@@ -17,14 +18,22 @@ function VoiceChat() {
   const [currentEmotions, setCurrentEmotions] = useState<Array<{emotion: string, score: number}>>([]);
   const [showUploadPanel, setShowUploadPanel] = useState(false);
   const [uploadedKnowledge, setUploadedKnowledge] = useState<string>("");
+  const [chatId, setChatId] = useState<string | null>(null);
+  const [showTranscriptViewer, setShowTranscriptViewer] = useState(false);
 
   // Your specific Hume config ID
   const configId = process.env.NEXT_PUBLIC_HUME_CONFIG_ID;
 
-  // Extract emotions from latest message
+  // Extract emotions from latest message and capture chat metadata
   useEffect(() => {
     if (messages.length > 0) {
       const latestMessage = messages[messages.length - 1] as any;
+      
+      // Capture chat_id from chat_metadata message
+      if (latestMessage?.type === 'chat_metadata' && latestMessage?.chat_id) {
+        setChatId(latestMessage.chat_id);
+        console.log('🆔 Chat ID captured:', latestMessage.chat_id);
+      }
       
       // Check for emotion data in various possible locations with type safety
       const emotionScores = latestMessage?.models?.prosody?.scores || 
@@ -113,26 +122,39 @@ function VoiceChat() {
 
   // Handle disconnect
   const handleDisconnect = () => {
-    console.log('🔌 Disconnecting from Hume EVI...');
     disconnect();
     setSessionStartTime(null);
-    setCurrentEmotions([]);
+    setChatId(null); // Reset chat ID when disconnecting
     
-    toast.info("Conversation Ended", {
-      description: "Your voice interview session has ended.",
+    toast.info("Disconnected", {
+      description: "Voice conversation ended.",
     });
   };
 
-  const handlePromptUpdated = (newContent: string) => {
-    setUploadedKnowledge(newContent);
-    toast.success("AI Knowledge Updated", {
-      description: "Your AI assistant's prompt has been enhanced with a new version!",
-    });
+  // Helper function to format emotion names
+  const formatEmotionName = (emotion: string) => {
+    return emotion.charAt(0).toUpperCase() + emotion.slice(1).toLowerCase().replace(/_/g, ' ');
   };
 
-  // Test audio playback
+  // Helper function to get emotion colors
+  const getEmotionColor = (emotion: string) => {
+    const emotionColors: { [key: string]: string } = {
+      joy: "bg-yellow-100 text-yellow-800",
+      sadness: "bg-blue-100 text-blue-800",
+      anger: "bg-red-100 text-red-800",
+      fear: "bg-purple-100 text-purple-800",
+      surprise: "bg-green-100 text-green-800",
+      disgust: "bg-orange-100 text-orange-800",
+      confidence: "bg-emerald-100 text-emerald-800",
+      anxiety: "bg-indigo-100 text-indigo-800",
+    };
+    return emotionColors[emotion.toLowerCase()] || "bg-gray-100 text-gray-800";
+  };
+
+  // Test audio playback function
   const testAudioPlayback = async () => {
     try {
+      // Create a simple audio test
       const audioContext = new AudioContext();
       const oscillator = audioContext.createOscillator();
       const gainNode = audioContext.createGain();
@@ -140,63 +162,44 @@ function VoiceChat() {
       oscillator.connect(gainNode);
       gainNode.connect(audioContext.destination);
       
-      oscillator.frequency.value = 440;
-      gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
-      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
+      oscillator.frequency.value = 440; // A note
+      gainNode.gain.value = 0.1;
       
-      oscillator.start(audioContext.currentTime);
-      oscillator.stop(audioContext.currentTime + 0.5);
+      oscillator.start();
+      setTimeout(() => oscillator.stop(), 500);
       
       toast.success("Audio Test", {
-        description: "If you heard a beep, audio playback is working!",
+        description: "If you heard a tone, your audio is working correctly!",
       });
     } catch (error) {
-      console.error('Audio test failed:', error);
       toast.error("Audio Test Failed", {
-        description: "Your browser may have audio restrictions.",
+        description: "There might be an issue with your audio setup.",
       });
     }
   };
 
-  // Get emotion color based on emotion type
-  const getEmotionColor = (emotion: string): string => {
-    const emotionColors: Record<string, string> = {
-      'joy': 'text-yellow-600 bg-yellow-100',
-      'excitement': 'text-orange-600 bg-orange-100',
-      'confidence': 'text-blue-600 bg-blue-100',
-      'calmness': 'text-green-600 bg-green-100',
-      'interest': 'text-purple-600 bg-purple-100',
-      'curiosity': 'text-indigo-600 bg-indigo-100',
-      'surprise': 'text-pink-600 bg-pink-100',
-      'admiration': 'text-emerald-600 bg-emerald-100',
-      'satisfaction': 'text-teal-600 bg-teal-100',
-      'determination': 'text-red-600 bg-red-100',
-      'concentration': 'text-gray-600 bg-gray-100',
-      'contemplation': 'text-slate-600 bg-slate-100',
-    };
-    
-    return emotionColors[emotion.toLowerCase()] || 'text-gray-600 bg-gray-100';
-  };
-
-  // Format emotion name for display
-  const formatEmotionName = (emotion: string): string => {
-    return emotion.charAt(0).toUpperCase() + emotion.slice(1).toLowerCase();
+  const handlePromptUpdated = (extractedContent: string) => {
+    setUploadedKnowledge(extractedContent);
+    setShowUploadPanel(false);
+    toast.success("Knowledge Updated!", {
+      description: "Your AI assistant now has access to the uploaded content.",
+    });
   };
 
   const isConnected = readyState === VoiceReadyState.OPEN;
 
   return (
-    <div className="max-w-4xl mx-auto p-6">
-      <Card className="bg-gradient-to-br from-blue-50 to-purple-50 border-0 shadow-xl">
-        <CardHeader className="text-center">
+    <div className="max-w-4xl mx-auto">
+      <Card className="shadow-2xl border-0 bg-gradient-to-br from-white to-blue-50">
+        <CardHeader className="text-center pb-6">
           <CardTitle className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-            AI Voice Interview Demo
+            🎤 Voice Interview Demo
           </CardTitle>
-          <p className="text-slate-600 mt-2">
-            Experience Zyglio's advanced voice-to-mastery technology with emotional intelligence
+          <p className="text-lg text-gray-600 mt-2">
+            Experience emotionally intelligent AI conversation
           </p>
         </CardHeader>
-        
+
         <CardContent className="space-y-6">
           {/* Connection Status */}
           <div className="flex items-center justify-center space-x-4 p-4 bg-white/50 rounded-lg">
@@ -227,12 +230,29 @@ function VoiceChat() {
           </div>
 
           {/* Emotion Display */}
-
+          {currentEmotions.length > 0 && (
+            <div className="bg-gradient-to-r from-purple-50 to-pink-50 rounded-lg p-4 border border-purple-200">
+              <h4 className="font-semibold text-purple-800 mb-3 flex items-center">
+                <Heart className="mr-2 h-5 w-5" />
+                Detected Emotions
+              </h4>
+              <div className="flex flex-wrap gap-2">
+                {currentEmotions.map((emotion, index) => (
+                  <span 
+                    key={index}
+                    className={`px-3 py-1 rounded-full text-sm font-medium ${getEmotionColor(emotion.emotion)}`}
+                  >
+                    {formatEmotionName(emotion.emotion)} {(emotion.score * 100).toFixed(0)}%
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Controls */}
           <div className="flex justify-center items-center space-x-4">
             {!isConnected ? (
-              <div className="flex space-x-4">
+              <div className="flex flex-wrap justify-center gap-4">
                 <Button
                   onClick={handleConnect}
                   disabled={isConnecting || !accessToken}
@@ -264,9 +284,20 @@ function VoiceChat() {
                   <Upload className="mr-2 h-5 w-5" />
                   {showUploadPanel ? "Hide" : "Upload"} Knowledge
                 </Button>
+
+                {chatId && (
+                  <Button
+                    onClick={() => setShowTranscriptViewer(true)}
+                    variant="outline"
+                    className="px-6 py-3 rounded-full border-purple-300 text-purple-700 hover:bg-purple-50"
+                  >
+                    <FileText className="mr-2 h-5 w-5" />
+                    View Full Transcript
+                  </Button>
+                )}
               </div>
             ) : (
-              <div className="flex space-x-4">
+              <div className="flex flex-wrap justify-center gap-4">
                 <Button
                   onClick={testAudioPlayback}
                   variant="outline"
@@ -284,6 +315,17 @@ function VoiceChat() {
                   <Upload className="mr-2 h-5 w-5" />
                   {showUploadPanel ? "Hide" : "Upload"} Knowledge
                 </Button>
+
+                {chatId && (
+                  <Button
+                    onClick={() => setShowTranscriptViewer(true)}
+                    variant="outline"
+                    className="px-6 py-3 rounded-full border-purple-300 text-purple-700 hover:bg-purple-50"
+                  >
+                    <FileText className="mr-2 h-5 w-5" />
+                    View Full Transcript
+                  </Button>
+                )}
                 
                 <Button
                   onClick={handleDisconnect}
@@ -306,7 +348,14 @@ function VoiceChat() {
           {/* Session Info */}
           {isConnected && sessionStartTime && (
             <div className="bg-green-50 rounded-lg p-4 border border-green-200">
-              <h4 className="font-semibold text-green-800 mb-2">🎉 Conversation Active</h4>
+              <h4 className="font-semibold text-green-800 mb-2 flex items-center">
+                🎉 Conversation Active
+                {chatId && (
+                  <span className="ml-2 text-xs bg-green-200 text-green-700 px-2 py-1 rounded">
+                    ID: {chatId.slice(0, 8)}...
+                  </span>
+                )}
+              </h4>
               <p className="text-sm text-green-700 mb-2">
                 Your voice interview session with your custom AI assistant is now active! 
                 The AI is analyzing your emotions in real-time and responding with emotional intelligence.
@@ -392,6 +441,7 @@ function VoiceChat() {
               <li>Speak naturally to the AI assistant.</li>
               <li>Click End or Stop when finished.</li>
               <li>(Optional) Upload any multimedia content (documents, images, videos, etc.) you want the AI to have knowledge of for more personalized responses.</li>
+              <li>Click "View Full Transcript" to see the complete conversation history with emotion analysis.</li>
             </ul>
           </div>
           <div className="bg-white rounded-lg p-4 border border-blue-100">
@@ -403,21 +453,28 @@ function VoiceChat() {
               <li>Support for uploading custom multimedia knowledge</li>
               <li>Instant, natural language understanding</li>
               <li>Personalized, context-aware interactions</li>
+              <li>Full conversation transcript with emotion analysis</li>
+              <li>Download conversation transcripts for review</li>
             </ul>
           </div>
         </CardContent>
       </Card>
+
+      {/* Transcript Viewer Modal */}
+      <TranscriptViewer 
+        chatId={chatId}
+        isOpen={showTranscriptViewer}
+        onClose={() => setShowTranscriptViewer(false)}
+      />
     </div>
   );
 }
 
 // Main component with VoiceProvider
-const HumeVoiceChat = () => {
+export default function HumeVoiceChat() {
   return (
     <VoiceProvider>
       <VoiceChat />
     </VoiceProvider>
   );
-};
-
-export default HumeVoiceChat; 
+} 
